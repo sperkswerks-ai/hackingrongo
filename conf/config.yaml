@@ -1,0 +1,580 @@
+# =============================================================================
+# hackingrongo — Rongorongo Hybrid Decipherment Pipeline
+# Hydra configuration root
+# All hyperparameters, paths, and named constants live here.
+# No numeric or string literals may appear in source code.
+# =============================================================================
+
+defaults:
+  - _self_
+
+# ─── Reproducibility ─────────────────────────────────────────────────────────
+seed: 42
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+paths:
+  # Raw data directories (populated externally; see data/README.md)
+  data_root: data
+  glyphs_dir: data/glyphs
+  corpus_dir: data/corpus
+  metadata_dir: data/metadata
+  catalog_dir: data/catalog
+  language_models_dir: data/language_models
+
+  # Well-known JSON files
+  tablets_json: data/metadata/tablets.json
+  allographs_json: data/catalog/allographs.json
+  horley_encoding_json: data/catalog/horley_encoding.json
+  sign_metadata_json: data/catalog/sign_metadata.json
+
+  # Parallel passages (populated from Horley 2021 appendix)
+  parallels_csv: data/parallels/horley_parallels.csv
+  parallel_variants_json: data/parallels/parallel_variants.json
+
+  # Raw Polynesian text corpora (used by rapa_nui_corpus.py to build LMs)
+  polynesian_texts_dir: data/polynesian_texts
+
+  # Output directories (created automatically at runtime)
+  outputs_dir: outputs
+  checkpoints_dir: outputs/checkpoints
+  embeddings_cache: outputs/embeddings_cache.pt
+  zone_b_cache: outputs/zone_b_cache.pkl
+
+# ─── Corpus / Temporal Clustering ────────────────────────────────────────────
+corpus:
+  # Two-cluster model replacing the earlier three-stratum architecture.
+  # The three-stratum model was unsupported by the radiocarbon evidence:
+  # only Tablet D is reliably pre-contact; Tablets B, C, O, Q are reliably
+  # post-contact (19th century); Tablet A must be excluded entirely because
+  # its wood is European (Fraxinus excelsior), making AMS dates analytically
+  # poisonous as a diachronic anchor.  All remaining 19 tablets are undated
+  # and receive probabilistic cluster assignments.
+  temporal_model:
+    type: two_cluster               # two_cluster | three_stratum | none
+
+    # Empirically grounded clusters from radiocarbon evidence
+    clusters:
+      pre_contact:
+        tablets: ["D"]
+        date_hpd_95_CE: [1493, 1509]   # Ferrara et al. (2024); Podocarpus sp.
+        confidence: high
+      post_contact:
+        tablets: ["B", "C", "O", "Q"]
+        date_hpd_95_CE: [1800, 1870]
+        confidence: medium
+      excluded_from_temporal_analysis:
+        tablets: ["A"]
+        reason: "European wood provenance (Fraxinus excelsior) — dates wood not inscription"
+
+    # Canonical string labels used everywhere in the codebase
+    cluster_labels:
+      pre_contact: "pre_contact"
+      post_contact: "post_contact"
+      unknown: "unknown"
+      excluded: "excluded"
+
+    # Undated tablet assignment (Strategy 3 — predictive cluster assignment)
+    undated_assignment:
+      method: probabilistic_classifier    # hard | probabilistic_classifier | exclude
+      classifier: gaussian_naive_bayes    # gnb | random_forest | uniform_prior
+      min_confidence_to_assign: 0.65      # below this → assigned to unknown cluster
+
+    # Sensitivity analysis — every Zone B/C result is run under all three.
+    # A finding is "robust" only if it is consistent across all scenarios
+    # within robustness_threshold relative variation.
+    sensitivity_scenarios:
+      - name: conservative_all_late
+        undated_assignment: post_contact
+      - name: optimistic_distributed
+        undated_assignment: uniform
+      - name: probabilistic_weighted
+        undated_assignment: classifier_output
+
+    robustness_threshold: 0.10          # max allowed relative variation
+
+  # Train / validation split (applied per-cluster to avoid cluster leakage).
+  # validation split is derived in code as (1.0 - train_split_ratio); do not add a
+  # second key here — one source of truth only.
+  train_split_ratio: 0.85
+
+  # Minimum number of glyph tokens a tablet must contain to be included
+  min_tablet_tokens: 10
+
+# ─── Data Loading ─────────────────────────────────────────────────────────────
+data:
+  # Include lines marked with square brackets as scholarly reconstructions
+  # (e.g. [reo ivi ata]) when building Polynesian language models.
+  # Keep false for strict corpus fidelity; set true only for ablation studies.
+  include_reconstructions: false
+
+  # Tokenisation level for n-gram LM construction.
+  # char     — split on individual characters (useful for morpheme-level analysis)
+  # syllable — heuristic CV/V Polynesian syllabification (recommended)
+  # word     — whitespace-delimited words (for prose text corpora)
+  lm_tokenization_level: syllable   # char | syllable | word
+
+# ─── Glyph Image Format ──────────────────────────────────────────────────────
+glyph:
+  # All glyph PNGs are resized to image_size × image_size before entering Zone A
+  image_size: 64
+  image_channels: 1                  # 1 = grayscale, 3 = RGB
+
+  # Expected PNG filename convention under data/glyphs/
+  filename_pattern: "{tablet_id}_{position}_{barthel_code}.png"
+
+  # Augmentation parameters (applied only during Zone A training, not inference)
+  augmentation:
+    use_augmentation: true
+    random_rotation_degrees: 10.0
+    random_affine_translate: [0.05, 0.05]   # fraction of image width/height
+    random_affine_scale: [0.9, 1.1]
+    gaussian_noise_std: 0.02
+    elastic_transform_alpha: 4.0
+    elastic_transform_sigma: 0.08
+
+# ─── Zone A — Learned Visual Layers ─────────────────────────────────────────
+zone_a:
+  # ---  Preprocessing (applied before any network sees pixel data)  ---
+  preprocessing:
+    boustrophedon_normalize: true    # rotate alternating lines 180° (reverse boustrophedon)
+    stroke_extraction: true          # extract binary stroke map via Canny + skeletonise before CNN
+    normalize_scale: true            # resize glyph to canonical bounding box
+    saliency_method: grad_cam        # grad_cam | integrated_gradients | none
+
+  # ---  Shared convolutional backbone  ---
+  # All three Zone A networks share these early layers; parameters are tied.
+  shared_backbone:
+    conv_channels: [32, 64, 128]     # output channels at each conv block
+    conv_kernel_size: 3
+    conv_padding: 1
+    pool_kernel_size: 2              # max-pool stride between blocks
+    activation: relu                 # relu | leaky_relu | gelu
+    use_batch_norm: true
+    dropout_rate: 0.1
+
+    # Optional pretrained backbone (replaces the custom SharedConvBackbone).
+    # null → use the custom conv backbone (default)
+    # dinov2_small → DINOv2 ViT-S/14 (feat_dim=384, loaded via torch.hub)
+    # dinov2_base  → DINOv2 ViT-B/14 (feat_dim=768, loaded via torch.hub)
+    # efficientnet_b0 → EfficientNet-B0 (feat_dim=1280, torchvision)
+    pretrained_backbone: null
+    # When pretrained_backbone is set, freeze all pretrained weights and
+    # train only the adapter + downstream heads.  false → fine-tune.
+    freeze_pretrained_backbone: true
+
+  # ---  Convolutional Autoencoder  ---
+  autoencoder:
+    bottleneck_dim: 128              # dimension of the glyph embedding vector
+    decoder_upsample_mode: bilinear  # bilinear | nearest | conv_transpose
+    reconstruction_loss: mixed       # mse | l1 | ssim | mixed
+    mixed_loss_ssim_weight: 0.5      # for mixed: weight of MS-SSIM; (1-w)*MSE + w*SSIM
+    align_corners: false             # for bilinear upsample; false is safer
+
+    # Two-stage encoder/decoder linear projections (0 = single-stage, original)
+    # flat_dim → intermediate_dim → ReLU → bottleneck_dim (and mirrored in decoder)
+    encoder_intermediate_dim: 512
+
+    # Denoising autoencoder: corrupt input with Gaussian noise during training
+    # but measure reconstruction loss against the clean target.  Smooths the
+    # latent space and prevents memorisation of pixel-level noise.
+    # 0.0 disables; ~0.05 is a mild corruption appropriate for binary glyph images.
+    denoising_noise_std: 0.05
+
+    # Spatial inpainting masks: random rectangular occlusions applied on top of
+    # (or independently from) Gaussian noise.  Forces the decoder to reconstruct
+    # missing regions from context — required for "fill the gap" inference.
+    # 0.0 disables mask_prob; the other three values are only read when prob > 0.
+    denoising_mask_prob: 0.5         # probability any given image gets a mask
+    denoising_mask_ratio_min: 0.10   # minimum masked-area fraction of total pixels
+    denoising_mask_ratio_max: 0.50   # maximum masked-area fraction of total pixels
+    denoising_mask_fill: 0.0         # fill value in normalised [-1, 1] space
+
+    # Contrastive projection head (MLP applied to bottleneck before SupCon loss).
+    # Decouples the metric-learning objective from the reconstruction objective;
+    # the head is used only during training and discarded at inference.
+    proj_head_hidden_dim: 128
+    proj_head_out_dim: 64
+
+    # Training schedule
+    optimizer: adamw                 # adamw | adam | sgd  (AdamW decouples weight decay)
+    lr: 1.0e-3
+    weight_decay: 1.0e-4            # increased from 1e-5; proper regularisation for sparse data
+    batch_size: 64
+    num_epochs: 50
+    scheduler: cosine_warmup        # cosine_warmup | cosine | step | none
+    warmup_epochs: 5                 # linear LR ramp before cosine decay (cosine_warmup only)
+    scheduler_T_max: 50              # for CosineAnnealingLR (and cosine_warmup cosine phase)
+    scheduler_step_size: 10          # for StepLR (ignored if scheduler != step)
+    scheduler_gamma: 0.5             # for StepLR decay factor
+    grad_clip_norm: 1.0              # set to 0.0 to disable
+    log_interval_steps: 50          # log training loss every N gradient steps
+    checkpoint_interval_epochs: 5
+    # "auto" = resume from the latest checkpoint found in checkpoints_dir (no-op
+    # when none exist).  Set to an explicit relative path to load a specific file.
+    # Set to "none" / "" to always start fresh regardless of saved checkpoints.
+    resume_checkpoint: "auto"
+
+    # Anthropomorphic head-type metric learning (Barthel 200–399 only).
+    # Supervised contrastive loss (SupCon) pulling together embeddings whose
+    # codes share the same head-type digit (n // 10 within 200–399).
+    # Applied on the projection head output, not the raw bottleneck.
+    # Set weight to 0.0 to disable; does not fire on non-200-399 signs.
+    anthropomorphic_head_loss_weight: 0.1
+    anthropomorphic_head_temperature: 0.1  # NT-Xent/SupCon temperature τ
+
+  # ---  Siamese Network  ---
+  siamese:
+    embedding_dim: 128               # must equal autoencoder.bottleneck_dim
+    # Contrastive loss: L = (1-y)*½d² + y*½*max(0, margin-d)²
+    margin: 1.0
+    distance_metric: euclidean       # euclidean | cosine
+
+    # Pair sampling from allograph catalog
+    same_sign_ratio: 0.5             # fraction of pairs that are same-sign (positive)
+    pairs_per_epoch: 10000
+    hard_negative_mining: true       # sample semi-hard negatives preferentially
+    hard_negative_margin_factor: 0.5 # semi-hard: d_neg < margin * this factor
+    min_instances_for_pairing: 3
+    # With sparse data, use online hard negative mining
+    # rather than pre-sampled pairs
+    mining_strategy: online_hard
+    # Weight loss by sign frequency to prevent
+    # high-frequency signs dominating gradients
+    frequency_weighted_loss: true
+
+    # Training schedule
+    optimizer: adam
+    lr: 1.0e-4
+    weight_decay: 1.0e-5
+    batch_size: 128
+    num_epochs: 40
+    scheduler: cosine
+    scheduler_T_max: 40
+    grad_clip_norm: 1.0
+    log_interval_steps: 100
+    checkpoint_interval_epochs: 5
+
+  # ---  Sequence Model (transformer next-glyph prediction)  ---
+  sequence_model:
+    vocab_size: null                 # null → inferred from corpus at dataset init;
+                                   # passed explicitly to model constructor via pipeline.py
+    token_embedding_dim: 128         # glyph token input embedding dimension
+    nhead: 4                         # multi-head attention heads
+    num_layers: 3                    # number of transformer encoder layers
+    dim_feedforward: 256             # FFN hidden size inside each transformer block
+    dropout_rate: 0.1
+    max_seq_len: 512                 # maximum tablet length in tokens (for pos embedding)
+    context_window: 16               # number of preceding glyphs used as context
+
+    # Training schedule
+    optimizer: adam
+    lr: 5.0e-4
+    weight_decay: 1.0e-5
+    batch_size: 32
+    num_epochs: 60
+    scheduler: cosine
+    scheduler_T_max: 60
+    grad_clip_norm: 1.0
+    log_interval_steps: 50
+    checkpoint_interval_epochs: 5
+
+  # Dimension of the final concatenated Zone A output per glyph
+  # Must equal: autoencoder.bottleneck_dim + siamese.embedding_dim + sequence_model.token_embedding_dim
+  fused_embedding_dim: 384
+
+# ─── Post-training Analysis ───────────────────────────────────────────────────
+analysis:
+  # UMAP projection of autoencoder embeddings onto 2D for visual inspection
+  # and as input to HDBSCAN clustering.
+  umap:
+    n_components: 2
+    metric: cosine          # cosine works better than euclidean for unit-norm embeddings
+    n_neighbors: 15         # lower = more local structure; raise if corpus grows
+    min_dist: 0.1
+    random_state: 42
+    init: pca               # pca avoids spectral eigensolver failures on large/dense embedding sets
+
+  # HDBSCAN data-driven sign clustering.
+  # No need to pre-specify k; algorithm finds dense regions automatically.
+  hdbscan:
+    min_cluster_size: 5     # minimum images to form a cluster; set low given sparse data
+    min_samples: 4          # controls how conservative cluster boundaries are; raised to reduce micro-clusters
+    metric: euclidean       # applied to the 2D UMAP output
+    cluster_selection_method: eom   # eom | leaf
+
+  # Comparison against Barthel sign families.
+  # The publishable question: do data-driven clusters agree with Barthel's taxonomy?
+  taxonomy_comparison:
+    # Adjusted Rand Index threshold above which we call it "consistent with Barthel"
+    ari_agreement_threshold: 0.4
+    # NMI threshold for the same interpretation (complement to ARI)
+    nmi_agreement_threshold: 0.3
+    # Only evaluate signs with at least this many instances (noise floor)
+    min_instances_for_evaluation: 3
+    # Output paths (relative to outputs_dir)
+    umap_plot: analysis/umap_embeddings.png
+    cluster_comparison_json: analysis/cluster_vs_barthel.json
+    cluster_comparison_csv: analysis/cluster_vs_barthel.csv
+
+  # Hierarchical clustering vs. Barthel's implicit sign taxonomy (200–399).
+  # Barthel encodes a 3-level tree in his numbering: century (2XX vs 3XX) →
+  # tens group → units.  We compare the data-driven dendrogram from the
+  # autoencoder embeddings against this tree using the cophenetic correlation.
+  hierarchy_analysis:
+    # Agglomerative linkage method applied to embedding cosine distances.
+    # 'ward' is preferred when aggregating per-code mean embeddings.
+    linkage_method: ward
+    # Minimum number of corpus instances for a sign code to be included.
+    min_instances: 2
+    # Output paths (relative to outputs_dir)
+    result_json: analysis/hierarchy_vs_barthel.json
+    dendrogram_plot: analysis/hierarchy_vs_barthel.png
+
+
+zone_b:
+  # Dimension of the structural prior vector passed to Zone C fusion.
+  # Composition: [contact_partition_onehot (120 signs × 2 CV classes = 240),
+  #               ic_per_stratum (3), entropy_per_stratum (3),
+  #               feasibility_flags (3 hypotheses)] = 249 raw features
+  #               → linearly projected to prior_output_dim.
+  # zone_c.fusion.zone_b_dim MUST equal this value.
+  prior_output_dim: 64
+
+  # Zone B can run independently with either:
+  #   (a) precomputed Zone A embeddings (path: paths.embeddings_cache), or
+  #   (b) raw glyph token integer sequences (set use_raw_tokens: true)
+  use_raw_tokens: false              # true → bypass Zone A, use Barthel codes as token IDs
+
+  # ---  Contact Analysis  ---
+  contact_analysis:
+    # Bigram adjacency tables: P(glyph_j | glyph_i) for all i, j in corpus
+    bigram_smoothing: 1.0e-6         # add-ε Laplace smoothing applied to raw counts
+    # Cosine-similarity threshold for merging nodes into CV-class clusters
+    cosine_similarity_threshold: 0.85
+    min_glyph_frequency: 3           # glyphs appearing fewer than N times are excluded
+    # Neighborhood profile: concatenate [left_bigram_row, right_bigram_row] per glyph
+    neighborhood_profile_normalize: l2  # l2 | l1 | none
+
+  # ---  Index of Coincidence + Shannon Entropy  ---
+  entropy:
+    # IC formula: IC = Σ n_i(n_i-1) / N(N-1)
+    # Compared against theoretical IC for English (~0.065) and random (~0.038)
+    ic_random_baseline: 0.038        # IC expected for a flat random distribution
+    ic_natural_language_baseline: 0.065
+    # Shannon entropy H = -Σ p_i log_b(p_i)
+    entropy_base: 2                  # bits; set to e for nats
+    # Per-stratum computation: one IC and H value per (stratum, tablet) pair
+    per_tablet: true                 # also compute per individual tablet
+
+  # ---  Unicity Distance Filter  ---
+  unicity:
+    # Unicity distance: U = H(K) / D
+    # H(K) = log2(key_space_size)  [bits]
+    # D    = IC-based redundancy estimate = log2(alphabet_size) - H_per_symbol
+    # Hypotheses with U > corpus_token_count are flagged as mathematically intractable
+    #
+    # Structural hypothesis key-space sizes (number of distinct mappings):
+    # set to null to compute from corpus alphabet size at runtime
+    syllabic_key_space_log2: null    # e.g., log2(120!) for a pure syllabary
+    logographic_key_space_log2: null
+    semasiographic_key_space_log2: null
+    # Flag threshold: U > corpus_size * this multiplier → intractable
+    intractable_threshold_multiplier: 1.0
+
+  # ---  Sign Classifier  ---
+  sign_classifier:
+    # Dual criterion for TAXOGRAM classification:
+    #   sign must satisfy BOTH frequency_threshold AND omission_threshold.
+    # A sign in the top `taxogram_frequency_threshold` percentile of frequency
+    # is a frequency candidate (glyph 200 always qualifies).
+    taxogram_frequency_threshold: 0.95
+    # Fraction of parallel-passage variants where the sign is absent.
+    # A sign omitted in ≥30 % of parallel variants is an omission candidate.
+    taxogram_omission_rate_threshold: 0.30
+    # Shannon entropy of the sign's positional distribution.
+    # Signs with entropy ≤ this threshold are classified as LOGOGRAM candidates.
+    logogram_positional_entropy_threshold: 0.40
+    # Signs with absolute frequency below this value are classified UNKNOWN.
+    # Reuses contact_analysis.min_glyph_frequency; override here if needed.
+    min_glyph_frequency: 3
+
+# ─── Zone C — Learned Fusion + External Scoring ──────────────────────────────
+zone_c:
+  # ---  NDDR-Style Fusion Layer  ---
+  fusion:
+    # Input: concatenation of [Zone A fused embedding, Zone B structural prior vector]
+    zone_a_dim: 384                  # must equal zone_a.fused_embedding_dim
+    zone_b_dim: 64                   # must equal zone_b.prior_output_dim
+    output_dim: 256                  # fused representation dimension entering MCMC / beam
+    use_batch_norm: true
+    dropout_rate: 0.1
+    activation: relu
+
+    # Training schedule (fusion layer fine-tuned jointly with Zone A backbone)
+    optimizer: adam
+    lr: 1.0e-4
+    weight_decay: 1.0e-5
+    batch_size: 64
+    num_epochs: 30
+    scheduler: cosine
+    scheduler_T_max: 30
+    grad_clip_norm: 1.0
+    checkpoint_interval_epochs: 5
+
+  # ---  MCMC Decipherment (Metropolis-Hastings)  ---
+  mcmc:
+    # Phoneme assignment map: π : {sign_id} → {phoneme}
+    # State space: all bijective mappings from the rongorongo sign inventory
+    # to candidate CV syllables in the target language.
+    num_chains: 4                    # parallel chains for Gelman-Rubin diagnostics
+    num_iterations: 50000            # total MH iterations per chain
+    burn_in: 5000                    # discard first N samples as burn-in
+    thin: 10                         # retain every Nth post-burn-in sample
+
+    # Proposal distribution
+    proposal_temperature: 1.0        # softmax temperature on LM-guided proposals
+    swap_probability: 0.1            # prob. of a random transposition proposal
+    # Roberts et al. optimal acceptance for d-dim random walk is ~0.234;
+    # adaptive tuning adjusts proposal variance to approach this target.
+    target_acceptance_rate: 0.234
+    reassign_prob: 0.2               # initial probability of random-reassignment vs swap
+    adaptation_interval: 500         # tune reassign_prob every N steps during burn-in
+    full_rescore_interval: 1000      # recompute log-posterior from scratch every N steps to catch fp drift
+    top_k: 20                        # number of top samples to return
+    adaptive_proposal: true          # enable Haario et al. adaptive MCMC
+    adaptive_window: 500             # number of past samples used to estimate covariance
+
+    # LM-guided (Gibbs-style) proposals
+    # With probability lm_guided_prob, instead of a random proposal the sampler
+    # tests lm_guided_n_candidates signs × top-k phonemes and proposes the
+    # highest-scoring change.  0.0 disables; ~0.1-0.2 is a good starting point.
+    lm_guided_prob: 0.15             # fraction of steps using LM-guided proposal
+    lm_guided_n_candidates: 3        # number of randomly chosen signs to evaluate
+    lm_guided_top_k: 5               # top-k phonemes (by unigram LM score) tried per sign
+
+    # Convergence diagnostics (logged to MLflow)
+    gelman_rubin_threshold: 1.05     # R-hat ≤ this → chain considered converged
+    log_interval_iterations: 500     # diagnostic log frequency (iterations)
+    random_restart_if_rhat_above: 1.2   # trigger full chain restart above this R-hat
+    max_restarts: 3                  # maximum auto-restarts before raising an error
+
+    # Scoring
+    lm_log_prob_weight: 1.0          # multiplicative weight on LM log-probability in acceptance ratio
+    prior_weight: 0.1                # weight on structural prior in acceptance ratio
+
+  # ---  Beam Search Decipherment  ---
+  beam_search:
+    beam_width: 20                   # number of hypotheses retained at each expansion step
+    max_depth: 512                   # maximum phoneme assignment positions expanded
+    # Length normalization: score /= (length ** alpha) — Wu et al. (2016)
+    length_penalty_alpha: 0.6
+    # Hypothesis pruning: discard beams with total log-prob below this absolute threshold
+    prune_threshold: -50.0
+    # Early stopping: halt if best beam score improves by less than this across N steps
+    min_improvement: 1.0e-4
+    early_stopping_patience: 50
+    top_k: 20                        # number of final hypotheses to return
+
+  # ---  External Polynesian Language Model Scoring  ---
+  lm_scoring:
+    # Era-stratified LMs replace language-named LMs.
+    #
+    #   pre_contact  — attested pre-contact lexicon: IDS de Agüera/Thomson rows
+    #                  + ABVD East Polynesian cognate neighbours at half weight.
+    #   post_contact — recitation texts (Barthel/Blixen/Fischer) + full IDS
+    #                  Rapa Nui vocabulary + Kieviet (2017) example sentences.
+    #   smoothing    — high-volume 19th-c. Hawaiian newspaper text (Nupepa)
+    #                  for Kneser-Ney back-off only; not scored directly.
+    lms:
+      - pre_contact
+      - post_contact
+      - smoothing
+
+    # N-gram orders used for scoring (all orders scored; best is reported separately)
+    ngram_orders: [3, 4, 5]
+
+    # Paths to pre-serialized LM JSON files (written by NGramLM.save)
+    lm_files:
+      pre_contact:  data/language_models/pre_contact_lm.json
+      post_contact: data/language_models/post_contact_lm.json
+      smoothing:    data/language_models/smoothing_lm.json
+
+    # Source files per LM, relative to data/polynesian_texts/.
+    # A trailing '/' means include all .txt files in that directory.
+    # Files that do not exist are logged as warnings and skipped.
+    lm_sources:
+      pre_contact:
+        - rapanui/ids_pre_contact.txt          # IDS: de Agüera 1770, Thomson 1891 only
+        - rapanui/abvd_cognate_neighbours.txt  # ABVD EP cognate forms (weight 0.5)
+      post_contact:
+        - old_rapa_nui/barthel.txt
+        - old_rapa_nui/blixen.txt
+        - old_rapa_nui/fischer.txt
+        - rapanui/ids.txt                      # IDS full Rapa Nui (Roussel → Englert)
+        - rapanui/kieviet_2017.txt             # Kieviet (2017) example sentences (optional)
+      smoothing:
+        - nupepa_hawaiian/                     # all .txt files in this directory
+
+    # Fractional weight applied to abvd_cognate_neighbours.txt at training time.
+    # Lines are Bernoulli-sampled at this rate; use 1.0 to include all.
+    cognate_neighbour_weight: 0.5
+
+    # Smoothing applied at query time if the LM does not carry its own
+    smoothing_method: kneser_ney     # kneser_ney | witten_bell | laplace
+    # Log-probability assigned to n-grams not found in any LM.
+    # Values differ by order because expected log-prob ranges shrink with longer context.
+    oov_log_prob_per_order:
+      3: -15.0
+      4: -18.0
+      5: -20.0
+
+    # Ensemble weighting across era LMs (normalised at scoring time)
+    ensemble_weights:
+      pre_contact:  0.40
+      post_contact: 0.40
+      smoothing:    0.20
+
+  # ---  Validation and Adversarial Anchoring  ---
+  validation:
+    # Structural hypotheses tested in the adversarial synthetic anchoring step
+    adversarial_hypotheses:
+      - syllabic
+      - logographic
+      - semasiographic
+
+    # Synthetic corpus generation parameters
+    synthetic_corpus_length: 500     # tokens per synthetic encoded text
+    num_synthetic_samples: 20        # number of synthetic texts per hypothesis
+
+    # Cross-stratum consistency: a phoneme assignment must achieve above-chance
+    # LM scores in at least this many languages across all three strata.
+    cross_stratum_min_languages: 2
+    cross_stratum_significance_alpha: 0.05  # one-tailed p-value threshold
+    bootstrap_samples: 1000                 # bootstrap resamples for significance test
+
+    # Final output: retain top-N decryption hypotheses in the ranked output
+    top_n_hypotheses: 20
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+logging:
+  level: INFO                        # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+  log_to_file: true
+  log_filename: outputs/hackingrongo.log  # resolved via hydra.utils.get_original_cwd()
+
+# ─── Hydra Runtime Configuration ─────────────────────────────────────────────
+# Controls output directories and job naming for Hydra-managed runs.
+hydra:
+  run:
+    dir: outputs/hydra_runs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/hydra_sweeps/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}
+  job:
+    # WARNING: chdir: true means all relative paths in `paths:` must be resolved
+    # via hydra.utils.get_original_cwd() in pipeline.py.
+    # Do NOT use os.getcwd() directly anywhere in the codebase.
+    chdir: true
+  # Silence Hydra's own log output at INFO; pipeline uses its own logger
+  verbose: false

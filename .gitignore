@@ -1,0 +1,59 @@
+# Data — tracked separately (use zip for Colab, DVC or similar for versioning)
+data/*
+!data/README.md
+
+# Training outputs and model checkpoints
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+pip-wheel-metadata/
+
+# Environments
+.env
+.venv
+env/
+venv/
+.conda/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.idea/
+.vscode/settings.json
+*.suo
+*.user
+
+# MLflow / experiment tracking
+mlruns/
+mlartifacts/
+
+# Hydra run outputs
+outputs/
+multirun/
+.hydra/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
