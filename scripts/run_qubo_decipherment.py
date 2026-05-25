@@ -883,6 +883,8 @@ def main() -> None:
             if mcmc_best_lm_score is not None and math.isfinite(best_lm_score)
             else None
         ),
+        "cribs":                 cribs if cribs else {},
+        "crib_penalty":          args.crib_penalty if cribs else None,
         "phoneme_assignments":   phoneme_assignments,
         "annealing_time_seconds": round(elapsed, 2),
         "qubo_size": {

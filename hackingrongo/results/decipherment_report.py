@@ -577,7 +577,617 @@ body {
   .card-body { grid-template-columns: 1fr; }
   .col-assign { border-right: none; border-bottom: 1px solid var(--border); }
 }
+
+/* ── Crib / known-plaintext panel ── */
+.crib-section { margin-top: 56px; }
+.crib-heading {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.crib-heading span { color: #c4692a; margin-right: 6px; }
+.crib-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.crib-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 18px; min-width: 160px; flex: 0 0 auto;
+}
+.crib-card.taxogram {
+  border-color: #c4692a66; background: #c4692a0a;
+  box-shadow: 0 0 0 1px #c4692a33;
+}
+.crib-sign {
+  font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 600;
+  color: var(--accent); letter-spacing: -1px; line-height: 1.1; margin-bottom: 4px;
+}
+.crib-phoneme {
+  font-family: 'JetBrains Mono', monospace; font-size: 16px; color: #2563eb;
+  margin-bottom: 6px;
+}
+.crib-type {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); margin-bottom: 3px;
+}
+.crib-note { font-size: 11px; color: #555; line-height: 1.5; }
+.taxogram-badge {
+  display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  background: #c4692a22; border: 1px solid #c4692a55; color: #c4692a;
+  border-radius: 3px; padding: 2px 7px; margin-top: 4px; font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.crib-verify {
+  margin-top: 14px; padding: 10px 14px; border-radius: 4px; font-size: 12px;
+  line-height: 1.7;
+}
+.crib-verify.ok   { background: #4caf7d15; border-left: 3px solid #4caf7d; color: #2a6040; }
+.crib-verify.warn { background: #d4a81715; border-left: 3px solid #d4a817; color: #6a5010; }
+.crib-section-intro {
+  font-size: 13.5px; color: #333; line-height: 1.85; max-width: 840px;
+  margin-bottom: 20px;
+}
+
+/* ── MCMC diagnostics panel ── */
+.diag-section { margin-top: 56px; }
+.diag-heading {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.diag-heading span { color: #5b8dd9; margin-right: 6px; }
+.diag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.diag-tile {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+}
+.diag-tile-label {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+  margin-bottom: 6px;
+}
+.diag-tile-val {
+  font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 500; color: #111;
+}
+.diag-tile-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.rhat-green { color: #4caf7d; }
+.rhat-yellow { color: #d4a817; }
+.rhat-red    { color: #e07b54; }
+.pt-ladder {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+}
+.pt-rung {
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 3px 8px; background: var(--surface2);
+}
+.pt-rung.cold { border-color: #5b8dd966; background: #5b8dd910; color: #2a4f8a; font-weight: 600; }
+.acceptance-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.acc-rung {
+  height: 14px; border-radius: 2px; flex: 1 0 20px; max-width: 60px;
+  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+}
+
+/* ── Frequency-language match panel ── */
+.freq-section { margin-top: 56px; }
+.freq-heading {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.freq-heading span { color: #059669; margin-right: 6px; }
+.freq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 860px) { .freq-grid { grid-template-columns: 1fr; } }
+.freq-q-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px 22px;
+}
+.freq-q-card-title {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  color: #333; margin-bottom: 14px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.freq-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.freq-table th {
+  padding: 5px 8px; text-align: left; font-weight: 600;
+  font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.freq-table td { padding: 6px 8px; border-bottom: 1px solid var(--border)40; }
+.freq-table tr:last-child td { border-bottom: none; }
+.freq-table tr.best-row td { background: #05966910; }
+.freq-alpha { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+.rho-track { display: inline-block; width: 80px; height: 8px;
+             background: var(--border); border-radius: 4px;
+             position: relative; vertical-align: middle; margin-left: 6px; }
+.rho-fill  { height: 100%; border-radius: 4px; position: absolute; top:0; }
+.pval-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+  border-radius: 3px; padding: 2px 7px; border: 1px solid transparent;
+}
+.pval-good { background: #4caf7d15; border-color: #4caf7d55; color: #2a6040; }
+.pval-mid  { background: #d4a81715; border-color: #d4a81755; color: #6a5010; }
+.pval-bad  { background: #e07b5415; border-color: #e07b5455; color: #7a3020; }
+.zipf-sign-row { font-size: 13px; color: #333; margin-bottom: 10px; }
+.zipf-sign-row .alpha-big {
+  font-family: 'JetBrains Mono', monospace; font-size: 26px;
+  font-weight: 600; color: var(--accent); line-height: 1;
+}
+
+/* ── Morpheme segmentation panel ── */
+.morph-section { margin-top: 56px; }
+.morph-heading {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.morph-heading span { color: #7c3aed; margin-right: 6px; }
+.morph-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; }
+@media (max-width: 860px) { .morph-grid { grid-template-columns: 1fr; } }
+.morph-stats-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px 22px;
+}
+.morph-stats-title {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #333; margin-bottom: 14px;
+}
+.morph-kv { font-size: 13px; color: #333; margin-bottom: 6px; }
+.morph-kv b { color: #111; }
+.morph-boundary-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 20px 22px;
+}
+.morph-boundary-title {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #333; margin-bottom: 14px;
+}
+.boundary-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+.boundary-chip {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  background: #7c3aed0a; border: 1px solid #7c3aed44; color: #5a2aad;
+  border-radius: 3px; padding: 3px 9px; white-space: nowrap;
+}
+.boundary-chip.high { background: #7c3aed20; border-color: #7c3aed66; font-weight: 600; }
+.morph-interp {
+  margin-top: 14px; font-size: 12.5px; color: #444; line-height: 1.8;
+  background: var(--surface2); border-left: 3px solid #7c3aed44;
+  padding: 10px 14px; border-radius: 0 4px 4px 0;
+}
 """
+
+# ---------------------------------------------------------------------------
+# Crib / known-plaintext panel
+# ---------------------------------------------------------------------------
+
+# Human-readable annotations for notable sign codes.
+_SIGN_NOTES: dict[str, tuple[str, str]] = {
+    "200": ("Tangata manu / bird-man taxogram", True),   # (note, is_taxogram)
+    "152": ("Calendar / moon cycle marker", False),
+    "040": ("Calendar / Kokore night sequence", False),
+    "700": ("Rei miro pectoral ornament", False),
+    "380": ("Fish / kai marker", False),
+    "001": ("High-frequency base glyph", False),
+}
+
+
+def _render_crib_panel(
+    qubo_data: dict | None,
+    diag_data: dict | None,
+    top_hyp_assignments: list | None = None,
+) -> str:
+    """Render known-plaintext cribs + calendar anchors panel."""
+    # Collect cribs from QUBO output
+    cribs: dict[str, str] = {}
+    crib_source = ""
+    if qubo_data and qubo_data.get("cribs"):
+        cribs = dict(qubo_data["cribs"])
+        crib_source = "QUBO"
+
+    # Calendar anchors from MCMC diagnostics
+    calendar_anchors: dict[str, str] = {}
+    if diag_data and diag_data.get("calendar_anchors"):
+        calendar_anchors = dict(diag_data["calendar_anchors"])
+
+    if not cribs and not calendar_anchors:
+        return ""  # Nothing to show
+
+    # Build lookup: sign → assigned phoneme in top hypothesis (for verification)
+    top_map: dict[str, str] = {}
+    if top_hyp_assignments:
+        for a in top_hyp_assignments:
+            if hasattr(a, "sign_code"):
+                top_map[a.sign_code] = a.phoneme
+            elif isinstance(a, dict):
+                top_map[a["sign_code"]] = a["phoneme"]
+
+    def _make_crib_card(sign: str, phoneme: str, kind: str) -> str:
+        note, is_taxogram = _SIGN_NOTES.get(sign, (f"Barthel code {sign}", False))
+        taxo_cls = " taxogram" if is_taxogram else ""
+        taxo_badge = (
+            '<div class="taxogram-badge">&#9787; taxogram</div>' if is_taxogram else ""
+        )
+        # Verify against top hypothesis
+        verify_html = ""
+        if top_map:
+            assigned = top_map.get(sign)
+            if assigned is not None:
+                if assigned == phoneme:
+                    verify_html = (
+                        f'<div class="crib-verify ok">'
+                        f'&#10003; Top hypothesis confirms: <b>{phoneme}</b></div>'
+                    )
+                else:
+                    verify_html = (
+                        f'<div class="crib-verify warn">'
+                        f'&#9888; Top hypothesis assigns <b>{assigned}</b> '
+                        f'(pinned: <b>{phoneme}</b>)</div>'
+                    )
+        return (
+            f'<div class="crib-card{taxo_cls}">'
+            f'  <div class="crib-type">{kind}</div>'
+            f'  <div class="crib-sign">{sign}</div>'
+            f'  <div class="crib-phoneme">→ {phoneme}</div>'
+            f'  <div class="crib-note">{note}</div>'
+            f'  {taxo_badge}'
+            f'  {verify_html}'
+            f'</div>'
+        )
+
+    cards_html = ""
+    for sign, phoneme in sorted(cribs.items(), key=lambda kv: kv[0]):
+        cards_html += _make_crib_card(sign, phoneme, f"crib ({crib_source})")
+    for sign, phoneme in sorted(calendar_anchors.items(), key=lambda kv: kv[0]):
+        if sign not in cribs:  # don't double-show
+            cards_html += _make_crib_card(sign, phoneme, "calendar anchor")
+
+    n_total = len(cribs) + sum(1 for s in calendar_anchors if s not in cribs)
+    intro = (
+        f"<p class=\"crib-section-intro\">"
+        f"{n_total} sign-phoneme assignment{'' if n_total == 1 else 's'} were "
+        f"<b>pinned before sampling</b> as known-plaintext constraints. "
+        f"These reduce the combinatorial search space and prevent the sampler "
+        f"from reassigning these signs. "
+        f"Cards highlighted in amber indicate the <b>taxogram</b> (bird-man figure, "
+        f"Barthel 200) — the strongest known-plaintext anchor in the rongorongo corpus."
+        f"</p>"
+    ) if (cribs or calendar_anchors) else ""
+
+    return f"""
+<div class="crib-section" id="crib-anchors">
+  <div class="crib-heading"><span>&#128273;</span>Known-Plaintext Cribs &amp; Calendar Anchors</div>
+  {intro}
+  <div class="crib-grid">{cards_html}</div>
+</div>"""
+
+
+# ---------------------------------------------------------------------------
+# MCMC diagnostics panel
+# ---------------------------------------------------------------------------
+
+def _render_mcmc_diagnostics_panel(diag_data: dict) -> str:
+    """Render a diagnostics tile grid: R-hat, acceptance, PT stats, etc."""
+    rhat = diag_data.get("gelman_rubin_rhat")
+    converged = diag_data.get("converged", False)
+    n_chains = diag_data.get("n_chains", "—")
+    n_samples = diag_data.get("n_samples_per_chain", "—")
+    acc_mean = diag_data.get("acceptance_mean")
+    acc_rates = diag_data.get("acceptance_rates", [])
+    geweke_z = diag_data.get("geweke_z")
+    pt_enabled = diag_data.get("parallel_tempering", False)
+    inv_size = diag_data.get("sign_inventory_size", "—")
+
+    # R-hat tile
+    if rhat is not None:
+        rhat_cls = "rhat-green" if rhat < 1.1 else ("rhat-yellow" if rhat < 1.2 else "rhat-red")
+        rhat_interp = "converged" if rhat < 1.1 else ("borderline" if rhat < 1.2 else "not converged")
+        rhat_html = f'<span class="{rhat_cls}">{rhat:.4f}</span>'
+        rhat_sub = rhat_interp
+    else:
+        rhat_html = "N/A"
+        rhat_sub  = "single chain / PT mode"
+
+    conv_sym  = "&#10003; yes" if converged else "&#10007; no"
+    conv_col  = "color:#4caf7d" if converged else "color:#e07b54"
+
+    # Geweke Z
+    if geweke_z is not None:
+        gz_col = "color:#4caf7d" if abs(geweke_z) < 2.0 else "color:#e07b54"
+        gz_html = f'<span style="{gz_col}">{geweke_z:.3f}</span>'
+        gz_sub  = "|z| < 2 ✓" if abs(geweke_z) < 2.0 else "|z| ≥ 2 — non-stationary"
+    else:
+        gz_html = "N/A"
+        gz_sub  = ""
+
+    # Acceptance bar
+    acc_bar_html = ""
+    if acc_rates:
+        for rate in acc_rates:
+            r_pct = int(min(max(rate, 0.0), 1.0) * 100)
+            col = "#4caf7d" if 0.20 <= rate <= 0.50 else ("#d4a817" if 0.10 <= rate <= 0.60 else "#e07b54")
+            acc_bar_html += (
+                f'<div class="acc-rung" style="background:{col};width:{max(r_pct,8)}px" '
+                f'title="{rate:.3f}">{r_pct}%</div>'
+            )
+
+    acc_mean_str = f"{acc_mean:.3f}" if acc_mean is not None else "—"
+
+    # PT info
+    pt_tiles = ""
+    if pt_enabled:
+        n_T     = diag_data.get("pt_n_temperatures", "?")
+        t_max   = diag_data.get("pt_t_max", "?")
+        sw_int  = diag_data.get("pt_swap_interval", "?")
+        # Build temperature rung chips
+        if isinstance(n_T, int) and isinstance(t_max, (int, float)):
+            rungs_html = '<div class="pt-ladder">'
+            if n_T == 1:
+                rungs_html += '<div class="pt-rung cold">T=1.0</div>'
+            else:
+                for i in range(n_T - 1, -1, -1):
+                    t = float(t_max) ** (i / (n_T - 1))
+                    cls = "pt-rung cold" if i == 0 else "pt-rung"
+                    rungs_html += f'<div class="{cls}">T={t:.2f}</div>'
+            rungs_html += "</div>"
+        else:
+            rungs_html = f'<span class="muted">{n_T} rungs, T_max={t_max}</span>'
+
+        pt_tiles = f"""
+<div class="diag-tile" style="grid-column: span 2">
+  <div class="diag-tile-label">Parallel Tempering — Temperature Ladder</div>
+  {rungs_html}
+  <div class="diag-tile-sub" style="margin-top:6px">swap interval: every {sw_int} iterations &middot; only cold chain (T=1.0) contributes samples</div>
+</div>"""
+
+    return f"""
+<div class="diag-section" id="mcmc-diagnostics">
+  <div class="diag-heading"><span>&#9672;</span>MCMC Diagnostics</div>
+  <div class="diag-grid">
+    <div class="diag-tile">
+      <div class="diag-tile-label">Gelman-Rubin R̂</div>
+      <div class="diag-tile-val">{rhat_html}</div>
+      <div class="diag-tile-sub">{rhat_sub}</div>
+    </div>
+    <div class="diag-tile">
+      <div class="diag-tile-label">Converged</div>
+      <div class="diag-tile-val" style="{conv_col}">{conv_sym}</div>
+      <div class="diag-tile-sub">&nbsp;</div>
+    </div>
+    <div class="diag-tile">
+      <div class="diag-tile-label">Geweke Z</div>
+      <div class="diag-tile-val">{gz_html}</div>
+      <div class="diag-tile-sub">{gz_sub}</div>
+    </div>
+    <div class="diag-tile">
+      <div class="diag-tile-label">Chains &times; Samples</div>
+      <div class="diag-tile-val" style="font-size:16px">{n_chains} &times; {n_samples}</div>
+      <div class="diag-tile-sub">sign inventory: {inv_size}</div>
+    </div>
+    <div class="diag-tile" style="grid-column: span 2">
+      <div class="diag-tile-label">Per-Chain Acceptance Rates (mean: {acc_mean_str})</div>
+      <div class="acceptance-bar">{acc_bar_html}</div>
+      <div class="diag-tile-sub">target range 0.20–0.50 (green) &middot; wider bars = higher acceptance</div>
+    </div>
+    {pt_tiles}
+  </div>
+</div>"""
+
+
+# ---------------------------------------------------------------------------
+# Frequency-language match panel
+# ---------------------------------------------------------------------------
+
+def _render_freq_match_panel(freq_data: dict) -> str:
+    """Render Zipf α comparison, Spearman ρ and χ² goodness-of-fit panels."""
+    zipf_signs = freq_data.get("zipf_alpha_signs")
+    zipf_per_lm: dict[str, float] = freq_data.get("zipf_alpha_per_lm") or {}
+    rho_per_lm:  dict[str, float] = freq_data.get("spearman_rho_per_lm") or {}
+    chi2_per_lm: dict[str, float] = freq_data.get("chi2_stat_per_lm") or {}
+    pval_per_lm: dict[str, float] = freq_data.get("chi2_p_value_per_lm") or {}
+    best_spearman = freq_data.get("best_lm_by_spearman")
+    best_chi2     = freq_data.get("best_lm_by_chi2_p")
+
+    zipf_sign_str = f"{zipf_signs:.3f}" if zipf_signs is not None else "—"
+
+    # Zipf table
+    all_lms = sorted(set(list(zipf_per_lm) + list(rho_per_lm) + list(pval_per_lm)))
+    zipf_rows = ""
+    for lm in all_lms:
+        alpha_lm = zipf_per_lm.get(lm)
+        rho_val  = rho_per_lm.get(lm)
+        pval     = pval_per_lm.get(lm)
+
+        # Zipf α similarity (absolute diff vs sign distribution)
+        if alpha_lm is not None and zipf_signs is not None:
+            diff = abs(alpha_lm - zipf_signs)
+            diff_str = f"+{diff:.3f}" if alpha_lm > zipf_signs else f"−{diff:.3f}"
+            diff_col = "#4caf7d" if diff < 0.3 else ("#d4a817" if diff < 0.7 else "#e07b54")
+        else:
+            diff_str = "—"
+            diff_col = "inherit"
+
+        alpha_lm_str = f"{alpha_lm:.3f}" if alpha_lm is not None else "—"
+
+        # Spearman ρ bar
+        if rho_val is not None:
+            # ρ can be negative; map [−1, 1] → [0, 100]
+            bar_pct = int((rho_val + 1) / 2 * 100)
+            bar_col = "#4caf7d" if rho_val > 0.4 else ("#d4a817" if rho_val > 0 else "#e07b54")
+            rho_bar = (
+                f'<span class="rho-track">'
+                f'<span class="rho-fill" style="width:{bar_pct}%;background:{bar_col}"></span>'
+                f'</span>'
+            )
+            rho_str = f"{rho_val:.3f} {rho_bar}"
+        else:
+            rho_str = "—"
+
+        # χ² p-value badge
+        if pval is not None:
+            if pval >= 0.05:
+                pval_cls = "pval-good"
+                pval_note = "consistent"
+            elif pval >= 0.01:
+                pval_cls = "pval-mid"
+                pval_note = "marginal"
+            else:
+                pval_cls = "pval-bad"
+                pval_note = "inconsistent"
+            pval_str = (
+                f'<span class="pval-badge {pval_cls}" title="{pval_note}">'
+                f'{pval:.4f}</span>'
+            )
+        else:
+            pval_str = "—"
+
+        is_best = lm in (best_spearman, best_chi2)
+        row_cls = "best-row" if is_best else ""
+        zipf_rows += (
+            f'<tr class="{row_cls}">'
+            f'<td class="mono" style="font-size:11px">{lm}</td>'
+            f'<td class="freq-alpha">{alpha_lm_str}</td>'
+            f'<td style="font-size:11px;color:{diff_col}">{diff_str}</td>'
+            f'<td style="white-space:nowrap">{rho_str}</td>'
+            f'<td>{pval_str}</td>'
+            f'</tr>'
+        )
+
+    table_html = f"""
+<table class="freq-table">
+  <thead><tr>
+    <th>Language&nbsp;LM</th>
+    <th>Zipf&nbsp;&alpha;</th>
+    <th>&Delta;&alpha;</th>
+    <th>Spearman&nbsp;&rho;</th>
+    <th>&chi;&sup2;&nbsp;p</th>
+  </tr></thead>
+  <tbody>{zipf_rows}</tbody>
+</table>""" if zipf_rows else '<p class="muted small">No language models found.</p>'
+
+    rho_note = ""
+    if best_spearman and rho_per_lm.get(best_spearman) is not None:
+        rho_note = (
+            f'<p class="q-interp" style="margin-top:14px">'
+            f'<b>Best Spearman match: {best_spearman}</b> '
+            f'(&rho;={rho_per_lm[best_spearman]:.3f}). '
+            f'Frequent signs map to frequent phonemes in this language — '
+            f'the Zipf frequency structure of the rongorongo inventory is '
+            f'consistent with this language\'s phoneme distribution.</p>'
+        )
+    if best_chi2 and best_chi2 != best_spearman and pval_per_lm.get(best_chi2) is not None:
+        rho_note += (
+            f'<p class="q-interp" style="margin-top:6px">'
+            f'<b>Best &chi;&sup2; fit: {best_chi2}</b> '
+            f'(p={pval_per_lm[best_chi2]:.4f}). '
+            f'The assigned-phoneme frequency distribution is statistically '
+            f'consistent with this language model.</p>'
+        )
+
+    return f"""
+<div class="freq-section" id="freq-match">
+  <div class="freq-heading"><span>&#9190;</span>Frequency-Language Match</div>
+  <div class="freq-grid">
+    <div class="freq-q-card">
+      <div class="freq-q-card-title">Sign Zipf &alpha; &amp; LM Comparison</div>
+      <div class="zipf-sign-row">
+        Sign distribution Zipf &alpha;:&nbsp;<span class="alpha-big">{zipf_sign_str}</span>
+      </div>
+      <p class="muted small" style="margin-bottom:10px">
+        &alpha; measures how steeply sign frequency falls with rank.
+        Natural language phonemes: &alpha; &approx; 0.8&ndash;1.2.
+        Rows highlighted in green are the best-matching language models.
+      </p>
+      {table_html}
+      {rho_note}
+    </div>
+    <div class="freq-q-card">
+      <div class="freq-q-card-title">Interpretation</div>
+      <p style="font-size:13px;color:#333;line-height:1.85">
+        <b>Zipf exponent</b> (&alpha;): a power-law exponent &alpha;&nbsp;&approx;&nbsp;1
+        is Zipf&rsquo;s law. If the rongorongo sign frequency follows the same &alpha;
+        as a language&rsquo;s phoneme inventory, it is evidence that the sign system
+        encodes something phonologically similar to that language.
+      </p>
+      <p style="font-size:13px;color:#333;line-height:1.85;margin-top:10px">
+        <b>Spearman &rho;</b>: rank correlation between sign frequency rank and the
+        frequency rank of its assigned phoneme. &rho;&nbsp;&gt;&nbsp;0.5 suggests
+        the assignment preserves the frequency structure (common signs &rarr; common
+        phonemes), which is expected under most theories of phonographic writing.
+      </p>
+      <p style="font-size:13px;color:#333;line-height:1.85;margin-top:10px">
+        <b>&chi;&sup2; goodness-of-fit</b>: tests whether the aggregate phoneme
+        frequency implied by the assignment is consistent with the reference language.
+        p&nbsp;&ge;&nbsp;0.05 means we cannot reject that the distribution matches.
+      </p>
+    </div>
+  </div>
+</div>"""
+
+
+# ---------------------------------------------------------------------------
+# Morpheme segmentation panel
+# ---------------------------------------------------------------------------
+
+def _render_morpheme_panel(morph_data: dict) -> str:
+    """Render the Zellig Harris morpheme segmentation snapshot panel."""
+    n_seq    = morph_data.get("n_sequences", "—")
+    n_types  = morph_data.get("n_sign_types", "—")
+    n_chunks = morph_data.get("n_morpheme_chunks", "—")
+    mean_len = morph_data.get("mean_morpheme_length", "—")
+    entropy_stats: dict = morph_data.get("entropy_stats", {})
+    top_boundary: list[str] = morph_data.get("top_boundary_signs", [])
+
+    mean_h    = entropy_stats.get("mean_bits", "—")
+    std_h     = entropy_stats.get("std_bits", "—")
+    threshold = entropy_stats.get("threshold_used", "—")
+
+    mean_h_str    = f"{mean_h:.3f}" if isinstance(mean_h, float) else str(mean_h)
+    std_h_str     = f"{std_h:.3f}"  if isinstance(std_h, float)  else str(std_h)
+    threshold_str = f"{threshold:.3f}" if isinstance(threshold, float) else str(threshold)
+    mean_len_str  = f"{mean_len:.2f}" if isinstance(mean_len, float) else str(mean_len)
+
+    # Boundary sign chip cloud — top 5 get "high" class
+    chips_html = ""
+    for i, sign in enumerate(top_boundary[:20]):
+        cls = "boundary-chip high" if i < 5 else "boundary-chip"
+        chips_html += f'<span class="{cls}">{sign}</span>'
+
+    interp = (
+        f"Zellig Harris (1955) successor entropy segmentation found "
+        f"<b>{n_chunks}</b> morpheme-like chunks across <b>{n_seq}</b> "
+        f"sequences (mean length&nbsp;<b>{mean_len_str}</b>&nbsp;signs). "
+        f"Boundaries are placed where the entropy of the next sign is above "
+        f"the threshold of <b>{threshold_str}&nbsp;bits</b> "
+        f"(mean&nbsp;{mean_h_str} &plusmn; {std_h_str}&nbsp;bits). "
+        f"High-entropy signs (shown above) are likely morpheme-boundary markers "
+        f"or high-information lexical signs."
+    )
+
+    return f"""
+<div class="morph-section" id="morpheme-segmentation">
+  <div class="morph-heading"><span>&#9670;</span>Zellig Harris Morpheme Segmentation</div>
+  <div class="morph-grid">
+    <div class="morph-stats-card">
+      <div class="morph-stats-title">Segmentation Statistics</div>
+      <div class="morph-kv"><b>Sequences analysed:</b> {n_seq}</div>
+      <div class="morph-kv"><b>Sign type vocabulary:</b> {n_types}</div>
+      <div class="morph-kv"><b>Total chunks (morphemes):</b> {n_chunks}</div>
+      <div class="morph-kv"><b>Mean chunk length:</b> {mean_len_str} signs</div>
+      <div class="morph-kv"><b>Successor entropy (mean):</b> {mean_h_str} bits</div>
+      <div class="morph-kv"><b>Successor entropy (std):</b> {std_h_str} bits</div>
+      <div class="morph-kv"><b>Boundary threshold:</b> {threshold_str} bits</div>
+      <div class="morph-interp">{interp}</div>
+    </div>
+    <div class="morph-boundary-card">
+      <div class="morph-boundary-title">Top Boundary Signs</div>
+      <p class="muted small" style="margin-bottom:10px">
+        Signs with the highest successor entropy — most likely morpheme boundary
+        markers or signs with highly variable continuations. Top 5 in bold.
+      </p>
+      <div class="boundary-cloud">{chips_html}</div>
+    </div>
+  </div>
+</div>"""
+
 
 # ---------------------------------------------------------------------------
 # Quantum Analysis section
@@ -777,6 +1387,9 @@ def _render_html(
     null_baseline: float | None = None,
     pgood_data: dict | None = None,
     qubo_data: dict | None = None,
+    diag_data: dict | None = None,
+    freq_data: dict | None = None,
+    morph_data: dict | None = None,
 ) -> str:
     hypotheses = ranking.top_n(top_n)
     n_total = len(ranking.hypotheses)
@@ -799,6 +1412,7 @@ def _render_html(
         for h in hypotheses
     )
     toc_chips += '<a class="toc-chip" href="#quantum-analysis" style="color:#7c3aed">&#9883; Quantum</a>'
+    toc_chips += toc_extra
 
     # Hypothesis cards
     cards_html = "\n".join(
@@ -807,6 +1421,24 @@ def _render_html(
     )
 
     quantum_section = _render_quantum_section(ranking, pgood_data, qubo_data)
+
+    # Optional enhanced-metrics sections
+    top_assignments = hypotheses[0].assignments if hypotheses else None
+    crib_section  = _render_crib_panel(qubo_data, diag_data, top_assignments)
+    diag_section  = _render_mcmc_diagnostics_panel(diag_data) if diag_data else ""
+    freq_section  = _render_freq_match_panel(freq_data) if freq_data else ""
+    morph_section = _render_morpheme_panel(morph_data) if morph_data else ""
+
+    # TOC chips — add links for whichever optional sections are present
+    toc_extra = ""
+    if crib_section:
+        toc_extra += '<a class="toc-chip" href="#crib-anchors" style="color:#c4692a">&#128273; Cribs</a>'
+    if diag_section:
+        toc_extra += '<a class="toc-chip" href="#mcmc-diagnostics" style="color:#5b8dd9">&#9672; MCMC stats</a>'
+    if freq_section:
+        toc_extra += '<a class="toc-chip" href="#freq-match" style="color:#059669">&#9190; Freq match</a>'
+    if morph_section:
+        toc_extra += '<a class="toc-chip" href="#morpheme-segmentation" style="color:#7c3aed">&#9670; Morphemes</a>'
 
     n_assignments_top = len(hypotheses[0].assignments) if hypotheses else 0
 
@@ -859,6 +1491,14 @@ def _render_html(
 
 {quantum_section}
 
+{crib_section}
+
+{diag_section}
+
+{freq_section}
+
+{morph_section}
+
 <div class="report-footer">
   <p><b>hackingrongo</b> &middot; Zone C MCMC + beam-search decipherment pipeline &middot; MIT License</p>
   <p>Hypotheses generated by <code>scripts/run_decipherment.py</code> using
@@ -891,6 +1531,9 @@ def build_decipherment_report(
     null_baseline: float | None = None,
     pgood_path: Path | None = None,
     qubo_path: Path | None = None,
+    diag_path: Path | None = None,
+    freq_path: Path | None = None,
+    morph_path: Path | None = None,
 ) -> str:
     """Build the decipherment hypothesis report HTML.
 
@@ -902,15 +1545,21 @@ def build_decipherment_report(
         Maximum number of hypotheses to include, best-first.
     null_baseline : float, optional
         OOV-floor ensemble score for the corpus — shown as a reference line
-        on each hypothesis score-band bar.  Pass
-        ``cfg.zone_c.lm_scoring.oov_log_prob_per_order[max_order]`` (e.g. −20.0)
-        from the run config.  When omitted the reference line is not drawn.
+        on each hypothesis score-band bar.
     pgood_path : Path, optional
-        Path to ``pgood_analysis.json`` from ``measure_pgood.py``.  When
-        provided, renders the Quantum Hardness Analysis table.
+        Path to ``pgood_analysis.json`` from ``measure_pgood.py``.
     qubo_path : Path, optional
-        Path to ``qubo_result.json`` from ``run_qubo_decipherment.py``.  When
-        provided, adds a QUBO row to the score comparison table.
+        Path to ``qubo_result.json`` from ``run_qubo_decipherment.py``.
+        When provided, shows cribs panel and QUBO score comparison.
+    diag_path : Path, optional
+        Path to ``mcmc_diagnostics.json`` written by ``run_decipherment.py``.
+        Enables the MCMC diagnostics panel and crib verification.
+    freq_path : Path, optional
+        Path to ``freq_match.json`` from ``run_freq_match.py``.
+        Enables the Frequency-Language Match panel.
+    morph_path : Path, optional
+        Path to ``morpheme_segments.json`` from ``segment_morphemes.py``.
+        Enables the Morpheme Segmentation panel.
 
     Returns
     -------
@@ -923,27 +1572,31 @@ def build_decipherment_report(
         len(ranking.hypotheses), top_n,
     )
 
-    pgood_data: dict | None = None
-    if pgood_path is not None and pgood_path.exists():
+    def _load_opt(path: Path | None, label: str) -> dict | None:
+        if path is None or not path.exists():
+            return None
         try:
-            pgood_data = json.loads(pgood_path.read_text(encoding="utf-8"))
-            logger.info("Loaded pgood data from %s.", pgood_path)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            logger.info("Loaded %s from %s.", label, path)
+            return data
         except Exception as exc:
-            logger.warning("Could not load %s: %s", pgood_path, exc)
+            logger.warning("Could not load %s (%s): %s", label, path, exc)
+            return None
 
-    qubo_data: dict | None = None
-    if qubo_path is not None and qubo_path.exists():
-        try:
-            qubo_data = json.loads(qubo_path.read_text(encoding="utf-8"))
-            logger.info("Loaded QUBO data from %s.", qubo_path)
-        except Exception as exc:
-            logger.warning("Could not load %s: %s", qubo_path, exc)
+    pgood_data = _load_opt(pgood_path, "pgood data")
+    qubo_data  = _load_opt(qubo_path,  "QUBO data")
+    diag_data  = _load_opt(diag_path,  "MCMC diagnostics")
+    freq_data  = _load_opt(freq_path,  "freq-match data")
+    morph_data = _load_opt(morph_path, "morpheme segmentation")
 
     return _render_html(
         ranking, top_n,
         null_baseline=null_baseline,
         pgood_data=pgood_data,
         qubo_data=qubo_data,
+        diag_data=diag_data,
+        freq_data=freq_data,
+        morph_data=morph_data,
     )
 
 
@@ -954,27 +1607,15 @@ def save_decipherment_report(
     null_baseline: float | None = None,
     pgood_path: Path | None = None,
     qubo_path: Path | None = None,
+    diag_path: Path | None = None,
+    freq_path: Path | None = None,
+    morph_path: Path | None = None,
 ) -> None:
-    """Generate and write the decipherment report to an HTML file.
-
-    Parameters
-    ----------
-    ranking_path : Path
-        Path to ``ranking.json``.
-    output_path : Path
-        Destination ``.html`` file.  Parent directories are created if needed.
-    top_n : int
-        Maximum number of hypotheses to include.
-    null_baseline : float, optional
-        OOV-floor score — see :func:`build_decipherment_report`.
-    pgood_path : Path, optional
-        Path to ``pgood_analysis.json`` — see :func:`build_decipherment_report`.
-    qubo_path : Path, optional
-        Path to ``qubo_result.json`` — see :func:`build_decipherment_report`.
-    """
+    """Generate and write the decipherment report to an HTML file."""
     html = build_decipherment_report(
         ranking_path, top_n=top_n, null_baseline=null_baseline,
         pgood_path=pgood_path, qubo_path=qubo_path,
+        diag_path=diag_path, freq_path=freq_path, morph_path=morph_path,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
@@ -1011,6 +1652,18 @@ def _parse_args() -> argparse.Namespace:
         "--qubo", type=Path, default=None, metavar="JSON",
         help="qubo_result.json from run_qubo_decipherment.py (optional).",
     )
+    p.add_argument(
+        "--diag", type=Path, default=None, metavar="JSON",
+        help="mcmc_diagnostics.json from run_decipherment.py (optional).",
+    )
+    p.add_argument(
+        "--freq-match", type=Path, default=None, metavar="JSON",
+        help="freq_match.json from run_freq_match.py (optional).",
+    )
+    p.add_argument(
+        "--morphemes", type=Path, default=None, metavar="JSON",
+        help="morpheme_segments.json from segment_morphemes.py (optional).",
+    )
     return p.parse_args()
 
 
@@ -1021,16 +1674,27 @@ def main() -> None:
 
     # Auto-discover sibling outputs in the same directory as ranking.json
     ranking_dir = args.ranking.parent
-    pgood_path = args.pgood or (ranking_dir.parent / "zone_b" / "pgood_analysis.json")
-    qubo_path  = args.qubo  or (ranking_dir / "qubo_result.json")
+
+    def _opt(arg_val: Path | None, default: Path) -> Path | None:
+        p = arg_val or default
+        return p if p.exists() else None
+
+    pgood_path = _opt(args.pgood,      ranking_dir.parent / "zone_b" / "pgood_analysis.json")
+    qubo_path  = _opt(args.qubo,       ranking_dir / "qubo_result.json")
+    diag_path  = _opt(args.diag,       ranking_dir / "mcmc_diagnostics.json")
+    freq_path  = _opt(args.freq_match, ranking_dir.parent / "zone_b" / "freq_match.json")
+    morph_path = _opt(args.morphemes,  ranking_dir.parent / "morpheme_segments.json")
 
     output = args.output or (ranking_dir / "decipherment_report.html")
     save_decipherment_report(
         ranking_path=args.ranking,
         output_path=output,
         top_n=args.top_n,
-        pgood_path=pgood_path if pgood_path.exists() else None,
-        qubo_path=qubo_path   if qubo_path.exists()  else None,
+        pgood_path=pgood_path,
+        qubo_path=qubo_path,
+        diag_path=diag_path,
+        freq_path=freq_path,
+        morph_path=morph_path,
     )
     print(f"Report written to: {output}")
 

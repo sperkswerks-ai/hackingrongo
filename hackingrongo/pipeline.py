@@ -29,6 +29,8 @@ Steps
          4i  Quantum hardness (p_good) analysis
          4j  QUBO quantum annealing key search
          4k  Zone C fusion layer training (Zone A + Zone B priors)
+         4l  Frequency-language match (Zipf α, Spearman ρ, χ²)
+         4m  Zellig Harris morpheme segmentation
     5  Zone C decipherment: MCMC + beam-search
     5b Zone C HTML scholar report (decipherment_report.html)
 
@@ -431,6 +433,33 @@ def step4j_qubo_decipherment(dry_run: bool = False) -> tuple[int, float]:
     return _run("qubo_decipherment", cmd, dry_run=dry_run)
 
 
+def step4l_freq_match(dry_run: bool = False) -> tuple[int, float]:
+    """Frequency-language match: Zipf α, Spearman ρ, χ² fit vs. each LM."""
+    return _run(
+        "freq_match",
+        [
+            sys.executable, "scripts/run_freq_match.py",
+            "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
+            "--lm-dir",     str(PROJECT_ROOT / "data" / "language_models"),
+            "--output",     str(PROJECT_ROOT / "outputs" / "zone_b" / "freq_match.json"),
+        ],
+        dry_run=dry_run,
+    )
+
+
+def step4m_morpheme_seg(dry_run: bool = False) -> tuple[int, float]:
+    """Zellig Harris successor-entropy morpheme boundary segmentation."""
+    return _run(
+        "morpheme_segmentation",
+        [
+            sys.executable, "scripts/segment_morphemes.py",
+            "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
+            "--output",     str(PROJECT_ROOT / "outputs" / "morpheme_segments.json"),
+        ],
+        dry_run=dry_run,
+    )
+
+
 def step4k_train_fusion(
     smoke_test: bool = False,
     dry_run: bool = False,
@@ -472,15 +501,23 @@ def step5b_decipherment_report(dry_run: bool = False) -> tuple[int, float]:
         return 1, 0.0
 
     out = ranking_path.parent / "decipherment_report.html"
-    return _run(
-        "decipherment_report",
-        [
-            sys.executable, "-m", "hackingrongo.results.decipherment_report",
-            "--ranking", str(ranking_path),
-            "--output",  str(out),
-        ],
-        dry_run=dry_run,
-    )
+    cmd = [
+        sys.executable, "-m", "hackingrongo.results.decipherment_report",
+        "--ranking", str(ranking_path),
+        "--output",  str(out),
+    ]
+    # Auto-wire optional enrichment files when they exist.
+    optional_args: list[tuple[str, Path]] = [
+        ("--pgood",     PROJECT_ROOT / "outputs" / "zone_b" / "pgood_analysis.json"),
+        ("--qubo",      ranking_path.parent / "qubo_result.json"),
+        ("--diag",      ranking_path.parent / "mcmc_diagnostics.json"),
+        ("--freq-match", PROJECT_ROOT / "outputs" / "zone_b" / "freq_match.json"),
+        ("--morphemes", PROJECT_ROOT / "outputs" / "morpheme_segments.json"),
+    ]
+    for flag, path in optional_args:
+        if path.exists():
+            cmd += [flag, str(path)]
+    return _run("decipherment_report", cmd, dry_run=dry_run)
 
 
 def step5_zone_c(smoke_test: bool = False, dry_run: bool = False) -> tuple[int, float]:
@@ -562,7 +599,7 @@ def _parse_args() -> argparse.Namespace:
 def _parse_steps(steps_str: str | None) -> set[str]:
     """Parse --steps value; return set of enabled step IDs."""
     valid = {"1", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
-             "4g", "4h", "4i", "4j", "4k", "5", "5b"}
+             "4g", "4h", "4i", "4j", "4k", "4l", "4m", "5", "5b"}
     if steps_str is None:
         return valid
     result: set[str] = set()
@@ -570,7 +607,7 @@ def _parse_steps(steps_str: str | None) -> set[str]:
         part = part.strip()
         if part == "4":
             result.update({"4a", "4ar", "4b", "4c", "4d", "4e", "4f",
-                           "4g", "4h", "4i", "4j", "4k"})
+                           "4g", "4h", "4i", "4j", "4k", "4l", "4m"})
         elif part == "5":
             result.update({"5", "5b"})
         elif part in valid:
@@ -615,6 +652,8 @@ def main() -> None:
         ("4i", "Quantum hardness (p_good) analysis",  lambda: step4i_pgood_analysis(dry_run)),
         ("4j", "QUBO quantum annealing key search",   lambda: step4j_qubo_decipherment(dry_run)),
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
+        ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run)),
+        ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run)),
         ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run)),
         ("5b", "Zone C HTML report",               lambda: step5b_decipherment_report(dry_run)),
     ]

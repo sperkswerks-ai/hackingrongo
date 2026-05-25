@@ -661,11 +661,54 @@ def _run(
     ranking_csv.write_text(ranking.to_csv(), encoding="utf-8")
     ranking_md.write_text(ranking.to_markdown(), encoding="utf-8")
 
+    # ── MCMC diagnostics sidecar (consumed by the HTML report) ────────────────
+    acceptance_mean = (
+        float(np.mean(mcmc_result.acceptance_rates))
+        if mcmc_result.acceptance_rates else None
+    )
+    active_anchors = {k: v for k, v in CALENDAR_ANCHORS.items() if k in sign_ids}
+    mcmc_diag: dict[str, Any] = {
+        "n_chains":           mcmc_result.n_chains,
+        "n_samples_per_chain": mcmc_result.n_samples_per_chain,
+        "gelman_rubin_rhat":  (
+            round(mcmc_result.gelman_rubin_rhat, 4)
+            if mcmc_result.gelman_rubin_rhat is not None else None
+        ),
+        "geweke_z":           (
+            round(mcmc_result.geweke_z, 4)
+            if getattr(mcmc_result, "geweke_z", None) is not None else None
+        ),
+        "converged":          mcmc_result.converged,
+        "acceptance_rates":   [round(r, 4) for r in mcmc_result.acceptance_rates],
+        "acceptance_mean":    round(acceptance_mean, 4) if acceptance_mean is not None else None,
+        "parallel_tempering": bool(sampler._pt_enabled),
+        "calendar_anchors":   active_anchors,
+        "sign_inventory_size": len(sign_ids),
+    }
+    if sampler._pt_enabled:
+        mcmc_diag["pt_n_temperatures"] = sampler._pt_n_temperatures
+        mcmc_diag["pt_t_max"]          = sampler._pt_t_max
+        mcmc_diag["pt_swap_interval"]  = sampler._pt_swap_interval
+    diag_path = out_dir / "mcmc_diagnostics.json"
+    diag_path.write_text(json.dumps(mcmc_diag, indent=2), encoding="utf-8")
+    log.info("MCMC diagnostics written to %s", diag_path)
+
     # HTML scholar report
     report_path = out_dir / "decipherment_report.html"
     try:
         from hackingrongo.results.decipherment_report import save_decipherment_report
-        save_decipherment_report(ranking_json, report_path, top_n=20)
+        pgood_path_auto = out_dir.parent / "zone_b" / "pgood_analysis.json"
+        qubo_path_auto  = out_dir / "qubo_result.json"
+        freq_path_auto  = out_dir.parent / "zone_b" / "freq_match.json"
+        morph_path_auto = out_dir.parent / "morpheme_segments.json"
+        save_decipherment_report(
+            ranking_json, report_path, top_n=20,
+            pgood_path  = pgood_path_auto  if pgood_path_auto.exists()  else None,
+            qubo_path   = qubo_path_auto   if qubo_path_auto.exists()   else None,
+            diag_path   = diag_path        if diag_path.exists()        else None,
+            freq_path   = freq_path_auto   if freq_path_auto.exists()   else None,
+            morph_path  = morph_path_auto  if morph_path_auto.exists()  else None,
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not generate HTML report: %s", exc)
 
