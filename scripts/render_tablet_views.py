@@ -136,12 +136,45 @@ class TabletViewRenderer:
         else:
             await page.screenshot(path=str(output_path))
 
+    async def _apply_raking_light(self, page) -> str:
+        """
+        Set the INSCRIBE 3DHOP viewer light to a raking (grazing) angle so that
+        incised glyphs cast visible shadows, dramatically improving Canny edge
+        detection of glyph strokes.
+
+        Uses the native ``window.presenter.rotateLight(x, y)`` API discovered
+        via runtime inspection.  ``rotateLight`` maps trackball coordinates to:
+            _lightDirection = [-2x, -2y, -sqrt(1 - (2x)² - (2y)²)]
+        and calls ``repaint()`` internally.
+
+        ``rotateLight(0.49, 0)`` → light direction ≈ [-0.98, 0, -0.20], i.e.
+        raking from the left at ~11° above horizontal.  This gives strong
+        shadow casting across shallow incisions without washing out the surface.
+
+        Returns a short status string for logging.
+        """
+        raking_js = """
+            (() => {
+                const p = window.presenter;
+                if (!p) return 'no_presenter';
+                if (typeof p.rotateLight !== 'function') return 'no_rotateLight';
+
+                // x=0.49, y=0 → doubled → r=0.98, z≈0.20 → nearly horizontal
+                // light from the left, ~11° above horizontal → raking shadows
+                p.rotateLight(0.49, 0);
+                return 'ok_dir=' + JSON.stringify(p._lightDirection.map(v => +v.toFixed(3)));
+            })()
+        """
+        result = await page.evaluate(raking_js)
+        return result
+
     async def render_tablet(
         self,
         tablet: str,
         num_views: int = 24,
         width: int = 512,
         height: int = 512,
+        raking_light: bool = True,
     ) -> List[Path]:
         """
         Render a tablet from `num_views` evenly-spaced azimuth angles.
@@ -197,6 +230,11 @@ class TabletViewRenderer:
             else:
                 print(f"  WARNING: could not resize canvas — renders may be at native resolution.")
 
+            if raking_light:
+                light_status = await self._apply_raking_light(page)
+                print(f"  Raking light: {light_status}")
+                await asyncio.sleep(0.4)  # allow one frame to re-render with new lighting
+
             tablet_dir = self.output_dir / f"tablet_{tablet}"
             tablet_dir.mkdir(exist_ok=True)
 
@@ -217,13 +255,15 @@ class TabletViewRenderer:
         num_views: int = 24,
         width: int = 512,
         height: int = 512,
+        raking_light: bool = True,
     ) -> dict:
         """Render all three tablets sequentially."""
         results = {}
         for tablet in TABLET_URLS:
             try:
                 images = await self.render_tablet(
-                    tablet, num_views=num_views, width=width, height=height
+                    tablet, num_views=num_views, width=width, height=height,
+                    raking_light=raking_light,
                 )
                 results[tablet] = {"success": True, "count": len(images),
                                    "images": [str(p) for p in images]}
@@ -243,13 +283,18 @@ async def main() -> None:
                         default=Path("data/glyphs/synthetic_views"))
     parser.add_argument("--width",  type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
+    parser.add_argument("--raking-light", action="store_true", default=True,
+                        help="Set 3DHOP lighting to a grazing angle to reveal incised glyphs (default: on)")
+    parser.add_argument("--no-raking-light", dest="raking_light", action="store_false",
+                        help="Disable raking light (restore original diffuse lighting)")
     args = parser.parse_args()
 
     renderer = TabletViewRenderer(args.output_dir)
 
     if args.tablet == "all":
         results = await renderer.render_all_tablets(
-            num_views=args.num_views, width=args.width, height=args.height
+            num_views=args.num_views, width=args.width, height=args.height,
+            raking_light=args.raking_light,
         )
         print("\n=== SUMMARY ===")
         for tablet, r in results.items():
@@ -263,6 +308,7 @@ async def main() -> None:
             num_views=args.num_views,
             width=args.width,
             height=args.height,
+            raking_light=args.raking_light,
         )
         print(f"\n✓ {len(images)} images → {args.output_dir}/tablet_{args.tablet}/")
 

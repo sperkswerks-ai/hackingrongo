@@ -196,19 +196,41 @@ def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
             log.warning("Render dir not found, skipping: %s", render_dir)
             continue
         sides = _detect_sides(tablet)
+
+        # Compute ROI to exclude INSCRIBE page chrome (fractions of image size).
+        # Percentages: left-nav 3%, top-header 15%, right-panel 39%, bottom-copyright 5%.
+        _roi_arg: str | None = None
+        try:
+            import PIL.Image as _pil
+            sample_png = next(iter(sorted(render_dir.glob("*.png"))), None)
+            if sample_png:
+                _W, _H = _pil.open(sample_png).size
+                _x0 = int(0.032 * _W)
+                _y0 = int(0.152 * _H)
+                _x1 = int(0.610 * _W)
+                _y1 = int(0.952 * _H)
+                _roi_arg = f"{_x0},{_y0},{_x1},{_y1}"
+                log.info("3D crop ROI for tablet %s: %s (from %dx%d render)", tablet, _roi_arg, _W, _H)
+        except Exception as _e:
+            log.warning("Could not compute ROI for tablet %s: %s", tablet, _e)
+
         for side in sides:
             corpus_path = corpus_dir / f"{tablet}.json"
+            cmd = [
+                sys.executable, "scripts/segment_3d_glyphs.py",
+                "--tablet",    tablet,
+                "--side",      side,
+                "--renders",   str(render_dir),
+                "--corpus",    str(corpus_path),
+                "--output",    str(output_root),
+                "--crop-size", "128",
+                "--num-views", "6",
+            ]
+            if _roi_arg:
+                cmd += ["--roi", _roi_arg]
             rc, elapsed = _run(
                 f"segment_3d_{tablet}_{side}",
-                [
-                    sys.executable, "scripts/segment_3d_glyphs.py",
-                    "--tablet",  tablet,
-                    "--side",    side,
-                    "--renders", str(render_dir),
-                    "--corpus",  str(corpus_path),
-                    "--output",  str(output_root),
-                    "--crop-size", "64",
-                ],
+                cmd,
                 dry_run=dry_run,
             )
             total_rc = max(total_rc, rc)

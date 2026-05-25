@@ -66,37 +66,69 @@ _CROP_PADDING   = 0.20     # fractional padding around each glyph bounding box
 _DEFAULT_CROP_SIZE = 64    # output crop size in pixels (matches GlyphPreprocessor)
 
 
+# ── Resolution-adaptive parameters ───────────────────────────────────────────
+
+def _adaptive_params(h: int, w: int) -> tuple[int, int, int]:
+    """
+    Return morphological kernel sizes and CLAHE tile count appropriate for the
+    given image dimensions.
+
+    Morph kernels are intentionally NOT scaled with resolution: the close kernel
+    must be small enough to avoid bridging adjacent glyphs (typically 10–20 px
+    apart even at 2048×2048).  Only the CLAHE tile count grows so local-contrast
+    enhancement covers an appropriate neighbourhood at high resolution.
+
+    Returns (morph_close_px, morph_open_px, clahe_n_tiles).
+    """
+    scale = max(1.0, math.sqrt(h * w / (512.0 * 512.0)))
+    close_px = _MORPH_CLOSE_PX          # fixed — scaling would merge adjacent glyphs
+    open_px  = _MORPH_OPEN_PX           # fixed — scaling would eat small glyph blobs
+    n_tiles  = min(32, max(8, round(8 * scale)))
+    return close_px, open_px, n_tiles
+
+
 # ── Best-view selection ───────────────────────────────────────────────────────
 
-def _edge_density_central(png_path: Path, centre_frac: float = 0.60) -> float:
+def _edge_density_central(
+    png_path: Path,
+    centre_frac: float = 0.60,
+    roi: tuple[int, int, int, int] | None = None,
+) -> float:
     """
-    Return the Canny edge density in the central `centre_frac` window.
+    Return the Canny edge density in the central ``centre_frac`` window.
+    If *roi* = (x0, y0, x1, y1) is given, restrict scoring to that region first
+    (use this to exclude INSCRIBE page chrome from the view-quality score).
     Higher = more face-on view of the tablet surface.
     """
     img = cv2.imread(str(png_path), cv2.IMREAD_GRAYSCALE)
     if img is None:
         return 0.0
+    if roi:
+        img = img[roi[1]:roi[3], roi[0]:roi[2]]
     h, w = img.shape
     y0 = int(h * (1 - centre_frac) / 2)
     y1 = int(h * (1 + centre_frac) / 2)
     x0 = int(w * (1 - centre_frac) / 2)
     x1 = int(w * (1 + centre_frac) / 2)
-    roi = img[y0:y1, x0:x1]
-    edges = cv2.Canny(roi, _CANNY_LOW, _CANNY_HIGH)
-    return float(edges.sum()) / (roi.size + 1)
+    patch = img[y0:y1, x0:x1]
+    edges = cv2.Canny(patch, _CANNY_LOW, _CANNY_HIGH)
+    return float(edges.sum()) / (patch.size + 1)
 
 
-def select_best_view(render_dir: Path) -> Path:
+def select_best_view(
+    render_dir: Path,
+    roi: tuple[int, int, int, int] | None = None,
+) -> Path:
     """
     Pick the rendered PNG with the highest central edge density.
-    Falls back to the first PNG if none found.
+    Pass *roi* to score only inside the model canvas area (excludes page chrome).
     """
     pngs = sorted(render_dir.glob("*.png"))
     if not pngs:
         raise FileNotFoundError(f"No PNG files found in {render_dir}")
     if len(pngs) == 1:
         return pngs[0]
-    scored = [(p, _edge_density_central(p)) for p in pngs]
+    scored = [(p, _edge_density_central(p, roi=roi)) for p in pngs]
     best = max(scored, key=lambda x: x[1])
     log.info("Best view: %s (edge density %.4f)", best[0].name, best[1])
     return best[0]
@@ -113,9 +145,11 @@ def enhance_for_incisions(bgr: np.ndarray) -> np.ndarray:
       2. Apply CLAHE on the L channel (amplifies local contrast → reveals carvings)
       3. Back to BGR, then to grayscale for Canny
     """
+    h, w = bgr.shape[:2]
+    _, _, n_tiles = _adaptive_params(h, w)
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(n_tiles, n_tiles))
     l_eq = clahe.apply(l)
     lab_eq = cv2.merge([l_eq, a, b])
     bgr_eq = cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
@@ -142,11 +176,12 @@ def find_glyph_candidates(
 
     edges = cv2.Canny(gray, canny_low, canny_high)
 
+    close_px, open_px, _ = _adaptive_params(h, w)
     close_k = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (_MORPH_CLOSE_PX, _MORPH_CLOSE_PX)
+        cv2.MORPH_ELLIPSE, (close_px, close_px)
     )
     open_k = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (_MORPH_OPEN_PX, _MORPH_OPEN_PX)
+        cv2.MORPH_ELLIPSE, (open_px, open_px)
     )
     mask = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, close_k)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, open_k)
@@ -178,6 +213,95 @@ def find_glyph_candidates(
             )
         )
     return candidates
+
+
+# ── Multi-view candidate deduplication ───────────────────────────────────────
+
+def _iou(a: dict, b: dict) -> float:
+    """Intersection-over-union for two glyph bounding boxes."""
+    ax2, ay2 = a["x"] + a["w"], a["y"] + a["h"]
+    bx2, by2 = b["x"] + b["w"], b["y"] + b["h"]
+    iw = max(0, min(ax2, bx2) - max(a["x"], b["x"]))
+    ih = max(0, min(ay2, by2) - max(a["y"], b["y"]))
+    inter = iw * ih
+    union = a["w"] * a["h"] + b["w"] * b["h"] - inter
+    return inter / max(union, 1)
+
+
+def nms_candidates(candidates: list[dict], iou_thresh: float = 0.30) -> list[dict]:
+    """
+    Non-maximum suppression: keep the largest-area box when two bounding boxes
+    overlap by more than *iou_thresh*.  Used to deduplicate candidates that
+    appear in multiple views of the same scene.
+    """
+    if not candidates:
+        return []
+    ranked = sorted(candidates, key=lambda c: c["area"], reverse=True)
+    suppressed = [False] * len(ranked)
+    kept: list[dict] = []
+    for i, c in enumerate(ranked):
+        if suppressed[i]:
+            continue
+        kept.append(c)
+        for j in range(i + 1, len(ranked)):
+            if not suppressed[j] and _iou(c, ranked[j]) > iou_thresh:
+                suppressed[j] = True
+    return kept
+
+
+def aggregate_multi_view_candidates(
+    render_dir: Path,
+    num_views: int = 6,
+    roi: tuple[int, int, int, int] | None = None,
+    canny_low: int = _CANNY_LOW,
+    canny_high: int = _CANNY_HIGH,
+) -> tuple[list[dict], Path, np.ndarray]:
+    """
+    Score all views in *render_dir*, take the top *num_views* by central edge
+    density, segment each independently, then merge via IoU NMS.
+
+    Returns:
+        candidates  – deduplicated glyph bounding boxes (coords in ROI space)
+        best_view   – Path to the highest-scoring PNG
+        best_bgr    – BGR image of that view, already ROI-cropped
+    """
+    pngs = sorted(render_dir.glob("*.png"))
+    if not pngs:
+        raise FileNotFoundError(f"No PNG files in {render_dir}")
+    scored = sorted(
+        [(p, _edge_density_central(p, roi=roi)) for p in pngs],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    top_views = scored[:max(1, num_views)]
+    best_view_path = top_views[0][0]
+    log.info(
+        "Multi-view: aggregating %d/%d views  (best=%s  score=%.4f)",
+        len(top_views), len(pngs), best_view_path.name, top_views[0][1],
+    )
+
+    all_raw: list[dict] = []
+    best_bgr: np.ndarray | None = None
+
+    for view_path, score in top_views:
+        bgr = cv2.imread(str(view_path))
+        if bgr is None:
+            continue
+        bgr_crop = bgr[roi[1]:roi[3], roi[0]:roi[2]] if roi else bgr
+        if view_path == best_view_path:
+            best_bgr = bgr_crop
+        gray = enhance_for_incisions(bgr_crop)
+        cands = find_glyph_candidates(gray, canny_low, canny_high)
+        log.info("  %-26s → %3d candidates  (density=%.4f)", view_path.name, len(cands), score)
+        all_raw.extend(cands)
+
+    if best_bgr is None:  # fallback (all reads failed)
+        bgr = cv2.imread(str(best_view_path))
+        best_bgr = bgr[roi[1]:roi[3], roi[0]:roi[2]] if roi else bgr
+
+    merged = nms_candidates(all_raw)
+    log.info("Multi-view NMS: %d raw → %d unique candidates", len(all_raw), len(merged))
+    return merged, best_view_path, best_bgr
 
 
 # ── Boustrophedon ordering ────────────────────────────────────────────────────
@@ -443,7 +567,13 @@ def _parse_args() -> argparse.Namespace:
         "--roi", type=str, default=None,
         help="Restrict segmentation to a sub-region: 'x0,y0,x1,y1' in pixels. "
              "Useful to exclude viewer chrome (e.g. INSCRIBE sidebar/header). "
-             "Example: --roi 65,70,480,455"
+             "Example: --roi 65,310,1250,1950"
+    )
+    p.add_argument(
+        "--num-views", type=int, default=6,
+        help="Number of top-scoring views to aggregate (default: 6). "
+             "Candidates from each view are merged via IoU NMS. "
+             "Use --num-views 1 to restore the legacy single-best-view mode."
     )
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args()
@@ -487,42 +617,61 @@ def main() -> None:
         n_lines_expected = 10  # safe fallback
         log.warning("No corpus — assuming %d lines", n_lines_expected)
 
-    # ── Select best view ─────────────────────────────────────────────────────
+    # ── Parse ROI ────────────────────────────────────────────────────────────
+    roi_tuple: tuple[int, int, int, int] | None = None
+    if args.roi:
+        try:
+            parts = [int(v) for v in args.roi.split(",")]
+            if len(parts) != 4:
+                raise ValueError("need 4 values")
+            roi_tuple = (parts[0], parts[1], parts[2], parts[3])
+            log.info("ROI: (%d,%d)→(%d,%d)", *roi_tuple)
+        except ValueError:
+            log.warning("Invalid --roi %r — expected x0,y0,x1,y1; disabling ROI", args.roi)
+
+    # ── Select views and gather candidates ───────────────────────────────────
     render_dir: Path = args.renders
+
     if args.best_view:
+        # Explicit single view supplied via --best-view
         best_view = args.best_view
         if not best_view.exists():
             raise FileNotFoundError(f"--best-view path not found: {best_view}")
+        bgr = cv2.imread(str(best_view))
+        if bgr is None:
+            raise IOError(f"Could not read image: {best_view}")
+        if roi_tuple:
+            bgr = bgr[roi_tuple[1]:roi_tuple[3], roi_tuple[0]:roi_tuple[2]]
+        gray = enhance_for_incisions(bgr)
+        candidates = find_glyph_candidates(gray, args.canny_low, args.canny_high)
+        log.info("Single view %s: %d candidates", best_view.name, len(candidates))
+
+    elif args.num_views == 1:
+        # Legacy single-best-view mode
+        best_view = select_best_view(render_dir, roi=roi_tuple)
+        bgr = cv2.imread(str(best_view))
+        if bgr is None:
+            raise IOError(f"Could not read image: {best_view}")
+        if roi_tuple:
+            bgr = bgr[roi_tuple[1]:roi_tuple[3], roi_tuple[0]:roi_tuple[2]]
+        if bgr.shape[0] < 512 or bgr.shape[1] < 512:
+            log.warning(
+                "Image %dx%d — recommend >= 1024×1024 for reliable segmentation",
+                bgr.shape[1], bgr.shape[0],
+            )
+        gray = enhance_for_incisions(bgr)
+        candidates = find_glyph_candidates(gray, args.canny_low, args.canny_high)
+        log.info("Single view %s: %d candidates", best_view.name, len(candidates))
+
     else:
-        best_view = select_best_view(render_dir)
-
-    # ── Load and enhance image ───────────────────────────────────────────────
-    bgr = cv2.imread(str(best_view))
-    if bgr is None:
-        raise IOError(f"Could not read image: {best_view}")
-    log.info("Image: %s  size=%dx%d", best_view.name, bgr.shape[1], bgr.shape[0])
-
-    if bgr.shape[0] < 512 or bgr.shape[1] < 512:
-        log.warning(
-            "Image is only %dx%d — render at >= 1024×1024 for reliable segmentation",
-            bgr.shape[1], bgr.shape[0],
+        # Multi-view aggregation (default: top-6)
+        candidates, best_view, bgr = aggregate_multi_view_candidates(
+            render_dir,
+            num_views=args.num_views,
+            roi=roi_tuple,
+            canny_low=args.canny_low,
+            canny_high=args.canny_high,
         )
-
-    # ── Apply ROI crop to exclude viewer chrome ────────────────────────────
-    if args.roi:
-        try:
-            rx0, ry0, rx1, ry1 = [int(v) for v in args.roi.split(",")]
-            bgr = bgr[ry0:ry1, rx0:rx1]
-            log.info("ROI crop applied: (%d,%d)→(%d,%d)  result=%dx%d",
-                     rx0, ry0, rx1, ry1, bgr.shape[1], bgr.shape[0])
-        except ValueError:
-            log.warning("Invalid --roi format %r — expected x0,y0,x1,y1; skipping", args.roi)
-
-    gray = enhance_for_incisions(bgr)
-
-    # ── Segment ──────────────────────────────────────────────────────────────
-    candidates = find_glyph_candidates(gray, args.canny_low, args.canny_high)
-    log.info("Raw candidates: %d", len(candidates))
 
     if not candidates:
         print("No glyph candidates found. Try lowering --canny-low or "
