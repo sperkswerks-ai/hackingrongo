@@ -168,6 +168,35 @@ class TabletViewRenderer:
                 print(f"  WARNING: model did not signal ready within "
                       f"{_MODEL_LOAD_TIMEOUT_MS // 1000}s — attempting renders anyway")
 
+            # Resize the WebGL canvas to the requested output resolution.
+            # The 3DHOP viewer HTML sets a fixed canvas size; overriding width/height
+            # attributes forces WebGL to render at full resolution before we screenshot.
+            resized = await page.evaluate(f"""
+                () => {{
+                    const canvas = document.querySelector('canvas');
+                    if (!canvas) return false;
+                    canvas.width  = {width};
+                    canvas.height = {height};
+                    canvas.style.width  = '{width}px';
+                    canvas.style.height = '{height}px';
+                    // Notify Three.js / 3DHOP renderer of the new size if possible
+                    const hub = window.THREEDHOP || window.scene || window.viewer;
+                    if (hub && hub.renderer && typeof hub.renderer.setSize === 'function') {{
+                        hub.renderer.setSize({width}, {height});
+                        if (hub.camera3js) {{
+                            hub.camera3js.aspect = {width} / {height};
+                            hub.camera3js.updateProjectionMatrix();
+                        }}
+                    }}
+                    return true;
+                }}
+            """)
+            if resized:
+                print(f"  Canvas resized to {width}×{height}.")
+                await asyncio.sleep(0.5)  # allow one re-render frame
+            else:
+                print(f"  WARNING: could not resize canvas — renders may be at native resolution.")
+
             tablet_dir = self.output_dir / f"tablet_{tablet}"
             tablet_dir.mkdir(exist_ok=True)
 

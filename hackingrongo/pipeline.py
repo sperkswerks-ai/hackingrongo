@@ -15,6 +15,7 @@ Usage
 Steps
 -----
     1  Build Polynesian language models (Zone C scoring dependency)
+    1b Segment 3D tablet renders into per-glyph crops (feeds Zone A training)
     2  Train Zone A convolutional autoencoder + extract embeddings
     3  Analyse embeddings: UMAP, HDBSCAN, divergence report (Zone A output)
     4  Zone B analysis battery:
@@ -153,6 +154,68 @@ def _check_any_file(directory: Path, glob: str, description: str) -> bool:
 # ---------------------------------------------------------------------------
 # Individual steps
 # ---------------------------------------------------------------------------
+
+def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
+    """Segment rendered 3D tablet views into per-glyph crops.
+
+    Reads PNGs from data/glyphs/synthetic_views/tablet_{B,C,D}/ (produced by
+    render_tablet_views.py) and writes individual glyph crops to
+    data/glyphs/3d_crops/ using CLAHE + Canny + connected-component analysis.
+
+    Runs for tablets B, C, D × recto (r) and verso (v) sides.
+    Skips tablets whose synthetic_views directory does not yet exist.
+    """
+    renders_root = PROJECT_ROOT / "data" / "glyphs" / "synthetic_views"
+    corpus_dir   = PROJECT_ROOT / "data" / "corpus"
+    output_root  = PROJECT_ROOT / "data" / "glyphs" / "3d_crops"
+
+    if not renders_root.exists():
+        log.error(
+            "data/glyphs/synthetic_views/ not found — "
+            "run scripts/render_tablet_views.py first."
+        )
+        return 1, 0.0
+
+    def _detect_sides(tablet: str) -> list[str]:
+        """Read side codes actually present in this tablet's corpus JSON."""
+        import json as _json
+        path = corpus_dir / f"{tablet}.json"
+        if not path.exists():
+            return ["r", "v"]  # safe default
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        sides = sorted({g["side"] for g in data.get("glyphs", []) if "side" in g})
+        return sides or ["r", "v"]
+
+    tablets = ["B", "C", "D"]
+    total_rc = 0
+    total_elapsed = 0.0
+
+    for tablet in tablets:
+        render_dir = renders_root / f"tablet_{tablet}"
+        if not render_dir.exists():
+            log.warning("Render dir not found, skipping: %s", render_dir)
+            continue
+        sides = _detect_sides(tablet)
+        for side in sides:
+            corpus_path = corpus_dir / f"{tablet}.json"
+            rc, elapsed = _run(
+                f"segment_3d_{tablet}_{side}",
+                [
+                    sys.executable, "scripts/segment_3d_glyphs.py",
+                    "--tablet",  tablet,
+                    "--side",    side,
+                    "--renders", str(render_dir),
+                    "--corpus",  str(corpus_path),
+                    "--output",  str(output_root),
+                    "--crop-size", "64",
+                ],
+                dry_run=dry_run,
+            )
+            total_rc = max(total_rc, rc)
+            total_elapsed += elapsed
+
+    return total_rc, total_elapsed
+
 
 def step1_build_lms(dry_run: bool = False) -> tuple[int, float]:
     """Build Polynesian n-gram language models for Zone C scoring."""
@@ -598,7 +661,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _parse_steps(steps_str: str | None) -> set[str]:
     """Parse --steps value; return set of enabled step IDs."""
-    valid = {"1", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
+    valid = {"1", "1b", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
              "4g", "4h", "4i", "4j", "4k", "4l", "4m", "5", "5b"}
     if steps_str is None:
         return valid
@@ -637,7 +700,8 @@ def main() -> None:
     # ── Step registry ────────────────────────────────────────────────────────
     # Each entry: (step_id, label, callable, enabled_condition)
     steps: list[tuple[str, str, Any]] = [
-        ("1",  "Build language models",           lambda: step1_build_lms(dry_run)),
+        ("1",   "Build language models",              lambda: step1_build_lms(dry_run)),
+        ("1b",  "Segment 3D renders → glyph crops",   lambda: step1b_segment_3d_glyphs(dry_run)),
         ("2",  "Train Zone A autoencoder",         lambda: step2_train_autoencoder(args.smoke_test, dry_run)),
         ("3",  "Analyse embeddings (Zone A)",      lambda: step3_analyze_embeddings(dry_run)),
         ("4a",  "IC / entropy sensitivity",          lambda: step4a_entropy(dry_run)),
