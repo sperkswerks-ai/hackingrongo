@@ -1027,6 +1027,221 @@ def boustrophedon_sensitivity(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Frequency-language match
+# ---------------------------------------------------------------------------
+
+def frequency_language_match(
+    corpus_dir: Path,
+    lm_dir: Path,
+    phoneme_map: dict[str, str] | None = None,
+) -> dict:
+    """Compare the sign-frequency distribution to phoneme-frequency distributions
+    in available language model reference corpora.
+
+    Two complementary statistics are computed:
+
+    **Zipf exponent comparison**
+        The Zipf exponent α is estimated by maximum-likelihood (Clauset 2009
+        approximation) for the sign frequency distribution and for each
+        language-model phoneme frequency distribution.  A close match in α
+        suggests the sign inventory behaves like that language's phoneme
+        inventory under a Zipfian model.
+
+    **Spearman rank correlation** (requires ``phoneme_map``)
+        Given an explicit sign→phoneme assignment, the ranks of sign
+        frequencies are correlated with the ranks of the assigned phoneme
+        frequencies.  ρ ≈ 1 means frequent signs were assigned to frequent
+        phonemes; ρ ≈ 0 means the assignment is independent of frequency.
+        High ρ with a specific language LM is evidence that the Zipf
+        frequency structure is preserved through the proposed assignment.
+
+    **Chi-squared goodness-of-fit** (requires ``phoneme_map``)
+        Aggregate phoneme counts implied by the map are compared to the
+        expected proportions from each LM, producing a χ² statistic and
+        p-value.  A high p-value means the assigned-phoneme distribution is
+        consistent with the reference language.
+
+    Parameters
+    ----------
+    corpus_dir : Path
+        Directory containing corpus JSON/CSV files with sign tokens.
+    lm_dir : Path
+        Directory containing language-model files.  Each ``*.json`` file
+        should have a ``unigram`` key mapping phoneme → log-probability (or
+        count).
+    phoneme_map : dict[str, str] | None
+        Optional sign→phoneme assignment.  Required for Spearman and χ²
+        diagnostics.
+
+    Returns
+    -------
+    dict with keys:
+        - ``zipf_alpha_signs``        : float, Zipf α for sign frequencies
+        - ``zipf_alpha_per_lm``       : dict[str, float], Zipf α per LM
+        - ``spearman_rho_per_lm``     : dict[str, float] | None
+        - ``chi2_stat_per_lm``        : dict[str, float] | None
+        - ``chi2_p_value_per_lm``     : dict[str, float] | None
+        - ``best_lm_by_spearman``     : str | None
+        - ``best_lm_by_chi2_p``       : str | None
+    """
+    try:
+        from scipy.stats import spearmanr, chisquare  # type: ignore[import]
+    except ImportError:
+        log.warning("scipy not installed — chi2 and Spearman tests unavailable.")
+        spearmanr = None  # type: ignore[assignment]
+        chisquare = None  # type: ignore[assignment]
+
+    # ── Load sign frequencies from corpus ───────────────────────────────────
+    sign_counts: Counter[str] = Counter()
+    for path in sorted(corpus_dir.glob("**/*.json")):
+        try:
+            data = json.loads(path.read_text())
+            tokens_key = None
+            for k in ("tokens", "signs", "sequence", "text"):
+                if k in data:
+                    tokens_key = k
+                    break
+            if tokens_key is None:
+                continue
+            val = data[tokens_key]
+            if isinstance(val, list):
+                if val and isinstance(val[0], str):
+                    sign_counts.update(val)
+                elif val and isinstance(val[0], list):
+                    for row in val:
+                        sign_counts.update(row)
+        except Exception:
+            continue
+
+    if not sign_counts:
+        log.warning("No sign tokens found under %s — frequency match skipped.", corpus_dir)
+        return {"zipf_alpha_signs": None}
+
+    sign_freqs: list[float] = sorted(sign_counts.values(), reverse=True)
+    total_signs = sum(sign_freqs)
+
+    def _zipf_alpha(counts: list[float]) -> float:
+        """MLE Zipf / power-law exponent (continuous approximation)."""
+        x_min = min(counts)
+        n = len(counts)
+        if x_min <= 0:
+            return float("nan")
+        return 1.0 + n * (sum(math.log(c / x_min) for c in counts) ** -1)
+
+    zipf_alpha_signs = _zipf_alpha(sign_freqs)
+
+    # ── Load language model phoneme frequencies ──────────────────────────────
+    lm_files = sorted(lm_dir.glob("*.json"))
+    lm_phoneme_counts: dict[str, dict[str, float]] = {}
+    for lm_path in lm_files:
+        try:
+            lm_data = json.loads(lm_path.read_text())
+            unigram: dict[str, float] = {}
+            if "unigram" in lm_data:
+                for ph, val in lm_data["unigram"].items():
+                    # values may be log-probs or counts
+                    v = float(val)
+                    unigram[ph] = math.exp(v) if v < 0 else v
+            elif "phoneme_counts" in lm_data:
+                unigram = {ph: float(c) for ph, c in lm_data["phoneme_counts"].items()}
+            if unigram:
+                lm_phoneme_counts[lm_path.stem] = unigram
+        except Exception:
+            continue
+
+    zipf_alpha_per_lm: dict[str, float] = {}
+    for lm_name, counts in lm_phoneme_counts.items():
+        freqs = sorted(counts.values(), reverse=True)
+        zipf_alpha_per_lm[lm_name] = _zipf_alpha(freqs)
+
+    # ── Spearman rank correlation & Chi-squared (require phoneme_map) ────────
+    spearman_rho_per_lm: dict[str, float] | None = None
+    chi2_stat_per_lm:    dict[str, float] | None = None
+    chi2_p_per_lm:       dict[str, float] | None = None
+    best_spearman:  str | None = None
+    best_chi2_p:    str | None = None
+
+    if phoneme_map is not None and lm_phoneme_counts and spearmanr is not None:
+        # Sign ranks by descending frequency.
+        sorted_signs = sorted(sign_counts, key=lambda s: -sign_counts[s])
+        sign_rank = {s: i + 1 for i, s in enumerate(sorted_signs)}
+
+        # Aggregate phoneme counts under the proposed assignment.
+        agg_phoneme: Counter[str] = Counter()
+        for sign, ph in phoneme_map.items():
+            if sign in sign_counts:
+                agg_phoneme[ph] += sign_counts[sign]
+
+        spearman_rho_per_lm = {}
+        chi2_stat_per_lm    = {}
+        chi2_p_per_lm       = {}
+
+        for lm_name, lm_counts in lm_phoneme_counts.items():
+            lm_total = sum(lm_counts.values()) or 1.0
+
+            # Spearman: compare sign freq rank to assigned-phoneme freq rank.
+            lm_ph_rank = {
+                ph: i + 1
+                for i, ph in enumerate(sorted(lm_counts, key=lambda ph: -lm_counts[ph]))
+            }
+            ranks_sign: list[float] = []
+            ranks_ph: list[float] = []
+            for sign in sorted_signs:
+                ph = phoneme_map.get(sign)
+                if ph and ph in lm_ph_rank:
+                    ranks_sign.append(sign_rank[sign])
+                    ranks_ph.append(lm_ph_rank[ph])
+            if len(ranks_sign) >= 5:
+                rho, _ = spearmanr(ranks_sign, ranks_ph)
+                spearman_rho_per_lm[lm_name] = float(rho)
+
+            # Chi-squared goodness-of-fit.
+            if chisquare is not None and agg_phoneme:
+                common_ph = sorted(set(agg_phoneme) & set(lm_counts))
+                if len(common_ph) >= 2:
+                    observed  = np.array([agg_phoneme[ph] for ph in common_ph], dtype=float)
+                    expected_props = np.array([lm_counts[ph] / lm_total for ph in common_ph])
+                    expected_props /= expected_props.sum()
+                    expected = expected_props * observed.sum()
+                    stat, pval = chisquare(observed, f_exp=expected)
+                    chi2_stat_per_lm[lm_name] = float(stat)
+                    chi2_p_per_lm[lm_name]    = float(pval)
+
+        if spearman_rho_per_lm:
+            best_spearman = max(spearman_rho_per_lm, key=lambda k: spearman_rho_per_lm[k])  # type: ignore[index]
+        if chi2_p_per_lm:
+            best_chi2_p = max(chi2_p_per_lm, key=lambda k: chi2_p_per_lm[k])  # type: ignore[index]
+
+    log.info(
+        "Zipf α (signs)=%.3f  |  LMs: %s",
+        zipf_alpha_signs,
+        {k: f"{v:.3f}" for k, v in zipf_alpha_per_lm.items()},
+    )
+    if best_spearman:
+        assert spearman_rho_per_lm is not None
+        log.info(
+            "Best Spearman ρ match: %s (ρ=%.3f)",
+            best_spearman, spearman_rho_per_lm[best_spearman],
+        )
+    if best_chi2_p:
+        assert chi2_p_per_lm is not None
+        log.info(
+            "Best χ² p-value match: %s (p=%.4f)",
+            best_chi2_p, chi2_p_per_lm[best_chi2_p],
+        )
+
+    return {
+        "zipf_alpha_signs":    zipf_alpha_signs,
+        "zipf_alpha_per_lm":   zipf_alpha_per_lm,
+        "spearman_rho_per_lm": spearman_rho_per_lm,
+        "chi2_stat_per_lm":    chi2_stat_per_lm,
+        "chi2_p_value_per_lm": chi2_p_per_lm,
+        "best_lm_by_spearman": best_spearman,
+        "best_lm_by_chi2_p":   best_chi2_p,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="IC / entropy analysis by cluster.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON result.")

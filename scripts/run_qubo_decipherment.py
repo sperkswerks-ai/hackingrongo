@@ -182,6 +182,8 @@ def build_qubo(
     max_per_phoneme: int = 5,
     lambda3: float = 1.0,
     max_bigram_pairs: int = 500,
+    cribs: dict[str, str] | None = None,
+    crib_penalty: float = 200.0,
 ) -> dict[tuple[int, int], float]:
     """Build the QUBO matrix Q.
 
@@ -288,6 +290,32 @@ def build_qubo(
                             _add(vi, vj, -lambda3 * bscore * weight)
             log.info("Bigram couplings: %d pairs × %d² phonemes added (λ3=%.2f).",
                      len(top_pairs), n_phonemes, lambda3)
+
+    # ── Crib constraints: known-plaintext fragments ──────────────────────────
+    # For each (sign, phoneme) pair in cribs, force x_{s,p}=1 by adding a
+    # large negative reward for the correct assignment and a large positive
+    # penalty for every other phoneme for that sign.  The penalty dominates
+    # the one-hot and capacity terms so the crib is always satisfied.
+    if cribs:
+        phoneme_index = {p: i for i, p in enumerate(phonemes)}
+        for sign, phoneme in cribs.items():
+            if sign not in sign_index:
+                log.warning("Crib sign %r not in corpus inventory — skipped.", sign)
+                continue
+            if phoneme not in phoneme_index:
+                log.warning("Crib phoneme %r not in inventory — skipped.", phoneme)
+                continue
+            s_idx = sign_index[sign]
+            p_idx = phoneme_index[phoneme]
+            # Reward the crib assignment strongly.
+            v_correct = _var(s_idx, p_idx, n_phonemes)
+            _add(v_correct, v_correct, -crib_penalty)
+            # Penalise all other phoneme assignments for this sign.
+            for q_idx in range(n_phonemes):
+                if q_idx != p_idx:
+                    v_wrong = _var(s_idx, q_idx, n_phonemes)
+                    _add(v_wrong, v_wrong, +crib_penalty)
+            log.info("Crib pinned: sign %r → phoneme %r (penalty=%.0f)", sign, phoneme, crib_penalty)
 
     n_couplings = sum(1 for (i, j) in Q if i != j)
     log.info("QUBO built: %d variables, %d couplings.", n_signs * n_phonemes, n_couplings)
@@ -666,6 +694,14 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--hybrid-time-limit", type=int, default=30, metavar="SECS",
                    help="Wall-clock seconds allocated to LeapHybridSampler "
                         "(default: 30; min 3 enforced by SDK).")
+    p.add_argument("--crib", default=None, metavar="SIGN=PHONEME[,…]",
+                   help="Known-plaintext crib: comma-separated SIGN=PHONEME pairs "
+                        "(e.g. '200=tangata,076=ko').  These assignments are "
+                        "pinned with a hard QUBO penalty so they are always "
+                        "satisfied.  Sign IDs are Barthel codes.")
+    p.add_argument("--crib-penalty", type=float, default=200.0, metavar="F",
+                   help="Penalty weight for crib constraints (default: 200.0; "
+                        "should dominate lambda1 and lambda2).")
     p.add_argument("--num-reads",    type=int,   default=1000, metavar="N",
                    help="Number of annealing reads/shots (default: 1000).")
     p.add_argument("--output",       type=Path,  default=None, metavar="JSON")
@@ -729,6 +765,19 @@ def main() -> None:
         log.error("Phoneme inventory is empty — LM vocab absent or malformed.")
         sys.exit(1)
 
+    # ── Parse cribs ───────────────────────────────────────────────────────────
+    cribs: dict[str, str] = {}
+    if args.crib:
+        for pair in args.crib.split(","):
+            pair = pair.strip()
+            if "=" not in pair:
+                log.warning("Crib entry %r has no '=' — skipped.", pair)
+                continue
+            sign, phoneme = pair.split("=", 1)
+            cribs[sign.strip()] = phoneme.strip()
+        if cribs:
+            log.info("Cribs loaded: %s", cribs)
+
     if args.smoke_test:
         log.info("Smoke-test mode: truncating to 10 signs × 10 phonemes, 50 reads.")
         all_signs    = all_signs[:10]
@@ -763,6 +812,8 @@ def main() -> None:
         lambda1=args.lambda1,
         lambda2=args.lambda2,
         max_per_phoneme=args.max_per_phoneme,
+        cribs=cribs or None,
+        crib_penalty=args.crib_penalty,
     )
     bqm = _qubo_to_bqm(Q)
     n_couplings = sum(1 for (i, j) in Q if i != j)

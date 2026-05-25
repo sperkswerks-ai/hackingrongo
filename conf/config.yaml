@@ -458,6 +458,18 @@ zone_c:
     random_restart_if_rhat_above: 1.2   # trigger full chain restart above this R-hat
     max_restarts: 3                  # maximum auto-restarts before raising an error
 
+    # Parallel tempering (replica exchange MCMC)
+    # Runs n_temperatures chains at a geometric temperature ladder from 1.0
+    # to t_max, proposing swaps between adjacent rungs every swap_interval
+    # steps.  Only the cold chain (T=1.0) contributes samples.
+    # Set enabled: true to activate; the standard multi-chain mode is used
+    # when false (default).
+    parallel_tempering:
+      enabled: false
+      n_temperatures: 4            # number of temperature rungs (includes T=1.0)
+      t_max: 5.0                   # highest temperature on the ladder
+      swap_interval: 100           # iterations between replica exchange proposals
+
     # Scoring
     lm_log_prob_weight: 1.0          # multiplicative weight on LM log-probability in acceptance ratio
     prior_weight: 0.1                # weight on structural prior in acceptance ratio

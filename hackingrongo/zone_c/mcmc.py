@@ -202,6 +202,7 @@ class MCMCSampler:
         phoneme_inventory: list[str] | None = None,
         phoneme_priors: list[float] | None = None,
         seed: int | None = None,
+        cribs: dict[str, str] | None = None,
     ) -> None:
         self._scorer = lm_scorer
         self._corpus_sequences = corpus_sequences
@@ -226,6 +227,22 @@ class MCMCSampler:
             self._phoneme_priors = [1.0] * len(self._phoneme_inventory)
         self._seed = seed
 
+        # Crib (known-plaintext) assignments: pinned sign → phoneme pairs.
+        # Crib signs are never modified by proposals and always initialised
+        # to their crib phoneme.
+        self._cribs: dict[str, str] = dict(cribs) if cribs else {}
+        self._crib_signs: frozenset[str] = frozenset(self._cribs)
+        # Free signs are those not pinned by a crib — only these are proposed.
+        self._free_sign_ids: list[str] = [
+            s for s in self._sign_ids if s not in self._crib_signs
+        ]
+        if self._cribs:
+            logger.info(
+                "MCMCSampler: %d crib assignments pinned: %s",
+                len(self._cribs),
+                self._cribs,
+            )
+
         mc = cfg.zone_c.mcmc
         self._num_chains: int = int(mc.num_chains)
         self._num_iterations: int = int(mc.num_iterations)
@@ -242,6 +259,21 @@ class MCMCSampler:
         self._lm_guided_prob: float = float(getattr(mc, "lm_guided_prob", 0.0))
         self._lm_guided_n_candidates: int = int(getattr(mc, "lm_guided_n_candidates", 3))
         self._lm_guided_top_k: int = int(getattr(mc, "lm_guided_top_k", 5))
+
+        # Parallel tempering config (replica exchange MCMC).
+        from omegaconf import OmegaConf  # local import to avoid circular at module level
+        self._pt_enabled: bool = bool(
+            OmegaConf.select(cfg, "zone_c.mcmc.parallel_tempering.enabled", default=False)
+        )
+        self._pt_n_temperatures: int = int(
+            OmegaConf.select(cfg, "zone_c.mcmc.parallel_tempering.n_temperatures", default=4)
+        )
+        self._pt_t_max: float = float(
+            OmegaConf.select(cfg, "zone_c.mcmc.parallel_tempering.t_max", default=5.0)
+        )
+        self._pt_swap_interval: int = int(
+            OmegaConf.select(cfg, "zone_c.mcmc.parallel_tempering.swap_interval", default=100)
+        )
 
         # Precompute sign → per-sequence position index for incremental scoring.
         self._sign_positions: dict[str, list[list[int]]] = self._build_position_index(corpus_sequences)
@@ -277,10 +309,20 @@ class MCMCSampler:
     def run(self) -> MCMCResult:
         """Run all chains and return aggregated results.
 
+        Dispatches to :meth:`_run_parallel_tempering` when
+        ``cfg.zone_c.mcmc.parallel_tempering.enabled`` is true, otherwise
+        runs independent chains with Gelman-Rubin diagnostics.
+
         Returns
         -------
         MCMCResult
         """
+        if self._pt_enabled:
+            logger.info(
+                "Parallel tempering enabled: %d rungs, T_max=%.1f, swap every %d iters.",
+                self._pt_n_temperatures, self._pt_t_max, self._pt_swap_interval,
+            )
+            return self._run_parallel_tempering()
         all_samples: list[list[MCMCSample]] = []
         all_rates: list[float] = []
 
@@ -375,6 +417,155 @@ class MCMCSampler:
             geweke_z=geweke_z,
             n_chains=self._num_chains,
             n_samples_per_chain=n_per_chain,
+        )
+
+    # ------------------------------------------------------------------
+    # Parallel tempering (replica exchange MCMC)
+    # ------------------------------------------------------------------
+
+    def _run_parallel_tempering(self) -> MCMCResult:
+        """Replica-exchange MCMC over a geometric temperature ladder.
+
+        Runs :attr:`_pt_n_temperatures` chains at temperatures
+        ``[1.0, …, t_max]`` (geometric spacing).  Every
+        :attr:`_pt_swap_interval` iterations, adjacent-temperature pairs
+        propose a Metropolis-Hastings swap:
+
+            log α_swap = (1/T_i − 1/T_{i+1}) × (lp_{i+1} − lp_i)
+
+        Only the cold chain (T=1.0) collects post-burn samples and
+        contributes to the returned :class:`MCMCResult`.  Hot chains
+        explore the landscape freely and pass good states downward.
+        """
+        n_T = self._pt_n_temperatures
+        t_max = self._pt_t_max
+        swap_interval = self._pt_swap_interval
+
+        # Geometric ladder: temps[0]=1.0 (cold), temps[-1]=t_max (hot).
+        if n_T == 1:
+            temps: list[float] = [1.0]
+        else:
+            temps = [t_max ** (i / (n_T - 1)) for i in range(n_T - 1, -1, -1)]
+
+        rng = random.Random(self._seed)
+        chain_maps = [
+            self._random_initial_map(
+                random.Random((self._seed + i) if self._seed is not None else None)
+            )
+            for i in range(n_T)
+        ]
+        chain_seqs = [self._translate_seqs(m) for m in chain_maps]
+        chain_lps = [self._log_posterior_full(s) for s in chain_seqs]
+        reassign_probs = [self._reassign_prob_init] * n_T
+        recent_accepted = [0] * n_T
+        accepted_post_burn = 0
+        post_burn_steps = 0
+        n_swap_proposed = 0
+        n_swap_accepted = 0
+        samples: list[MCMCSample] = []
+
+        logger.info(
+            "PT temperature ladder: %s",
+            [f"{t:.2f}" for t in temps],
+        )
+
+        for it in range(self._num_iterations):
+            # ── Update each rung independently ──────────────────────────────
+            for t_idx in range(n_T):
+                T = temps[t_idx]
+                proposal, changes = self._propose(chain_maps[t_idx], rng, reassign_probs[t_idx])
+                delta = self._compute_delta(chain_seqs[t_idx], changes)
+                proposal_lp = chain_lps[t_idx] + delta
+                # Tempered acceptance: scale log-ratio by 1/T.
+                log_alpha = (proposal_lp - chain_lps[t_idx]) / T
+                if math.log(max(rng.random(), 1e-300)) < log_alpha:
+                    chain_maps[t_idx] = proposal
+                    chain_lps[t_idx] = proposal_lp
+                    for sign, (_, new_ph) in changes.items():
+                        for seq_idx, positions in enumerate(
+                            self._sign_positions[sign]
+                        ):
+                            for pos in positions:
+                                chain_seqs[t_idx][seq_idx][pos] = new_ph
+                    recent_accepted[t_idx] += 1
+                    if t_idx == 0 and it >= self._burn_in:
+                        accepted_post_burn += 1
+
+            # ── Periodic full rescore for cold chain (fp drift guard) ────────
+            if (it + 1) % self._full_rescore_interval == 0:
+                chain_lps[0] = self._log_posterior_full(chain_seqs[0])
+
+            # ── Replica exchange swaps ───────────────────────────────────────
+            if (it + 1) % swap_interval == 0:
+                for t_idx in range(n_T - 1):
+                    T_i, T_j = temps[t_idx], temps[t_idx + 1]
+                    lp_i, lp_j = chain_lps[t_idx], chain_lps[t_idx + 1]
+                    log_swap = (1.0 / T_i - 1.0 / T_j) * (lp_j - lp_i)
+                    n_swap_proposed += 1
+                    if math.log(max(rng.random(), 1e-300)) < log_swap:
+                        chain_maps[t_idx], chain_maps[t_idx + 1] = (
+                            chain_maps[t_idx + 1], chain_maps[t_idx]
+                        )
+                        chain_seqs[t_idx], chain_seqs[t_idx + 1] = (
+                            chain_seqs[t_idx + 1], chain_seqs[t_idx]
+                        )
+                        chain_lps[t_idx], chain_lps[t_idx + 1] = (
+                            chain_lps[t_idx + 1], chain_lps[t_idx]
+                        )
+                        n_swap_accepted += 1
+
+            # ── Adapt proposal widths ────────────────────────────────────────
+            if it < self._burn_in and (it + 1) % self._adaptation_interval == 0:
+                for t_idx in range(n_T):
+                    local_rate = recent_accepted[t_idx] / self._adaptation_interval
+                    if local_rate > self._target_acceptance:
+                        reassign_probs[t_idx] = min(reassign_probs[t_idx] * 1.1, 0.9)
+                    else:
+                        reassign_probs[t_idx] = max(reassign_probs[t_idx] * 0.9, 0.05)
+                recent_accepted = [0] * n_T
+
+            # ── Collect cold-chain samples ───────────────────────────────────
+            if it >= self._burn_in:
+                post_burn_steps += 1
+                if (it - self._burn_in) % self._thin == 0:
+                    samples.append(
+                        MCMCSample(
+                            phoneme_map=dict(chain_maps[0]),
+                            log_posterior=chain_lps[0],
+                            iteration=it,
+                            chain_id=0,
+                        )
+                    )
+
+        swap_rate = n_swap_accepted / max(n_swap_proposed, 1)
+        cold_rate = accepted_post_burn / max(post_burn_steps, 1)
+        logger.info(
+            "PT complete: cold-chain acceptance=%.3f, swap rate=%.3f (%d/%d)",
+            cold_rate, swap_rate, n_swap_accepted, n_swap_proposed,
+        )
+
+        geweke_z = self._geweke_z(samples) if len(samples) >= 10 else None
+        converged = abs(geweke_z) < 2.0 if geweke_z is not None else False
+
+        samples.sort(key=lambda s: s.log_posterior, reverse=True)
+        seen: set[tuple[tuple[str, str], ...]] = set()
+        top_k: list[MCMCSample] = []
+        for s in samples:
+            key = tuple(sorted(s.phoneme_map.items()))
+            if key not in seen:
+                seen.add(key)
+                top_k.append(s)
+            if len(top_k) >= self._top_k:
+                break
+
+        return MCMCResult(
+            top_samples=top_k,
+            acceptance_rates=[cold_rate],
+            gelman_rubin_rhat=None,
+            converged=converged,
+            geweke_z=geweke_z,
+            n_chains=n_T,
+            n_samples_per_chain=len(samples),
         )
 
     # ------------------------------------------------------------------
@@ -553,8 +744,8 @@ class MCMCSampler:
         for a standard random-walk proposal.  The fraction of steps using
         this move is controlled by :attr:`_lm_guided_prob`.
         """
-        n_cand = min(self._lm_guided_n_candidates, len(self._sign_ids))
-        signs_to_try = rng.sample(self._sign_ids, n_cand)
+        n_cand = min(self._lm_guided_n_candidates, len(self._free_sign_ids or self._sign_ids))
+        signs_to_try = rng.sample(self._free_sign_ids if self._free_sign_ids else self._sign_ids, n_cand)
 
         # Draw top_k phonemes weighted by prior (fast unigram guidance).
         top_k = min(self._lm_guided_top_k, len(self._phoneme_inventory))
@@ -605,36 +796,23 @@ class MCMCSampler:
     ) -> tuple[PhonemeMap, dict[str, tuple[str, str]]]:
         """Produce a proposal and return ``(proposal, changes)``.
 
-        ``changes`` maps each modified sign to ``(old_phoneme, new_phoneme)``
-        and is used by :meth:`_compute_delta` to skip rescoring unchanged
-        n-grams.
-
-        Parameters
-        ----------
-        current : PhonemeMap
-        rng : random.Random
-        reassign_prob : float
-            Probability of choosing the random-reassignment move instead
-            of the swap move.
-
-        Returns
-        -------
-        tuple[PhonemeMap, dict[str, tuple[str, str]]]
+        Crib signs are never included in proposals.
         """
         proposal = dict(current)
         changes: dict[str, tuple[str, str]] = {}
+        sign_ids = self._free_sign_ids if self._free_sign_ids else self._sign_ids
 
-        if len(self._sign_ids) < 2 or rng.random() < reassign_prob:
-            # Random reassignment: pick one sign, assign a random phoneme.
-            sign = rng.choice(self._sign_ids)
+        if len(sign_ids) < 2 or rng.random() < reassign_prob:
+            # Random reassignment: pick one free sign, assign a random phoneme.
+            sign = rng.choice(sign_ids)
             old_ph = proposal[sign]
             new_ph = rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
             proposal[sign] = new_ph
             if old_ph != new_ph:
                 changes[sign] = (old_ph, new_ph)
         else:
-            # Swap: pick two signs, exchange their phoneme assignments.
-            s1, s2 = rng.sample(self._sign_ids, 2)
+            # Swap: pick two free signs, exchange their phoneme assignments.
+            s1, s2 = rng.sample(sign_ids, 2)
             old_ph1, old_ph2 = proposal[s1], proposal[s2]
             proposal[s1], proposal[s2] = old_ph2, old_ph1
             if old_ph1 != old_ph2:
@@ -648,8 +826,15 @@ class MCMCSampler:
     # ------------------------------------------------------------------
 
     def _random_initial_map(self, rng: random.Random) -> PhonemeMap:
-        """Build a random initial phoneme map for all signs."""
-        return {sign: rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0] for sign in self._sign_ids}
+        """Build a random initial phoneme map; crib signs are pre-set."""
+        m = {
+            sign: rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
+            for sign in self._sign_ids
+        }
+        for sign, phoneme in self._cribs.items():
+            if sign in m:
+                m[sign] = phoneme
+        return m
 
     # ------------------------------------------------------------------
     # Convergence diagnostics
