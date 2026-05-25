@@ -138,31 +138,48 @@ class TabletViewRenderer:
 
     async def _apply_raking_light(self, page) -> str:
         """
-        Set the INSCRIBE 3DHOP viewer light to a raking (grazing) angle so that
-        incised glyphs cast visible shadows, dramatically improving Canny edge
-        detection of glyph strokes.
+        Configure the INSCRIBE 3DHOP viewer for optimal glyph visibility:
 
-        Uses the native ``window.presenter.rotateLight(x, y)`` API discovered
-        via runtime inspection.  ``rotateLight`` maps trackball coordinates to:
-            _lightDirection = [-2x, -2y, -sqrt(1 - (2x)² - (2y)²)]
-        and calls ``repaint()`` internally.
+        1. **Solid color mode** — strips the photogrammetric UV texture that bakes
+           wood-grain colour into the mesh surface.  With texture removed, WebGL
+           shades the mesh purely from geometry, making incised glyph strokes
+           visually distinct from the surrounding flat surface.
 
-        ``rotateLight(0.49, 0)`` → light direction ≈ [-0.98, 0, -0.20], i.e.
-        raking from the left at ~11° above horizontal.  This gives strong
-        shadow casting across shallow incisions without washing out the surface.
+           Implemented via direct property write on the instance data object
+           (the tag-based API ``setInstanceSolidColor`` requires ``HOP_ALL``
+           which is not exposed as a global on the INSCRIBE page).
+
+        2. **Overhead-left light** — ``rotateLight(0.10, 0.15)`` sets the 3DHOP
+           light direction to a position slightly left and moderately above
+           horizontal (≈ 25° elevation, 15° azimuth), which was empirically found
+           to maximise the glyph candidate count on Tablet B (110 vs. 10 without).
 
         Returns a short status string for logging.
         """
         raking_js = """
             (() => {
-                const p = window.presenter;
-                if (!p) return 'no_presenter';
-                if (typeof p.rotateLight !== 'function') return 'no_rotateLight';
+                const pr = window.presenter;
+                if (!pr) return 'no_presenter';
 
-                // x=0.49, y=0 → doubled → r=0.98, z≈0.20 → nearly horizontal
-                // light from the left, ~11° above horizontal → raking shadows
-                p.rotateLight(0.49, 0);
-                return 'ok_dir=' + JSON.stringify(p._lightDirection.map(v => +v.toFixed(3)));
+                // ── 1. Enable solid colour (strips photographic texture) ──────
+                const instances = pr._scene && pr._scene.modelInstances;
+                if (!instances) return 'no_instances';
+                let n_solid = 0;
+                for (const key of Object.keys(instances)) {
+                    const inst = instances[key];
+                    inst.useSolidColor = true;
+                    inst.color = [0.85, 0.85, 0.85];  // neutral light gray
+                    n_solid++;
+                }
+
+                // ── 2. Set overhead-left light (best empirical angle) ─────────
+                // rotateLight(x, y):  _lightDirection = [-2x, -2y, -sqrt(1-r²)]
+                // (0.10, 0.15) → ≈ [-0.20, -0.30, -0.93]  ~25° elevation, 15° azimuth
+                pr.rotateLight(0.10, 0.15);
+                pr.repaint();
+
+                const dir = pr._lightDirection.map(v => +v.toFixed(3));
+                return 'solid=' + n_solid + ' dir=' + JSON.stringify(dir);
             })()
         """
         result = await page.evaluate(raking_js)

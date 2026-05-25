@@ -198,7 +198,9 @@ def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
         sides = _detect_sides(tablet)
 
         # Compute ROI to exclude INSCRIBE page chrome (fractions of image size).
-        # Percentages: left-nav 3%, top-header 15%, right-panel 39%, bottom-copyright 5%.
+        # Canvas-only screenshots include WebGL-rendered UI chrome:
+        #   left-nav icons: ~3%   top-header: ~14%
+        #   right info panel: starts ~56%   bottom copyright: ~88%
         _roi_arg: str | None = None
         try:
             import PIL.Image as _pil
@@ -206,9 +208,9 @@ def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
             if sample_png:
                 _W, _H = _pil.open(sample_png).size
                 _x0 = int(0.032 * _W)
-                _y0 = int(0.152 * _H)
-                _x1 = int(0.610 * _W)
-                _y1 = int(0.952 * _H)
+                _y0 = int(0.140 * _H)
+                _x1 = int(0.540 * _W)   # exclude right info panel (starts ~56%)
+                _y1 = int(0.880 * _H)   # exclude bottom copyright
                 _roi_arg = f"{_x0},{_y0},{_x1},{_y1}"
                 log.info("3D crop ROI for tablet %s: %s (from %dx%d render)", tablet, _roi_arg, _W, _H)
         except Exception as _e:
