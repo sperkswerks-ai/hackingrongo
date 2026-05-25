@@ -1,6 +1,6 @@
 # Hacking Rongorongo Project by SperksWerks
 
-Rongorongo is the only known indigenous "writing" system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 26 wooden objects.
+The Rongorongo script is the only known indigenous "writing" system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 26 wooden objects.
 
 This project treats decipherment as a cryptanalysis problem and applies a six-layer adversarial attack pipeline with visual embeddings, statistical analysis, oracle inversion, differentiable projection learning, adversarial validation, and quantum hardness analysis.
 
