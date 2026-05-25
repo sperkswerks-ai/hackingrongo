@@ -212,12 +212,19 @@ class TabletViewRenderer:
 
         return saved
 
-    async def render_all_tablets(self, num_views: int = 24) -> dict:
+    async def render_all_tablets(
+        self,
+        num_views: int = 24,
+        width: int = 512,
+        height: int = 512,
+    ) -> dict:
         """Render all three tablets sequentially."""
         results = {}
         for tablet in TABLET_URLS:
             try:
-                images = await self.render_tablet(tablet, num_views=num_views)
+                images = await self.render_tablet(
+                    tablet, num_views=num_views, width=width, height=height
+                )
                 results[tablet] = {"success": True, "count": len(images),
                                    "images": [str(p) for p in images]}
             except Exception as e:
@@ -241,7 +248,9 @@ async def main() -> None:
     renderer = TabletViewRenderer(args.output_dir)
 
     if args.tablet == "all":
-        results = await renderer.render_all_tablets(num_views=args.num_views)
+        results = await renderer.render_all_tablets(
+            num_views=args.num_views, width=args.width, height=args.height
+        )
         print("\n=== SUMMARY ===")
         for tablet, r in results.items():
             if r["success"]:
