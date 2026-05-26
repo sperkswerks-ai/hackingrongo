@@ -1426,9 +1426,9 @@ def _render_quantum_section(
     ranking: "HypothesisRanking",
     pgood_data: dict | None,
     qubo_data: dict | None,
-  mixed_data: dict | None = None,
+    mixed_data: dict | None = None,
 ) -> str:
-  if pgood_data is None and qubo_data is None and mixed_data is None:
+    if pgood_data is None and qubo_data is None and mixed_data is None:
         return """
 <div class="quantum-section" id="quantum-analysis">
   <div class="quantum-heading"><span>&#9883;</span>Quantum Analysis</div>
@@ -1441,7 +1441,7 @@ def _render_quantum_section(
 
     parts: list[str] = []
     if mixed_data is not None:
-      parts.append(_render_mixed_model_panel(mixed_data))
+        parts.append(_render_mixed_model_panel(mixed_data))
     if qubo_data is not None or ranking.hypotheses:
         parts.append(_render_comparison_table(ranking, qubo_data))
     if pgood_data is not None:

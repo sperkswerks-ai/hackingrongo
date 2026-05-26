@@ -542,10 +542,31 @@ def _solve_tabu(
     num_reads: int,
     initial_state: dict[int, int] | None,
 ) -> tuple[Any, float]:
-    """Tabu search via dimod (CPU)."""
-    import dimod  # type: ignore
-    log.info("Running dimod TabuSampler (%d reads) …", num_reads)
-    sampler = dimod.TabuSampler()
+    """Tabu search via dimod/tabu package, with safe SA fallback."""
+    sampler: Any | None = None
+    sampler_name = ""
+
+    try:
+        import dimod  # type: ignore
+        if hasattr(dimod, "TabuSampler"):
+            sampler = dimod.TabuSampler()
+            sampler_name = "dimod.TabuSampler"
+    except ImportError:
+        sampler = None
+
+    if sampler is None:
+        try:
+            import tabu  # type: ignore
+            sampler = tabu.TabuSampler()
+            sampler_name = "tabu.TabuSampler"
+        except ImportError:
+            log.warning(
+                "TabuSampler unavailable (dimod has no TabuSampler and tabu package is missing) — "
+                "falling back to simulated annealing."
+            )
+            return _solve_neal(bqm, num_reads, initial_state)
+
+    log.info("Running %s (%d reads) …", sampler_name, num_reads)
     kwargs: dict[str, Any] = {"num_reads": num_reads}
     if initial_state is not None:
         kwargs["initial_states"] = [initial_state]
