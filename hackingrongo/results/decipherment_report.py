@@ -1406,14 +1406,6 @@ def _render_html(
     run_id_summary = hypotheses[0].run_id if hypotheses else "—"
     cfg_hash_summary = (hypotheses[0].config_hash[:12] + "…") if hypotheses[0].config_hash else "—"
 
-    # Table of contents
-    toc_chips = "".join(
-        f'<a class="toc-chip" href="#{h.hypothesis_id}">{h.hypothesis_id}</a>'
-        for h in hypotheses
-    )
-    toc_chips += '<a class="toc-chip" href="#quantum-analysis" style="color:#7c3aed">&#9883; Quantum</a>'
-    toc_chips += toc_extra
-
     # Hypothesis cards
     cards_html = "\n".join(
         _render_card(rank, hyp, n_total, best_lm, worst_lm, null_baseline)
@@ -1439,6 +1431,14 @@ def _render_html(
         toc_extra += '<a class="toc-chip" href="#freq-match" style="color:#059669">&#9190; Freq match</a>'
     if morph_section:
         toc_extra += '<a class="toc-chip" href="#morpheme-segmentation" style="color:#7c3aed">&#9670; Morphemes</a>'
+
+    # Table of contents
+    toc_chips = "".join(
+        f'<a class="toc-chip" href="#{h.hypothesis_id}">{h.hypothesis_id}</a>'
+        for h in hypotheses
+    )
+    toc_chips += '<a class="toc-chip" href="#quantum-analysis" style="color:#7c3aed">&#9883; Quantum</a>'
+    toc_chips += toc_extra
 
     n_assignments_top = len(hypotheses[0].assignments) if hypotheses else 0
 

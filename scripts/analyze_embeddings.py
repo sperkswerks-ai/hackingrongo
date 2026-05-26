@@ -652,13 +652,19 @@ def run_analysis(cfg: DictConfig) -> None:
             save_divergence_report,
         )
         svg_catalog = Path(hydra.utils.get_original_cwd()) / "data/glyphs/svg/catalog.json"
+        try:
+            run_id = cfg.mlflow.get("run_id", "—")
+            experiment_name = cfg.mlflow.experiment_name
+        except Exception:
+            run_id = "—"
+            experiment_name = "—"
         save_divergence_report(
             analysis_dir=out_dir,
             svg_catalog_path=svg_catalog,
             output_path=out_dir / "divergence_report.html",
             run_metadata={
-                "run_id": cfg.mlflow.get("run_id", "—"),
-                "experiment": cfg.mlflow.experiment_name,
+                "run_id": run_id,
+                "experiment": experiment_name,
                 "corpus": f"{len(codes)} glyphs · 25 tablets",
             },
         )
