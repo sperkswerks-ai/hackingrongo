@@ -78,8 +78,8 @@ def classify_target_type(barthel_raw: str) -> Optional[str]:
 
 
 def _strip_suffix(code: str) -> str:
-    """Strip trailing ?, V, or ()! markers to get the base Barthel code."""
-    code = code.rstrip("?V")
+    """Strip trailing ?, f, V, y, or ()! markers to get the base Barthel code."""
+    code = code.rstrip("?fVy")
     code = re.sub(r"^\(|\)!$", "", code)
     return code.strip()
 
@@ -233,7 +233,11 @@ def run_sequence_model(
 # ---------------------------------------------------------------------------
 
 def load_mcmc_assignments(ranking_path: Path) -> dict[str, dict]:
-    """Return {sign_code: {phoneme, confidence, hypothesis_id}} for top-5 hypotheses."""
+    """Return {base_code: {phoneme, confidence, hypothesis_id}} for top-5 hypotheses.
+
+    Keys are normalised via _strip_suffix so lookups match regardless of
+    whether the corpus sign code carries a ?, f, V, or y suffix.
+    """
     if not ranking_path.exists():
         log.warning("Ranking file not found: %s", ranking_path)
         return {}
@@ -244,24 +248,26 @@ def load_mcmc_assignments(ranking_path: Path) -> dict[str, dict]:
         log.error("Failed to load ranking.json: %s", exc)
         return {}
 
-    top = ranking.get("top_hypotheses", ranking if isinstance(ranking, list) else [])
+    # HypothesisRanking schema: {"hypotheses": [...], "ranking_metric": ..., ...}
+    # Each hypothesis: {"assignments": [{"sign_code", "phoneme", "confidence", ...}]}
+    top = ranking.get("hypotheses", [])
     assignments: dict[str, dict] = {}
 
     for hyp in top[:5]:
-        hyp_id = hyp.get("hypothesis_id", hyp.get("id", "H????"))
-        phoneme_map = hyp.get("phoneme_map", {})
-        confidence_map = hyp.get("confidence_map", {})
-
-        for sign, phoneme in phoneme_map.items():
-            if sign not in assignments:
-                conf = float(confidence_map.get(sign, 1.0))
-                assignments[sign] = {
-                    "mcmc_phoneme": phoneme,
-                    "mcmc_confidence": conf,
+        hyp_id = hyp.get("hypothesis_id", "H????")
+        for a in hyp.get("assignments", []):
+            sign_raw = a.get("sign_code", "")
+            phoneme  = a.get("phoneme", "")
+            conf     = float(a.get("confidence", 1.0))
+            base     = _strip_suffix(sign_raw)
+            if base and base not in assignments:
+                assignments[base] = {
+                    "mcmc_phoneme":       phoneme,
+                    "mcmc_confidence":    conf,
                     "mcmc_hypothesis_id": hyp_id,
                 }
 
-    log.info("MCMC: %d sign assignments loaded from top-5 hypotheses", len(assignments))
+    log.info("MCMC: %d base-code assignments loaded from top-5 hypotheses", len(assignments))
     return assignments
 
 
