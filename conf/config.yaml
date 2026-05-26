@@ -139,6 +139,14 @@ zone_a:
     boustrophedon_normalize: true    # rotate alternating lines 180° (reverse boustrophedon)
     stroke_extraction: true          # extract binary stroke map via Canny + skeletonise before CNN
     normalize_scale: true            # resize glyph to canonical bounding box
+    enhance_low_contrast: true       # autocontrast/equalize pale low-contrast relief crops before CNN
+    low_contrast_std_threshold: 10.0
+    low_contrast_dynamic_range_threshold: 35.0
+    low_contrast_mean_floor: 150.0
+    low_contrast_dark_ratio_ceiling: 0.15
+    low_contrast_autocontrast_cutoff: 1.0
+    exclude_merge_suspect_tokens: false  # if true, drop merge_suspect corpus_key tokens from Zone A datasets
+    include_positional_ref_estimates: false  # if true, allow ambiguous barthel_ref files like "100_42_barthel_..."
     saliency_method: grad_cam        # grad_cam | integrated_gradients | none
 
   # ---  Shared convolutional backbone  ---

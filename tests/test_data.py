@@ -400,6 +400,7 @@ from hackingrongo.data.dataset import (  # noqa: E402
     SiamesePairDataset,
     build_sign_groups,
     load_allograph_catalog,
+    _looks_like_low_contrast_relief,
 )
 
 
@@ -590,6 +591,137 @@ class TestGlyphImageDataset:
         ds = GlyphImageDataset(tokens, tmp_path, full_cfg, training=False)
         for i in range(len(ds)):
             assert 0 <= ds[i]["token_id"] < len(ds.vocab)
+
+    def test_detects_low_contrast_relief_heuristic(self, tmp_path):
+        from PIL import Image as _PIL_Image
+
+        arr = np.full((16, 16), 200, dtype=np.uint8)
+        arr[4:12, 7:9] = 194
+        img = _PIL_Image.fromarray(arr, mode="L")
+
+        assert _looks_like_low_contrast_relief(
+            img,
+            is_3d_crop=True,
+            std_threshold=10.0,
+            dynamic_range_threshold=35.0,
+            mean_floor=150.0,
+            dark_ratio_ceiling=0.15,
+        )
+
+    def test_low_contrast_relief_gets_enhanced(self, full_cfg, tmp_path):
+        from PIL import Image as _PIL_Image
+
+        tokens = [GlyphToken(1, "053", "T", "pre_contact")]
+        crop_dir = tmp_path / "3d_crops" / "tablet_T" / "side_a"
+        crop_dir.mkdir(parents=True)
+
+        arr = np.full((16, 16), 200, dtype=np.uint8)
+        arr[4:12, 7:9] = 194
+        arr[7:9, 4:12] = 194
+        _PIL_Image.fromarray(arr, mode="L").save(crop_dir / "L01_G01_053.png")
+
+        ds = GlyphImageDataset(tokens, tmp_path, full_cfg, training=False)
+        sample = ds[0]["image"]
+        assert float(sample.std()) > 0.05
+
+    def test_resolve_uses_exact_catalog_mapping_when_filename_missing(self, full_cfg, tmp_path):
+        from PIL import Image as _PIL_Image
+
+        token = GlyphToken(1, "001", "B", "post_contact", line_num=1, side="a")
+        corpus_dir = tmp_path / "barthel_corpus" / "B"
+        corpus_dir.mkdir(parents=True)
+        img_path = corpus_dir / "001_barthel_1_001.png"
+        _PIL_Image.new("L", (16, 16), color=255).save(img_path)
+
+        (tmp_path / "barthel_catalog.json").write_text(
+            json.dumps({
+                "records": [
+                    {
+                        "corpus_key": "Ba01-001",
+                        "path": "barthel_corpus/B/001_barthel_1_001.png",
+                        "barthel_code": "001",
+                        "merge_suspect": False,
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+
+        ds = GlyphImageDataset([token], tmp_path, full_cfg, training=False)
+        resolved = ds._resolve_image_path(token)
+        assert resolved == img_path
+
+    def test_merge_suspect_exact_catalog_is_bypassed_for_ref_fallback(self, full_cfg, tmp_path):
+        from PIL import Image as _PIL_Image
+
+        token = GlyphToken(1, "001", "B", "post_contact", line_num=1, side="a")
+        corpus_dir = tmp_path / "barthel_corpus" / "B"
+        corpus_dir.mkdir(parents=True)
+        merged_path = corpus_dir / "001_barthel_1_001.png"
+        _PIL_Image.new("L", (16, 16), color=255).save(merged_path)
+
+        ref_dir = tmp_path / "barthel_ref"
+        ref_dir.mkdir(parents=True)
+        ref_path = ref_dir / "1_barthel_1_001.png"
+        _PIL_Image.new("L", (16, 16), color=240).save(ref_path)
+
+        (tmp_path / "barthel_catalog.json").write_text(
+            json.dumps({
+                "records": [
+                    {
+                        "corpus_key": "Ba01-001",
+                        "path": "barthel_corpus/B/001_barthel_1_001.png",
+                        "barthel_code": "001",
+                        "merge_suspect": True,
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+
+        ds = GlyphImageDataset([token], tmp_path, full_cfg, training=False)
+        resolved = ds._resolve_image_path(token)
+        assert resolved == ref_path
+
+    def test_merge_suspect_tokens_can_be_excluded_by_config(self, full_cfg, tmp_path):
+        from PIL import Image as _PIL_Image
+
+        full_cfg.zone_a.preprocessing = {
+            "exclude_merge_suspect_tokens": True,
+        }
+
+        t1 = GlyphToken(1, "001", "B", "post_contact", line_num=1, side="a")
+        t2 = GlyphToken(2, "002", "B", "post_contact", line_num=1, side="a")
+        tokens = [t1, t2]
+
+        corpus_dir = tmp_path / "barthel_corpus" / "B"
+        corpus_dir.mkdir(parents=True)
+        _PIL_Image.new("L", (16, 16), color=255).save(corpus_dir / "001_barthel_1_001.png")
+        _PIL_Image.new("L", (16, 16), color=255).save(corpus_dir / "002_barthel_1_002.png")
+
+        (tmp_path / "barthel_catalog.json").write_text(
+            json.dumps({
+                "records": [
+                    {
+                        "corpus_key": "Ba01-001",
+                        "path": "barthel_corpus/B/001_barthel_1_001.png",
+                        "barthel_code": "001",
+                        "merge_suspect": True,
+                    },
+                    {
+                        "corpus_key": "Ba01-002",
+                        "path": "barthel_corpus/B/002_barthel_1_002.png",
+                        "barthel_code": "002",
+                        "merge_suspect": False,
+                    },
+                ]
+            }),
+            encoding="utf-8",
+        )
+
+        ds = GlyphImageDataset(tokens, tmp_path, full_cfg, training=False)
+        assert len(ds) == 1
+        assert ds.tokens[0].barthel_code == "002"
 
 
 # ---------------------------------------------------------------------------

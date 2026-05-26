@@ -31,13 +31,14 @@ import json
 import logging
 import random
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 from omegaconf import DictConfig
-from PIL import Image
+from PIL import Image, ImageOps
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -194,6 +195,60 @@ def _make_transform(cfg: DictConfig, training: bool) -> transforms.Compose:
     return transforms.Compose(step_list)
 
 
+def _looks_like_low_contrast_relief(
+    gray: Image.Image,
+    *,
+    is_3d_crop: bool,
+    std_threshold: float,
+    dynamic_range_threshold: float,
+    mean_floor: float,
+    dark_ratio_ceiling: float,
+) -> bool:
+    """Return True for pale shallow-relief crops that need contrast expansion."""
+    arr = np.asarray(gray, dtype=np.uint8)
+    if arr.size == 0:
+        return False
+
+    mean = float(arr.mean())
+    std = float(arr.std())
+    p1, p99 = np.percentile(arr, [1, 99])
+    dynamic_range = float(p99 - p1)
+    dark_ratio = float(np.mean(arr < 64))
+
+    relief_like = (
+        mean > mean_floor
+        and std < std_threshold
+        and dynamic_range < dynamic_range_threshold
+        and dark_ratio < dark_ratio_ceiling
+    )
+
+    if is_3d_crop:
+        return relief_like or (
+            mean > (mean_floor - 10.0)
+            and std < (std_threshold + 2.0)
+            and dynamic_range < (dynamic_range_threshold + 12.0)
+            and dark_ratio < dark_ratio_ceiling
+        )
+    return relief_like
+
+
+def _enhance_low_contrast_relief(
+    image: Image.Image,
+    *,
+    autocontrast_cutoff: float,
+) -> Image.Image:
+    """Expand contrast for low-relief grayscale inputs without inverting them."""
+    gray = image.convert("L")
+    enhanced = ImageOps.autocontrast(gray, cutoff=autocontrast_cutoff)
+    return ImageOps.equalize(enhanced)
+
+
+def _token_corpus_key(token: GlyphToken, seq_on_line: int) -> str:
+    side_ab = {"r": "a", "v": "b", "a": "a", "b": "b"}.get(str(token.side), "a")
+    line = f"{int(token.line_num):02d}" if int(token.line_num) > 0 else "00"
+    return f"{token.tablet_id}{side_ab}{line}-{seq_on_line:03d}"
+
+
 # ---------------------------------------------------------------------------
 # GlyphImageDataset
 # ---------------------------------------------------------------------------
@@ -267,6 +322,17 @@ class GlyphImageDataset(Dataset):
         self._filename_pattern: str = str(cfg.glyph.filename_pattern)
         self._image_size: int = int(cfg.glyph.image_size)
         self._channels: int = int(cfg.glyph.image_channels)
+        pp_cfg = cfg.get("zone_a", {}).get("preprocessing", {}) if cfg.get("zone_a") else {}
+        self._enhance_low_contrast: bool = bool(pp_cfg.get("enhance_low_contrast", True))
+        self._lc_std_threshold: float = float(pp_cfg.get("low_contrast_std_threshold", 10.0))
+        self._lc_dynamic_range_threshold: float = float(pp_cfg.get("low_contrast_dynamic_range_threshold", 35.0))
+        self._lc_mean_floor: float = float(pp_cfg.get("low_contrast_mean_floor", 150.0))
+        self._lc_dark_ratio_ceiling: float = float(pp_cfg.get("low_contrast_dark_ratio_ceiling", 0.15))
+        self._lc_autocontrast_cutoff: float = float(pp_cfg.get("low_contrast_autocontrast_cutoff", 1.0))
+        self._exclude_merge_suspect_tokens: bool = bool(pp_cfg.get("exclude_merge_suspect_tokens", False))
+        self._include_positional_ref_estimates: bool = bool(pp_cfg.get("include_positional_ref_estimates", False))
+        self._corpus_key_by_token: dict[tuple[str, int], str] = self._build_corpus_key_index(tokens)
+        self._catalog_exact_index: dict[str, dict[str, Any]] = self._build_catalog_exact_index()
 
         # Build vocabulary from the provided tokens.
         self.vocab: list[str] = sorted(
@@ -287,7 +353,20 @@ class GlyphImageDataset(Dataset):
         # absent because barthel_corpus/ PDF extraction (OCR / alignment) was
         # incomplete, or because a code variant has no canonical barthel_ref/
         # entry.  Run scripts/extract_barthel_glyphs.py --source both to fix.
-        _resolved = [(t, self._resolve_image_path(t)) for t in tokens]
+        candidate_tokens = tokens
+        merge_suspect_excluded = 0
+        if self._exclude_merge_suspect_tokens:
+            filtered_tokens: list[GlyphToken] = []
+            for token in tokens:
+                corpus_key = self._corpus_key_by_token.get((token.tablet_id, token.position))
+                exact = self._catalog_exact_index.get(corpus_key) if corpus_key else None
+                if exact and exact.get("merge_suspect", False):
+                    merge_suspect_excluded += 1
+                    continue
+                filtered_tokens.append(token)
+            candidate_tokens = filtered_tokens
+
+        _resolved = [(t, self._resolve_image_path(t)) for t in candidate_tokens]
         _missing = [(t, p) for t, p in _resolved if not p.exists()]
         if _missing:
             _missing_codes = sorted({t.barthel_code for t, _ in _missing})
@@ -302,6 +381,14 @@ class GlyphImageDataset(Dataset):
                 _missing_codes[:20],
                 " …" if len(_missing_codes) > 20 else "",
             )
+
+        if self._exclude_merge_suspect_tokens and merge_suspect_excluded:
+            logger.warning(
+                "GlyphImageDataset: excluded %d merge_suspect token(s) by config "
+                "zone_a.preprocessing.exclude_merge_suspect_tokens=true",
+                merge_suspect_excluded,
+            )
+
         self.tokens = [t for t, p in _resolved if p.exists()]
         logger.info(
             "GlyphImageDataset: %d / %d tokens have images (%.0f%% coverage).  "
@@ -338,7 +425,7 @@ class GlyphImageDataset(Dataset):
         ``"tablet_id"`` : str
             Source tablet identifier.
         ``"position"`` : int
-            1-based position on the tablet.
+        pp_cfg = cfg.get("zone_a", {}).get("preprocessing", {}) if cfg.get("zone_a") else {}
         ``"stratum"`` : str
             Temporal stratum label.
         """
@@ -398,9 +485,27 @@ class GlyphImageDataset(Dataset):
                 index[base] = p
 
         ref_dir = self.glyphs_dir / "barthel_ref"
+        skipped_positional_ref = 0
         if ref_dir.is_dir():
             for p in sorted(ref_dir.glob("*.png")):
+                stem = p.stem
+                prefix = stem.split("_barthel_")[0] if "_barthel_" in stem else stem
+                # Filenames like "100_42_barthel_..." are positional estimates
+                # and may contain non-glyph artifacts (e.g., plate labels).
+                if (
+                    not self._include_positional_ref_estimates
+                    and re.fullmatch(r"\d+_\d+", prefix)
+                ):
+                    skipped_positional_ref += 1
+                    continue
                 _insert(p)
+
+        if skipped_positional_ref:
+            logger.info(
+                "GlyphImageDataset: skipped %d positional barthel_ref estimate file(s); "
+                "set zone_a.preprocessing.include_positional_ref_estimates=true to include.",
+                skipped_positional_ref,
+            )
 
         corpus_img_dir = self.glyphs_dir / "barthel_corpus"
         if corpus_img_dir.is_dir():
@@ -429,6 +534,45 @@ class GlyphImageDataset(Dataset):
 
         return index
 
+    def _build_corpus_key_index(self, tokens: list[GlyphToken]) -> dict[tuple[str, int], str]:
+        """Build {(tablet_id, position): corpus_key} using line-local sequence order."""
+        groups: dict[tuple[str, int], list[GlyphToken]] = defaultdict(list)
+        for token in tokens:
+            side_ab = {"r": "a", "v": "b", "a": "a", "b": "b"}.get(str(token.side), "a")
+            groups[(token.tablet_id, token.line_num, side_ab)].append(token)
+
+        index: dict[tuple[str, int], str] = {}
+        for _, grouped_tokens in groups.items():
+            for seq_on_line, token in enumerate(sorted(grouped_tokens, key=lambda t: t.position), 1):
+                index[(token.tablet_id, token.position)] = _token_corpus_key(token, seq_on_line)
+        return index
+
+    def _build_catalog_exact_index(self) -> dict[str, dict[str, Any]]:
+        """Load exact corpus_key-to-image mappings from barthel_catalog.json."""
+        catalog_path = self.glyphs_dir / "barthel_catalog.json"
+        if not catalog_path.exists():
+            return {}
+
+        raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+        records = raw.get("records", raw) if isinstance(raw, dict) else raw
+        index: dict[str, dict[str, Any]] = {}
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            corpus_key = rec.get("corpus_key")
+            rel_path = rec.get("path")
+            if not corpus_key or not rel_path:
+                continue
+            abs_path = self.glyphs_dir / rel_path
+            if not abs_path.exists():
+                continue
+            index[str(corpus_key)] = {
+                "path": abs_path,
+                "merge_suspect": bool(rec.get("merge_suspect", False)),
+                "barthel_code": rec.get("barthel_code"),
+            }
+        return index
+
     def _resolve_image_path(self, token: GlyphToken) -> Path:
         """Expand the filename pattern for a given glyph token.
 
@@ -450,6 +594,12 @@ class GlyphImageDataset(Dataset):
         path = self.glyphs_dir / filename
         if path.exists():
             return path
+
+        corpus_key = self._corpus_key_by_token.get((token.tablet_id, token.position))
+        if corpus_key:
+            exact = self._catalog_exact_index.get(corpus_key)
+            if exact and not exact.get("merge_suspect", False):
+                return exact["path"]
 
         # Fallback: look up a reference image in barthel_ref/ using the
         # pre-built index.  Corpus codes have leading zeros ("004") and
@@ -500,6 +650,20 @@ class GlyphImageDataset(Dataset):
                 self._channels, self._image_size, self._image_size
             )
         img = Image.open(path)
+        if self._enhance_low_contrast:
+            gray = img.convert("L")
+            if _looks_like_low_contrast_relief(
+                gray,
+                is_3d_crop=("3d_crops" in path.parts),
+                std_threshold=self._lc_std_threshold,
+                dynamic_range_threshold=self._lc_dynamic_range_threshold,
+                mean_floor=self._lc_mean_floor,
+                dark_ratio_ceiling=self._lc_dark_ratio_ceiling,
+            ):
+                img = _enhance_low_contrast_relief(
+                    gray,
+                    autocontrast_cutoff=self._lc_autocontrast_cutoff,
+                )
         return self._transform(img)
 
 
