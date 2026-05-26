@@ -66,6 +66,7 @@ _TYPE_LABELS: dict[str, str] = {
     "syllabic":       "Syllabic",
     "logographic":    "Logographic",
     "semasiographic": "Semasiographic",
+  "mixed_syllabic_logographic": "Mixed (Syllabic + Logographic)",
 }
 
 # ---------------------------------------------------------------------------
@@ -564,6 +565,8 @@ body {
 .compare-table tr:hover { background: var(--surface2); }
 .compare-table tr.qubo-row { background: #7c3aed0a; }
 .compare-table tr.qubo-row:hover { background: #7c3aed15; }
+.compare-table tr.mixed-row { background: #0596690f; }
+.compare-table tr.mixed-row:hover { background: #0596691a; }
 .qubo-badge {
   font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
   color: #7c3aed; background: #7c3aed18; border: 1px solid #7c3aed44;
@@ -572,6 +575,11 @@ body {
 .mcmc-rank { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
 .delta-pos { color: #4caf7d; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 .delta-neg { color: #e07b54; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.mixed-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+  color: #059669; background: #05966918; border: 1px solid #05966944;
+  border-radius: 3px; padding: 2px 7px; white-space: nowrap;
+}
 
 @media (max-width: 860px) {
   .card-body { grid-template-columns: 1fr; }
@@ -1346,12 +1354,81 @@ def _render_comparison_table(ranking: "HypothesisRanking", qubo_data: dict | Non
 </div>"""
 
 
+def _render_mixed_model_panel(mixed_data: dict | None) -> str:
+    """Render primary-vs-mixed model comparison from model_comparison.json."""
+    if not mixed_data:
+        return ""
+
+    primary = mixed_data.get("primary_model") or {}
+    mixed = mixed_data.get("mixed_model") or {}
+    delta = mixed_data.get("delta_mixed_minus_primary")
+
+    primary_id = primary.get("hypothesis_id", "—")
+    primary_type = _TYPE_LABELS.get(primary.get("hypothesis_type", ""), primary.get("hypothesis_type", "—"))
+    primary_lm = primary.get("overall_lm_score")
+
+    mixed_id = mixed.get("hypothesis_id", "—")
+    mixed_type = _TYPE_LABELS.get(mixed.get("hypothesis_type", ""), mixed.get("hypothesis_type", "—"))
+    mixed_lm = mixed.get("overall_lm_score")
+
+    primary_lm_str = f"{primary_lm:.4f}" if isinstance(primary_lm, (int, float)) else "—"
+    mixed_lm_str = f"{mixed_lm:.4f}" if isinstance(mixed_lm, (int, float)) else "—"
+
+    if isinstance(delta, (int, float)):
+        delta_cls = "delta-pos" if delta >= 0 else "delta-neg"
+        delta_html = f'<span class="{delta_cls}">{delta:+.4f}</span>'
+    else:
+        delta_html = '<span class="speedup-low">—</span>'
+
+    taxogram_cribs = mixed.get("taxogram_cribs") or {}
+    chips = "".join(
+        f'<span class="lang-chip" style="font-size:9px">{s}→{p}</span>'
+        for s, p in sorted(taxogram_cribs.items())
+    ) or '<span class="muted">—</span>'
+
+    return f"""
+<div class="q-card" id="mixed-model-comparison">
+  <div class="q-card-title">Primary Syllabic vs Mixed Model</div>
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Hypothesis</th>
+        <th style="text-align:right">LM Score (bits)</th>
+        <th>Details</th>
+        <th style="text-align:right">Δ vs Primary</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="mcmc-rank">Primary</span></td>
+        <td><span class="mono" style="font-size:11px">{primary_id}</span></td>
+        <td class="h-num">{primary_lm_str}</td>
+        <td><span class="lang-chip" style="font-size:9px">{primary_type}</span></td>
+        <td></td>
+      </tr>
+      <tr class="mixed-row">
+        <td><span class="mixed-badge">Mixed</span></td>
+        <td><span class="mono" style="font-size:11px;color:#059669">{mixed_id}</span></td>
+        <td class="h-num">{mixed_lm_str}</td>
+        <td><span class="lang-chip" style="font-size:9px">{mixed_type}</span></td>
+        <td>{delta_html}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="q-meta" style="margin-top:10px">
+    Taxogram hard assignments (excluded from LM scoring in mixed model): {chips}
+  </p>
+</div>"""
+
+
 def _render_quantum_section(
     ranking: "HypothesisRanking",
     pgood_data: dict | None,
     qubo_data: dict | None,
+  mixed_data: dict | None = None,
 ) -> str:
-    if pgood_data is None and qubo_data is None:
+  if pgood_data is None and qubo_data is None and mixed_data is None:
         return """
 <div class="quantum-section" id="quantum-analysis">
   <div class="quantum-heading"><span>&#9883;</span>Quantum Analysis</div>
@@ -1363,6 +1440,8 @@ def _render_quantum_section(
 </div>"""
 
     parts: list[str] = []
+    if mixed_data is not None:
+      parts.append(_render_mixed_model_panel(mixed_data))
     if qubo_data is not None or ranking.hypotheses:
         parts.append(_render_comparison_table(ranking, qubo_data))
     if pgood_data is not None:
@@ -1387,6 +1466,7 @@ def _render_html(
     null_baseline: float | None = None,
     pgood_data: dict | None = None,
     qubo_data: dict | None = None,
+    mixed_data: dict | None = None,
     diag_data: dict | None = None,
     freq_data: dict | None = None,
     morph_data: dict | None = None,
@@ -1412,7 +1492,7 @@ def _render_html(
         for rank, hyp in enumerate(hypotheses, start=1)
     )
 
-    quantum_section = _render_quantum_section(ranking, pgood_data, qubo_data)
+    quantum_section = _render_quantum_section(ranking, pgood_data, qubo_data, mixed_data)
 
     # Optional enhanced-metrics sections
     top_assignments = hypotheses[0].assignments if hypotheses else None
@@ -1438,6 +1518,8 @@ def _render_html(
         for h in hypotheses
     )
     toc_chips += '<a class="toc-chip" href="#quantum-analysis" style="color:#7c3aed">&#9883; Quantum</a>'
+    if mixed_data:
+      toc_chips += '<a class="toc-chip" href="#mixed-model-comparison" style="color:#059669">&#8644; Mixed vs Primary</a>'
     toc_chips += toc_extra
 
     n_assignments_top = len(hypotheses[0].assignments) if hypotheses else 0
@@ -1531,6 +1613,7 @@ def build_decipherment_report(
     null_baseline: float | None = None,
     pgood_path: Path | None = None,
     qubo_path: Path | None = None,
+    mixed_compare_path: Path | None = None,
     diag_path: Path | None = None,
     freq_path: Path | None = None,
     morph_path: Path | None = None,
@@ -1551,6 +1634,9 @@ def build_decipherment_report(
     qubo_path : Path, optional
         Path to ``qubo_result.json`` from ``run_qubo_decipherment.py``.
         When provided, shows cribs panel and QUBO score comparison.
+    mixed_compare_path : Path, optional
+      Path to ``mixed_model/model_comparison.json`` written by
+      ``run_decipherment.py``. Enables primary-vs-mixed model comparison.
     diag_path : Path, optional
         Path to ``mcmc_diagnostics.json`` written by ``run_decipherment.py``.
         Enables the MCMC diagnostics panel and crib verification.
@@ -1585,6 +1671,7 @@ def build_decipherment_report(
 
     pgood_data = _load_opt(pgood_path, "pgood data")
     qubo_data  = _load_opt(qubo_path,  "QUBO data")
+    mixed_data = _load_opt(mixed_compare_path, "mixed-model comparison")
     diag_data  = _load_opt(diag_path,  "MCMC diagnostics")
     freq_data  = _load_opt(freq_path,  "freq-match data")
     morph_data = _load_opt(morph_path, "morpheme segmentation")
@@ -1594,6 +1681,7 @@ def build_decipherment_report(
         null_baseline=null_baseline,
         pgood_data=pgood_data,
         qubo_data=qubo_data,
+        mixed_data=mixed_data,
         diag_data=diag_data,
         freq_data=freq_data,
         morph_data=morph_data,
@@ -1607,6 +1695,7 @@ def save_decipherment_report(
     null_baseline: float | None = None,
     pgood_path: Path | None = None,
     qubo_path: Path | None = None,
+    mixed_compare_path: Path | None = None,
     diag_path: Path | None = None,
     freq_path: Path | None = None,
     morph_path: Path | None = None,
@@ -1615,6 +1704,7 @@ def save_decipherment_report(
     html = build_decipherment_report(
         ranking_path, top_n=top_n, null_baseline=null_baseline,
         pgood_path=pgood_path, qubo_path=qubo_path,
+      mixed_compare_path=mixed_compare_path,
         diag_path=diag_path, freq_path=freq_path, morph_path=morph_path,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1653,6 +1743,10 @@ def _parse_args() -> argparse.Namespace:
         help="qubo_result.json from run_qubo_decipherment.py (optional).",
     )
     p.add_argument(
+      "--mixed-compare", type=Path, default=None, metavar="JSON",
+      help="mixed_model/model_comparison.json from run_decipherment.py (optional).",
+    )
+    p.add_argument(
         "--diag", type=Path, default=None, metavar="JSON",
         help="mcmc_diagnostics.json from run_decipherment.py (optional).",
     )
@@ -1681,6 +1775,7 @@ def main() -> None:
 
     pgood_path = _opt(args.pgood,      ranking_dir.parent / "zone_b" / "pgood_analysis.json")
     qubo_path  = _opt(args.qubo,       ranking_dir / "qubo_result.json")
+    mixed_path = _opt(args.mixed_compare, ranking_dir / "mixed_model" / "model_comparison.json")
     diag_path  = _opt(args.diag,       ranking_dir / "mcmc_diagnostics.json")
     freq_path  = _opt(args.freq_match, ranking_dir.parent / "zone_b" / "freq_match.json")
     morph_path = _opt(args.morphemes,  ranking_dir.parent / "morpheme_segments.json")
@@ -1692,6 +1787,7 @@ def main() -> None:
         top_n=args.top_n,
         pgood_path=pgood_path,
         qubo_path=qubo_path,
+        mixed_compare_path=mixed_path,
         diag_path=diag_path,
         freq_path=freq_path,
         morph_path=morph_path,

@@ -69,6 +69,16 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
 
 
+# External-evidence logographic taxograms used in the mixed model.
+# These are pinned as hard variables in QUBO and excluded from LM terms.
+LOGOGRAPHIC_TAXOGRAMS: dict[str, str] = {
+    "600": "manu",
+    "700": "ika",
+    "280": "honu",
+    "690": "tangata manu",
+}
+
+
 # ---------------------------------------------------------------------------
 # Data loading  (shared with measure_pgood.py)
 # ---------------------------------------------------------------------------
@@ -150,12 +160,19 @@ def _score_assignment(
     phone_map: dict[str, str],
     corpus_seqs: list[list[str]],
     lms: list[NGramLM],
+    non_scoring_signs: set[str] | None = None,
 ) -> float:
     """Mean per-token log-prob of corpus under the assignment (for comparison)."""
     total_lp = 0.0
     total_n = 0
     for seq in corpus_seqs:
-        translated = [phone_map.get(s, "<UNK>") for s in seq]
+        translated = [
+            phone_map.get(s, "<UNK>")
+            for s in seq
+            if non_scoring_signs is None or s not in non_scoring_signs
+        ]
+        if not translated:
+            continue
         for lm in lms:
             if len(translated) >= lm.order:
                 total_lp += lm.score_sequence(translated)
@@ -184,6 +201,7 @@ def build_qubo(
     max_bigram_pairs: int = 500,
     cribs: dict[str, str] | None = None,
     crib_penalty: float = 200.0,
+    taxogram_signs: set[str] | None = None,
 ) -> dict[tuple[int, int], float]:
     """Build the QUBO matrix Q.
 
@@ -220,6 +238,9 @@ def build_qubo(
     n_phonemes = len(phonemes)
     Q: dict[tuple[int, int], float] = {}
     sign_index = {s: i for i, s in enumerate(signs)}
+    taxogram_idx = {
+        sign_index[s] for s in (taxogram_signs or set()) if s in sign_index
+    }
 
     def _add(i: int, j: int, val: float) -> None:
         if i > j:
@@ -232,6 +253,8 @@ def build_qubo(
 
     # ── Objective: maximise LM unigram score ─────────────────────────────────
     for s_idx in range(n_signs):
+        if s_idx in taxogram_idx:
+            continue
         for p_idx, phoneme in enumerate(phonemes):
             score = _unigram_score(phoneme, lms)
             v = _var(s_idx, p_idx, n_phonemes)
@@ -251,7 +274,11 @@ def build_qubo(
     # ── Capacity penalty: at most k signs per phoneme ─────────────────────────
     for p_idx in range(n_phonemes):
         for s_idx in range(n_signs):
+            if s_idx in taxogram_idx:
+                continue
             for t_idx in range(s_idx + 1, n_signs):
+                if t_idx in taxogram_idx:
+                    continue
                 vi = _var(s_idx, p_idx, n_phonemes)
                 vj = _var(t_idx, p_idx, n_phonemes)
                 _add(vi, vj, 2.0 * lambda2)
@@ -264,7 +291,10 @@ def build_qubo(
             for a, b in zip(seq, seq[1:]):
                 si = sign_index.get(a, -1)
                 sj = sign_index.get(b, -1)
-                if si >= 0 and sj >= 0 and si != sj:
+                if (
+                    si >= 0 and sj >= 0 and si != sj
+                    and si not in taxogram_idx and sj not in taxogram_idx
+                ):
                     key = (si, sj)
                     adj_counts[key] = adj_counts.get(key, 0) + 1
 
@@ -699,6 +729,14 @@ def _parse_args() -> argparse.Namespace:
                         "(e.g. '200=tangata,076=ko').  These assignments are "
                         "pinned with a hard QUBO penalty so they are always "
                         "satisfied.  Sign IDs are Barthel codes.")
+    p.add_argument(
+        "--disable-taxogram-cribs",
+        action="store_true",
+        help=(
+            "Disable default logographic taxogram constraints "
+            "(600=manu, 700=ika, 280=honu, 690=tangata manu)."
+        ),
+    )
     p.add_argument("--crib-penalty", type=float, default=200.0, metavar="F",
                    help="Penalty weight for crib constraints (default: 200.0; "
                         "should dominate lambda1 and lambda2).")
@@ -767,6 +805,8 @@ def main() -> None:
 
     # ── Parse cribs ───────────────────────────────────────────────────────────
     cribs: dict[str, str] = {}
+    if not args.disable_taxogram_cribs:
+        cribs.update(LOGOGRAPHIC_TAXOGRAMS)
     if args.crib:
         for pair in args.crib.split(","):
             pair = pair.strip()
@@ -814,6 +854,7 @@ def main() -> None:
         max_per_phoneme=args.max_per_phoneme,
         cribs=cribs or None,
         crib_penalty=args.crib_penalty,
+        taxogram_signs=(set(LOGOGRAPHIC_TAXOGRAMS) if not args.disable_taxogram_cribs else set()),
     )
     bqm = _qubo_to_bqm(Q)
     n_couplings = sum(1 for (i, j) in Q if i != j)
@@ -835,7 +876,13 @@ def main() -> None:
     confidence = _assignment_confidence(best_sample, all_signs, all_phonemes, sampleset)
 
     # ── Score with LMs ────────────────────────────────────────────────────────
-    best_lm_score = _score_assignment(phone_map, corpus_seqs, lms)
+    taxogram_signs = set(LOGOGRAPHIC_TAXOGRAMS) if not args.disable_taxogram_cribs else set()
+    best_lm_score = _score_assignment(
+        phone_map,
+        corpus_seqs,
+        lms,
+        non_scoring_signs=taxogram_signs,
+    )
 
     # ── Print results ─────────────────────────────────────────────────────────
     print(f"\n{'═' * 64}")
@@ -884,6 +931,7 @@ def main() -> None:
             else None
         ),
         "cribs":                 cribs if cribs else {},
+        "taxogram_signs_excluded_from_lm": sorted(taxogram_signs),
         "crib_penalty":          args.crib_penalty if cribs else None,
         "phoneme_assignments":   phoneme_assignments,
         "annealing_time_seconds": round(elapsed, 2),

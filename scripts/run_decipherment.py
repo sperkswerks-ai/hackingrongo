@@ -87,7 +87,12 @@ from hackingrongo.results.schema import (  # noqa: E402
 )
 from hackingrongo.zone_c.beam_search import BeamSearchDecoder, BeamSearchResult  # noqa: E402
 from hackingrongo.zone_c.lm_scoring import LMScorer, PhonemeMap  # noqa: E402
-from hackingrongo.zone_c.mcmc import MCMCResult, MCMCSample, MCMCSampler  # noqa: E402
+from hackingrongo.zone_c.mcmc import (  # noqa: E402
+    MCMCResult,
+    MCMCSample,
+    MCMCSampler,
+    _DEFAULT_PHONEME_INVENTORY,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -119,6 +124,16 @@ CALENDAR_ANCHORS: dict[str, str] = {
     "040": "kokore",    # hard anchor + moderate soft prior
 }
 
+# Logographic taxograms (external evidence): pinned constraints in the mixed
+# model. These signs are excluded from LM scoring in that model and only
+# constrain surrounding phonemic context.
+LOGOGRAPHIC_TAXOGRAMS: dict[str, str] = {
+    "600": "manu",
+    "700": "ika",
+    "280": "honu",
+    "690": "tangata manu",
+}
+
 # Phoneme → proposal weight multiplier (above the uniform baseline of 1.0).
 # Applied globally across all signs; most meaningful for the anchored signs.
 _CALENDAR_SOFT_BOOST: dict[str, float] = {
@@ -144,6 +159,25 @@ def _build_anchored_initial_map(
 def _build_calendar_phoneme_priors(phoneme_inventory: list[str]) -> list[float]:
     """Proposal weight vector with calendar phonemes boosted above baseline."""
     return [_CALENDAR_SOFT_BOOST.get(ph, 1.0) for ph in phoneme_inventory]
+
+
+def _strip_non_scoring_signs(
+    sequences: list[list[str]],
+    non_scoring_signs: set[str],
+) -> list[list[str]]:
+    """Remove taxogram signs from LM-scored sequences.
+
+    Used by the mixed model where logographic taxograms are fixed constraints
+    rather than syllabic LM evidence.
+    """
+    if not non_scoring_signs:
+        return sequences
+    out: list[list[str]] = []
+    for seq in sequences:
+        pruned = [s for s in seq if s not in non_scoring_signs]
+        if pruned:
+            out.append(pruned)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +317,7 @@ def _score_map_all_tablets(
     phoneme_map: PhonemeMap,
     all_tablets: list,
     lm_scorer: LMScorer,
+    non_scoring_signs: set[str] | None = None,
 ) -> tuple[float, dict[str, list[tuple[float, float]]]]:
     """Score a phoneme map against all tablets in one pass.
 
@@ -298,7 +333,13 @@ def _score_map_all_tablets(
     by_stratum: dict[str, list[tuple[float, float]]] = {}
 
     for tablet in all_tablets:
-        seq = [phoneme_map.get(tok.barthel_code, "<UNK>") for tok in tablet.tokens]
+        seq = [
+            phoneme_map.get(tok.barthel_code, "<UNK>")
+            for tok in tablet.tokens
+            if non_scoring_signs is None or tok.barthel_code not in non_scoring_signs
+        ]
+        if not seq:
+            continue
         result = lm_scorer.score(seq)
         lp, cov = result.ensemble_log_prob, result.coverage
         if math.isfinite(lp):
@@ -397,14 +438,16 @@ def _make_hypothesis(
     lm_scorer: LMScorer,
     mcmc_samples: list[MCMCSample],
     config_hash: str,
+    non_scoring_signs: set[str] | None = None,
+    hypothesis_type: str = "syllabic",
 ) -> DecryptionHypothesis:
     overall_lp, by_stratum = _score_map_all_tablets(
-        phoneme_map, all_tablets, lm_scorer
+        phoneme_map, all_tablets, lm_scorer, non_scoring_signs=non_scoring_signs
     )
     return DecryptionHypothesis(
         hypothesis_id="",  # assigned after ranking
         run_id=run_id,
-        hypothesis_type="syllabic",
+        hypothesis_type=hypothesis_type,
         assignments=_build_assignments(
             phoneme_map, sign_ids, corpus_sequences, mcmc_samples
         ),
@@ -492,28 +535,33 @@ def _run(
         "MCMC: %d chain(s) × %d iterations (burn-in %d, thin %d) …",
         mc.num_chains, mc.num_iterations, mc.burn_in, mc.thin,
     )
+    # ── Phoneme inventory: default CV syllables + calendar anchor words ──────
+    # omotohi (152) and kokore (040) are multi-syllable logograms that must be
+    # present in the inventory so that:
+    #   (a) the cribs init check in _random_initial_map resolves them, and
+    #   (b) _build_calendar_phoneme_priors finds them for soft-boost weights.
+    _anchor_extras = [
+        ph for ph in CALENDAR_ANCHORS.values() if ph not in _DEFAULT_PHONEME_INVENTORY
+    ]
+    phoneme_inventory = list(_DEFAULT_PHONEME_INVENTORY) + _anchor_extras
+    calendar_priors = _build_calendar_phoneme_priors(phoneme_inventory)
+
+    # ── MCMC: pass cribs directly so the sampler excludes them from proposals ─
+    # Anchored signs are added to _crib_signs → removed from _free_sign_ids →
+    # never touched by _propose() for the entire chain run.
+    active_anchors = {k: v for k, v in CALENDAR_ANCHORS.items() if k in sign_ids}
     sampler = MCMCSampler(
         cfg=cfg,
         lm_scorer=lm_scorer,
         corpus_sequences=corpus_sequences,
         sign_ids=sign_ids,
+        phoneme_inventory=phoneme_inventory,
+        phoneme_priors=calendar_priors,
+        cribs=active_anchors,
         seed=int(cfg.seed),
     )
-    # ── Calendar anchors: hard initial map + soft proposal priors ────────────
-    # Hard: every chain starts with Sign 152 → omotohi, Sign 040 → kokore.
-    # Soft: proposal distribution upweights those phonemes so the chain
-    #   recovers quickly if a move displaces an anchor.
-    _phoneme_inv = sampler._phoneme_inventory
-    calendar_priors = _build_calendar_phoneme_priors(_phoneme_inv)
-    sampler._phoneme_priors = calendar_priors  # type: ignore[assignment]
-
-    def _anchored_initial_map(rng):  # noqa: E306
-        return _build_anchored_initial_map(sign_ids, _phoneme_inv, rng)
-    sampler._random_initial_map = _anchored_initial_map  # type: ignore[method-assign]
-
-    active_anchors = {k: v for k, v in CALENDAR_ANCHORS.items() if k in sign_ids}
-    active_boosts = {ph: w for ph, w in _CALENDAR_SOFT_BOOST.items() if ph in _phoneme_inv}
-    log.info("Calendar hard anchors: %s", active_anchors)
+    active_boosts = {ph: w for ph, w in _CALENDAR_SOFT_BOOST.items() if ph in phoneme_inventory}
+    log.info("Calendar hard anchors (cribs): %s", active_anchors)
     log.info("Calendar soft boosts: %s", active_boosts)
     mcmc_result: MCMCResult = sampler.run()
 
@@ -638,6 +686,118 @@ def _run(
         reverse=True,
     )[:top_n]
 
+    # ── Mixed model: syllabic MCMC + pinned logographic taxograms ───────────
+    mixed_ranked: list[DecryptionHypothesis] = []
+    mixed_non_scoring_signs = {s for s in LOGOGRAPHIC_TAXOGRAMS if s in sign_ids}
+    if mixed_non_scoring_signs:
+        log.info(
+            "Mixed model enabled: pinned taxograms=%s (excluded from LM scoring)",
+            {s: LOGOGRAPHIC_TAXOGRAMS[s] for s in sorted(mixed_non_scoring_signs)},
+        )
+        mixed_cribs = dict(active_anchors)
+        for s in mixed_non_scoring_signs:
+            mixed_cribs[s] = LOGOGRAPHIC_TAXOGRAMS[s]
+
+        mixed_extras = [
+            ph for ph in mixed_cribs.values() if ph not in _DEFAULT_PHONEME_INVENTORY
+        ]
+        mixed_phoneme_inventory = list(_DEFAULT_PHONEME_INVENTORY) + mixed_extras
+        mixed_priors = _build_calendar_phoneme_priors(mixed_phoneme_inventory)
+        mixed_sequences = _strip_non_scoring_signs(corpus_sequences, mixed_non_scoring_signs)
+
+        if not mixed_sequences:
+            log.warning("Mixed model skipped: all sequences emptied by taxogram filtering.")
+        else:
+            mixed_sampler = MCMCSampler(
+                cfg=cfg,
+                lm_scorer=lm_scorer,
+                corpus_sequences=mixed_sequences,
+                sign_ids=sign_ids,
+                phoneme_inventory=mixed_phoneme_inventory,
+                phoneme_priors=mixed_priors,
+                cribs=mixed_cribs,
+                seed=int(cfg.seed),
+            )
+            mixed_mcmc_result: MCMCResult = mixed_sampler.run()
+            log.info(
+                "Mixed MCMC done: %d sample(s), converged=%s.",
+                len(mixed_mcmc_result.top_samples), mixed_mcmc_result.converged,
+            )
+
+            mixed_beam_result: BeamSearchResult = decoder.decode(
+                sign_ids=sign_ids,
+                corpus_sequences=mixed_sequences,
+                seed_hypotheses=mixed_mcmc_result.top_samples,
+            )
+
+            mixed_pool: dict[tuple, DecryptionHypothesis] = {}
+            for sample in mixed_mcmc_result.top_samples:
+                key = tuple(sorted(sample.phoneme_map.items()))
+                mixed_pool[key] = _make_hypothesis(
+                    run_id="local",
+                    phoneme_map=sample.phoneme_map,
+                    mcmc_log_posterior=sample.log_posterior,
+                    beam_score=0.0,
+                    sign_ids=sign_ids,
+                    corpus_sequences=corpus_sequences,
+                    all_tablets=all_tablets,
+                    lm_scorer=lm_scorer,
+                    mcmc_samples=mixed_mcmc_result.top_samples,
+                    config_hash=config_hash,
+                    non_scoring_signs=mixed_non_scoring_signs,
+                    hypothesis_type="mixed_syllabic_logographic",
+                )
+
+            def _mixed_seed_lp(phoneme_map: PhonemeMap) -> float:
+                best_lp = -math.inf
+                best_overlap = -1
+                for sample in mixed_mcmc_result.top_samples:
+                    overlap = sum(
+                        1 for sign, ph in phoneme_map.items()
+                        if sample.phoneme_map.get(sign) == ph
+                    )
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_lp = sample.log_posterior
+                return best_lp
+
+            for bhyp in mixed_beam_result.top_hypotheses:
+                key = tuple(sorted(bhyp.phoneme_map.items()))
+                if key in mixed_pool:
+                    mixed_pool[key].beam_score = round(bhyp.log_score, 6)
+                else:
+                    mixed_pool[key] = _make_hypothesis(
+                        run_id="local",
+                        phoneme_map=bhyp.phoneme_map,
+                        mcmc_log_posterior=_mixed_seed_lp(bhyp.phoneme_map),
+                        beam_score=bhyp.log_score,
+                        sign_ids=sign_ids,
+                        corpus_sequences=corpus_sequences,
+                        all_tablets=all_tablets,
+                        lm_scorer=lm_scorer,
+                        mcmc_samples=mixed_mcmc_result.top_samples,
+                        config_hash=config_hash,
+                        non_scoring_signs=mixed_non_scoring_signs,
+                        hypothesis_type="mixed_syllabic_logographic",
+                    )
+
+            mixed_ranked = sorted(
+                mixed_pool.values(),
+                key=lambda h: (
+                    h.overall_lm_score if math.isfinite(h.overall_lm_score) else -math.inf
+                ),
+                reverse=True,
+            )[:top_n]
+            for i, hyp in enumerate(mixed_ranked, 1):
+                hyp.hypothesis_id = f"MX{i:04d}"
+
+            if mixed_ranked:
+                log.info(
+                    "Top mixed hypothesis: %s  overall_lm=%.4f",
+                    mixed_ranked[0].hypothesis_id,
+                    mixed_ranked[0].overall_lm_score,
+                )
+
     for i, hyp in enumerate(ranked, 1):
         hyp.hypothesis_id = f"H{i:04d}"
 
@@ -660,6 +820,52 @@ def _run(
     ranking.save(ranking_json)
     ranking_csv.write_text(ranking.to_csv(), encoding="utf-8")
     ranking_md.write_text(ranking.to_markdown(), encoding="utf-8")
+
+    if mixed_ranked:
+        mixed_dir = out_dir / "mixed_model"
+        mixed_dir.mkdir(parents=True, exist_ok=True)
+        for hyp in mixed_ranked:
+            hyp.save(mixed_dir / f"hypothesis_{hyp.hypothesis_id}.json")
+
+        mixed_ranking = HypothesisRanking(
+            hypotheses=mixed_ranked,
+            ranking_metric="overall_lm_score",
+        )
+        mixed_json = mixed_dir / "ranking_mixed.json"
+        mixed_csv = mixed_dir / "ranking_mixed.csv"
+        mixed_md = mixed_dir / "ranking_mixed.md"
+        mixed_ranking.save(mixed_json)
+        mixed_csv.write_text(mixed_ranking.to_csv(), encoding="utf-8")
+        mixed_md.write_text(mixed_ranking.to_markdown(), encoding="utf-8")
+
+        if ranked:
+            comparison = {
+                "primary_model": {
+                    "hypothesis_id": ranked[0].hypothesis_id,
+                    "hypothesis_type": ranked[0].hypothesis_type,
+                    "overall_lm_score": ranked[0].overall_lm_score,
+                },
+                "mixed_model": {
+                    "hypothesis_id": mixed_ranked[0].hypothesis_id,
+                    "hypothesis_type": mixed_ranked[0].hypothesis_type,
+                    "overall_lm_score": mixed_ranked[0].overall_lm_score,
+                    "taxogram_cribs": {
+                        s: LOGOGRAPHIC_TAXOGRAMS[s]
+                        for s in sorted(mixed_non_scoring_signs)
+                    },
+                    "taxogram_signs_excluded_from_lm": sorted(mixed_non_scoring_signs),
+                },
+                "delta_mixed_minus_primary": (
+                    mixed_ranked[0].overall_lm_score - ranked[0].overall_lm_score
+                ),
+            }
+            cmp_path = mixed_dir / "model_comparison.json"
+            cmp_path.write_text(json.dumps(comparison, indent=2), encoding="utf-8")
+            log.info(
+                "Model comparison written to %s (delta=%.4f)",
+                cmp_path,
+                comparison["delta_mixed_minus_primary"],
+            )
 
     # ── MCMC diagnostics sidecar (consumed by the HTML report) ────────────────
     acceptance_mean = (
@@ -699,12 +905,14 @@ def _run(
         from hackingrongo.results.decipherment_report import save_decipherment_report
         pgood_path_auto = out_dir.parent / "zone_b" / "pgood_analysis.json"
         qubo_path_auto  = out_dir / "qubo_result.json"
+        mixed_cmp_auto  = out_dir / "mixed_model" / "model_comparison.json"
         freq_path_auto  = out_dir.parent / "zone_b" / "freq_match.json"
         morph_path_auto = out_dir.parent / "morpheme_segments.json"
         save_decipherment_report(
             ranking_json, report_path, top_n=20,
             pgood_path  = pgood_path_auto  if pgood_path_auto.exists()  else None,
             qubo_path   = qubo_path_auto   if qubo_path_auto.exists()   else None,
+            mixed_compare_path = mixed_cmp_auto if mixed_cmp_auto.exists() else None,
             diag_path   = diag_path        if diag_path.exists()        else None,
             freq_path   = freq_path_auto   if freq_path_auto.exists()   else None,
             morph_path  = morph_path_auto  if morph_path_auto.exists()  else None,
@@ -716,6 +924,12 @@ def _run(
         "Written %d hypothesis file(s) + ranking.{json,csv,md} + decipherment_report.html → %s",
         len(ranked), out_dir,
     )
+    if mixed_ranked and ranked:
+        log.info(
+            "Primary vs mixed top LM scores: %.4f vs %.4f",
+            ranked[0].overall_lm_score,
+            mixed_ranked[0].overall_lm_score,
+        )
 
 
 

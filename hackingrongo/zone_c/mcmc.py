@@ -48,6 +48,7 @@ import logging
 import math
 import os
 import random
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -255,6 +256,22 @@ class MCMCSampler:
         self._reassign_prob_init: float = float(mc.reassign_prob)
         self._full_rescore_interval: int = int(getattr(mc, "full_rescore_interval", 1000))
 
+        # Structural anti-collapse prior:
+        #   prior = -weight * Σ_p max(0, n_p - cap)^2
+        # where n_p is the number of signs mapped to phoneme p.
+        self._occupancy_cap: int = int(getattr(mc, "max_signs_per_phoneme", 4))
+        self._occupancy_weight: float = float(getattr(mc, "occupancy_penalty_weight", 0.0))
+        if self._occupancy_cap < 1:
+            raise ValueError("max_signs_per_phoneme must be >= 1")
+        if self._occupancy_weight < 0.0:
+            raise ValueError("occupancy_penalty_weight must be >= 0.0")
+        if self._occupancy_weight > 0.0:
+            logger.info(
+                "MCMCSampler occupancy prior enabled: cap=%d, weight=%.3f",
+                self._occupancy_cap,
+                self._occupancy_weight,
+            )
+
         # LM-guided (Gibbs-style) proposal parameters.
         self._lm_guided_prob: float = float(getattr(mc, "lm_guided_prob", 0.0))
         self._lm_guided_n_candidates: int = int(getattr(mc, "lm_guided_n_candidates", 3))
@@ -455,7 +472,7 @@ class MCMCSampler:
             for i in range(n_T)
         ]
         chain_seqs = [self._translate_seqs(m) for m in chain_maps]
-        chain_lps = [self._log_posterior_full(s) for s in chain_seqs]
+        chain_lps = [self._log_posterior_full(s, m) for s, m in zip(chain_seqs, chain_maps)]
         reassign_probs = [self._reassign_prob_init] * n_T
         recent_accepted = [0] * n_T
         accepted_post_burn = 0
@@ -475,7 +492,11 @@ class MCMCSampler:
                 T = temps[t_idx]
                 proposal, changes = self._propose(chain_maps[t_idx], rng, reassign_probs[t_idx])
                 delta = self._compute_delta(chain_seqs[t_idx], changes)
-                proposal_lp = chain_lps[t_idx] + delta
+                proposal_lp = (
+                    chain_lps[t_idx]
+                    + delta
+                    + self._occupancy_prior_delta(chain_maps[t_idx], changes)
+                )
                 # Tempered acceptance: scale log-ratio by 1/T.
                 log_alpha = (proposal_lp - chain_lps[t_idx]) / T
                 if math.log(max(rng.random(), 1e-300)) < log_alpha:
@@ -493,7 +514,7 @@ class MCMCSampler:
 
             # ── Periodic full rescore for cold chain (fp drift guard) ────────
             if (it + 1) % self._full_rescore_interval == 0:
-                chain_lps[0] = self._log_posterior_full(chain_seqs[0])
+                chain_lps[0] = self._log_posterior_full(chain_seqs[0], chain_maps[0])
 
             # ── Replica exchange swaps ───────────────────────────────────────
             if (it + 1) % swap_interval == 0:
@@ -588,9 +609,8 @@ class MCMCSampler:
         current_map = self._random_initial_map(rng)
         # Translate corpus once; update in-place on each accepted step.
         current_phoneme_seqs: list[list[str]] = self._translate_seqs(current_map)
-        current_lp = self._log_posterior_full(current_phoneme_seqs)
+        current_lp = self._log_posterior_full(current_phoneme_seqs, current_map)
 
-        accepted_total = 0
         accepted_post_burn = 0
         post_burn_steps = 0
 
@@ -606,7 +626,11 @@ class MCMCSampler:
             else:
                 proposal, changes = self._propose(current_map, rng, reassign_prob)
             # Incremental delta: only recompute n-grams touching changed positions.
-            proposal_lp = current_lp + self._compute_delta(current_phoneme_seqs, changes)
+            proposal_lp = (
+                current_lp
+                + self._compute_delta(current_phoneme_seqs, changes)
+                + self._occupancy_prior_delta(current_map, changes)
+            )
 
             log_alpha = proposal_lp - current_lp
             if math.log(max(rng.random(), 1e-300)) < log_alpha:
@@ -617,7 +641,6 @@ class MCMCSampler:
                     for seq_idx, positions in enumerate(self._sign_positions[sign]):
                         for pos in positions:
                             current_phoneme_seqs[seq_idx][pos] = new_ph
-                accepted_total += 1
                 recent_accepted += 1
                 if it >= self._burn_in:
                     accepted_post_burn += 1
@@ -625,7 +648,7 @@ class MCMCSampler:
             # Periodic full rescore: reset current_lp from scratch to prevent
             # floating-point drift accumulating across thousands of delta updates.
             if (it + 1) % self._full_rescore_interval == 0:
-                verified_lp = self._log_posterior_full(current_phoneme_seqs)
+                verified_lp = self._log_posterior_full(current_phoneme_seqs, current_map)
                 drift = abs(verified_lp - current_lp)
                 if drift > 1e-6:
                     logger.debug(
@@ -658,11 +681,41 @@ class MCMCSampler:
         post_rate = accepted_post_burn / max(post_burn_steps, 1)
         return samples, post_rate
 
+    def _occupancy_log_prior(self, phoneme_map: PhonemeMap) -> float:
+        """Structural log-prior discouraging many-to-one phoneme collapse."""
+        if self._occupancy_weight <= 0.0:
+            return 0.0
+
+        counts = Counter(phoneme_map.values())
+        penalty = 0.0
+        for n in counts.values():
+            excess = max(0, n - self._occupancy_cap)
+            penalty += float(excess * excess)
+        return -self._occupancy_weight * penalty
+
+    def _occupancy_prior_delta(
+        self,
+        current_map: PhonemeMap,
+        changes: dict[str, tuple[str, str]],
+    ) -> float:
+        """Delta of the occupancy prior under proposed sign reassignment(s)."""
+        if self._occupancy_weight <= 0.0 or not changes:
+            return 0.0
+
+        proposal = dict(current_map)
+        for sign, (_, new_ph) in changes.items():
+            proposal[sign] = new_ph
+        return self._occupancy_log_prior(proposal) - self._occupancy_log_prior(current_map)
+
     # ------------------------------------------------------------------
     # Posterior scoring
     # ------------------------------------------------------------------
 
-    def _log_posterior_full(self, phoneme_seqs: list[list[str]]) -> float:
+    def _log_posterior_full(
+        self,
+        phoneme_seqs: list[list[str]],
+        phoneme_map: PhonemeMap,
+    ) -> float:
         """Full log-posterior from pre-translated phoneme sequences.
 
         Called once per chain initialisation only.  All subsequent steps
@@ -675,6 +728,7 @@ class MCMCSampler:
                 total += result.ensemble_log_prob
             else:
                 total -= 1000.0
+        total += self._occupancy_log_prior(phoneme_map)
         return total
 
     def _translate_seqs(self, phoneme_map: PhonemeMap) -> list[list[str]]:

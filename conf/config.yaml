@@ -452,6 +452,13 @@ zone_c:
     lm_guided_n_candidates: 3        # number of randomly chosen signs to evaluate
     lm_guided_top_k: 5               # top-k phonemes (by unigram LM score) tried per sign
 
+    # Anti-collapse structural prior:
+    # penalise assignments where too many distinct signs share one phoneme.
+    # prior term added to log-posterior:
+    #   -occupancy_penalty_weight * Σ_p max(0, n_p - max_signs_per_phoneme)^2
+    max_signs_per_phoneme: 4         # soft capacity per phoneme before penalty activates
+    occupancy_penalty_weight: 8.0    # 0.0 disables; increase if a-flood reappears
+
     # Convergence diagnostics (logged to MLflow)
     gelman_rubin_threshold: 1.05     # R-hat ≤ this → chain considered converged
     log_interval_iterations: 500     # diagnostic log frequency (iterations)
