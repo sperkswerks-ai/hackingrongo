@@ -112,7 +112,11 @@ def _edge_density_central(
     x1 = int(w * (1 + centre_frac) / 2)
     patch = img[y0:y1, x0:x1]
     edges = cv2.Canny(patch, _CANNY_LOW, _CANNY_HIGH)
-    return float(edges.sum()) / (patch.size + 1)
+    edge_density = float(edges.sum()) / (patch.size + 1)
+    # Weight by surface fill fraction so edge-on tablet views (which produce a
+    # single bright edge line and no glyph candidates) score below face-on views.
+    fill_frac = float(np.count_nonzero(patch > 30)) / (patch.size + 1)
+    return edge_density * fill_frac
 
 
 def select_best_view(
@@ -257,47 +261,48 @@ def aggregate_multi_view_candidates(
     canny_high: int = _CANNY_HIGH,
 ) -> tuple[list[dict], Path, np.ndarray]:
     """
-    Score all views in *render_dir*, take the top *num_views* by central edge
-    density, segment each independently, then merge via IoU NMS.
+    Segment every view in *render_dir*, rank by glyph-candidate count, take
+    the top *num_views*, then merge all their candidates via IoU NMS.
+
+    Candidate-count ranking is used instead of edge density because for
+    solid-colour 3D renders the face-on views (most useful for training) have
+    LOW structural edge density while geometric tablet edges at oblique angles
+    produce HIGH edge density with zero glyph candidates.
 
     Returns:
         candidates  – deduplicated glyph bounding boxes (coords in ROI space)
-        best_view   – Path to the highest-scoring PNG
+        best_view   – Path to the view with the most candidates
         best_bgr    – BGR image of that view, already ROI-cropped
     """
     pngs = sorted(render_dir.glob("*.png"))
     if not pngs:
         raise FileNotFoundError(f"No PNG files in {render_dir}")
-    scored = sorted(
-        [(p, _edge_density_central(p, roi=roi)) for p in pngs],
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    top_views = scored[:max(1, num_views)]
-    best_view_path = top_views[0][0]
-    log.info(
-        "Multi-view: aggregating %d/%d views  (best=%s  score=%.4f)",
-        len(top_views), len(pngs), best_view_path.name, top_views[0][1],
-    )
 
-    all_raw: list[dict] = []
-    best_bgr: np.ndarray | None = None
-
-    for view_path, score in top_views:
-        bgr = cv2.imread(str(view_path))
+    # Segment every view to count candidates (OpenCV is fast — <0.5 s/view).
+    view_cands: list[tuple[Path, list[dict], np.ndarray]] = []
+    for p in pngs:
+        bgr = cv2.imread(str(p))
         if bgr is None:
             continue
         bgr_crop = bgr[roi[1]:roi[3], roi[0]:roi[2]] if roi else bgr
-        if view_path == best_view_path:
-            best_bgr = bgr_crop
         gray = enhance_for_incisions(bgr_crop)
         cands = find_glyph_candidates(gray, canny_low, canny_high)
-        log.info("  %-26s → %3d candidates  (density=%.4f)", view_path.name, len(cands), score)
-        all_raw.extend(cands)
+        view_cands.append((p, cands, bgr_crop))
 
-    if best_bgr is None:  # fallback (all reads failed)
-        bgr = cv2.imread(str(best_view_path))
-        best_bgr = bgr[roi[1]:roi[3], roi[0]:roi[2]] if roi else bgr
+    # Sort descending by candidate count; ties broken by path (deterministic).
+    view_cands.sort(key=lambda x: len(x[1]), reverse=True)
+
+    top_views = view_cands[:max(1, num_views)]
+    best_view_path, _, best_bgr = top_views[0]
+    log.info(
+        "Multi-view: top %d/%d views by candidate count  (best=%s  n=%d)",
+        len(top_views), len(pngs), best_view_path.name, len(top_views[0][1]),
+    )
+
+    all_raw: list[dict] = []
+    for view_path, cands, bgr_crop in top_views:
+        log.info("  %-26s → %3d candidates", view_path.name, len(cands))
+        all_raw.extend(cands)
 
     merged = nms_candidates(all_raw)
     log.info("Multi-view NMS: %d raw → %d unique candidates", len(all_raw), len(merged))
