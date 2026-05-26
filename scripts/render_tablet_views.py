@@ -50,17 +50,14 @@ class TabletViewRenderer:
 
     async def _wait_for_model(self, page) -> bool:
         """Wait for 3DHOP to finish loading the mesh. Returns True on success."""
-        # 3DHOP signals readiness in several ways depending on version;
-        # we poll for the most common indicators.
+        # INSCRIBE uses window.presenter (3DHOP), not THREEDHOP/scene/viewer globals.
+        # The presenter.trackball property is created during scene parse and is the
+        # most reliable readiness signal — it only appears after the mesh is loaded.
         js_ready = """
             () => {
-                // 3DHOP v4+: THREEDHOP global with trackball
-                if (window.THREEDHOP && window.THREEDHOP.trackball) return true;
-                // Older builds expose `scene`
-                if (window.scene && window.scene.trackball) return true;
-                // Some builds use `viewer`
-                if (window.viewer && window.viewer.trackball) return true;
-                // Fallback: WebGL canvas exists and has a context
+                // INSCRIBE 3DHOP: presenter with loaded trackball
+                if (window.presenter && window.presenter.trackball) return true;
+                // Fallback: WebGL canvas context exists
                 const c = document.querySelector('canvas');
                 if (!c) return false;
                 return !!(c.getContext('webgl') || c.getContext('webgl2'));
@@ -75,46 +72,70 @@ class TabletViewRenderer:
         return False
 
     async def _rotate_and_shoot(self, page, angle_deg: float, output_path: Path) -> None:
-        """Rotate the 3DHOP viewer to azimuth angle_deg and take a screenshot."""
-        angle_rad = math.radians(angle_deg)  # 3DHOP/Three.js uses radians, not degrees
+        """Rotate the 3DHOP viewer to azimuth angle_deg and take a screenshot.
 
-        # Try multiple 3DHOP API variants in priority order.
-        # The `phi` property controls azimuth on the trackball in 3DHOP.
+        INSCRIBE uses ``window.presenter`` (3DHOP).  The trackball stores its
+        orientation as a 4×4 column-major float array split across two fields:
+
+          - ``_sphereMatrix`` — pure rotation (no translation)
+          - ``_matrix`` — rotation + camera-distance translation (what the
+                          renderer reads via the ``matrix`` getter)
+          - ``_distance`` — scalar camera distance (normalised to scene radius)
+
+        For a turntable Y-axis rotation by azimuth φ the column-major view
+        matrix is::
+
+            [ cos φ,  0,  sin φ,  0,      ← col 0
+                 0,   1,  0,     0,      ← col 1
+             -sin φ,  0,  cos φ,  0,      ← col 2
+                 0,   0,  -dist, 1 ]     ← col 3  (camera distance)
+
+        Verified: φ=0 → identity [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-2,1] ✓
+        """
+        angle_rad = math.radians(angle_deg)
+
         rotate_js = f"""
             () => {{
-                const rad = {angle_rad:.8f};
-                let rotated = false;
+                const pr = window.presenter;
+                if (!pr || !pr.trackball) return 'no_trackball';
 
-                // 3DHOP v4+
-                if (window.THREEDHOP && window.THREEDHOP.trackball) {{
-                    window.THREEDHOP.trackball.phi = rad;
-                    rotated = true;
+                const phi  = {angle_rad:.8f};
+                const cos  = Math.cos(phi);
+                const sin  = Math.sin(phi);
+                const tb   = pr.trackball;
+                const dist = (tb._distance != null) ? tb._distance : 2;
+
+                // 1. Set the pure-rotation sphere matrix (column-major, no translation)
+                tb._sphereMatrix = [
+                    cos,  0,  sin,  0,
+                    0,    1,  0,    0,
+                    -sin, 0,  cos,  0,
+                    0,    0,  0,    1,
+                ];
+
+                // 2. Let the trackball recompute _matrix from _sphereMatrix + dist
+                //    (falls back to writing _matrix directly if _computeMatrix absent)
+                if (typeof tb._computeMatrix === 'function') {{
+                    tb._computeMatrix();
+                }} else {{
+                    tb._matrix = [
+                        cos,  0,  sin,  0,
+                        0,    1,  0,    0,
+                        -sin, 0,  cos,  0,
+                        0,    0,  -dist, 1,
+                    ];
                 }}
-                // Older 3DHOP `scene` global
-                else if (window.scene && window.scene.trackball) {{
-                    window.scene.trackball.phi = rad;
-                    rotated = true;
-                }}
-                // Some builds use `viewer`
-                else if (window.viewer && window.viewer.trackball) {{
-                    window.viewer.trackball.phi = rad;
-                    rotated = true;
-                }}
 
-                if (!rotated) return false;
-
-                // Request a re-render — 3DHOP uses RAF, but try explicit draw if available.
-                const hub = window.THREEDHOP || window.scene || window.viewer;
-                if (hub && typeof hub.draw === 'function') hub.draw();
-                else if (hub && hub.renderer && hub.scene3js && hub.camera3js)
-                    hub.renderer.render(hub.scene3js, hub.camera3js);
-
-                return true;
+                // 3. Trigger a WebGL redraw
+                pr.repaint();
+                return 'rotated';
             }}
         """
-        rotated = await page.evaluate(rotate_js)
-        if not rotated:
-            # Last resort: synthetic mouse drag on the canvas to force rotation.
+        result = await page.evaluate(rotate_js)
+        if result != 'rotated':
+            # Mouse-drag fallback: only reached if presenter/trackball is missing
+            # (should not happen on INSCRIBE — log it as a warning).
+            print(f"    WARNING: JS rotation failed ({result}), falling back to mouse drag")
             canvas = await page.query_selector("canvas")
             if canvas:
                 box = await canvas.bounding_box()
@@ -229,14 +250,11 @@ class TabletViewRenderer:
                     canvas.height = {height};
                     canvas.style.width  = '{width}px';
                     canvas.style.height = '{height}px';
-                    // Notify Three.js / 3DHOP renderer of the new size if possible
-                    const hub = window.THREEDHOP || window.scene || window.viewer;
-                    if (hub && hub.renderer && typeof hub.renderer.setSize === 'function') {{
-                        hub.renderer.setSize({width}, {height});
-                        if (hub.camera3js) {{
-                            hub.camera3js.aspect = {width} / {height};
-                            hub.camera3js.updateProjectionMatrix();
-                        }}
+                    // Notify 3DHOP presenter renderer of the new size if possible.
+                    // INSCRIBE uses window.presenter (not THREEDHOP/scene/viewer).
+                    const pr = window.presenter;
+                    if (pr && pr.renderer && typeof pr.renderer.setSize === 'function') {{
+                        pr.renderer.setSize({width}, {height});
                     }}
                     return true;
                 }}

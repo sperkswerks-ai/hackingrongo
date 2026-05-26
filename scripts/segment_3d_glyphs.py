@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 
 _CANNY_LOW  = 30    # lower Canny hysteresis threshold (carved glyphs are subtle)
 _CANNY_HIGH = 80    # upper Canny hysteresis threshold
-_MORPH_CLOSE_PX = 5  # close kernel — merges broken glyph stroke segments
+_MORPH_CLOSE_PX = 7  # close kernel — merges broken glyph stroke segments
 _MORPH_OPEN_PX  = 2  # open kernel — removes isolated noise dots
 _MIN_AREA_FRAC  = 0.00015  # minimum blob area as fraction of image area
 _MAX_AREA_FRAC  = 0.04     # maximum blob area (filters out full-tablet edges)
