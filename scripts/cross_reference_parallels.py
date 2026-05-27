@@ -347,11 +347,12 @@ def group_multi_tablet_passages(
 def infer_stratum_from_tablets(tablet_id: str, tablets: dict) -> str:
     """Infer temporal stratum from tablets.json metadata."""
     info = tablets.get(tablet_id, {})
-    # tablets.json uses 'temporal_cluster' or derive from known anchors
+    # tablets.json uses 'temporal_cluster'; treat '?' and 'unknown' as absent
+    # so we fall through to the radiocarbon date heuristic.
     cluster = info.get("temporal_cluster", "")
-    if cluster:
+    if cluster and cluster not in ("?", "unknown"):
         return cluster
-    # Fallback: derive from radiocarbon date ranges if no explicit cluster
+    # Derive from radiocarbon date ranges (authoritative where cluster is absent).
     rc_min = info.get("radiocarbon_date_min", 0)
     rc_max = info.get("radiocarbon_date_max", 9999)
     if rc_max <= 1600:
@@ -574,8 +575,12 @@ def main() -> None:
                 if tid not in tablets_meta:
                     tablets_meta[tid] = {}
                 tablets_meta[tid]["temporal_cluster"] = cluster
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Skipping tablet metadata overlay for %s due to parse/load error: %s",
+                cf,
+                exc,
+            )
 
     # Load passages
     horley_passages = load_horley_passages(args.input)

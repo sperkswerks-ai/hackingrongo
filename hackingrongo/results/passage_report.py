@@ -50,11 +50,14 @@ logger = logging.getLogger(__name__)
 
 _CSS = """
 :root {
-  --bg: #ffffff; --surface: #f8f8fa; --surface2: #f0f0f5;
-  --border: #d0d0dd; --text: #1a1a1a; --muted: #666666;
+  --bg: #fefefe; --surface: #f7f7fa; --surface2: #eeeef4;
+  --border: #dddde8; --text: #1a1a2e; --muted: #6b7280;
   --accent: #c4a96d; --accent2: #7b9ee0;
-  --pre: #2563eb; --post: #7c3aed; --undated: #888888;
-  --holy: #d4860a; --cross: #c0392b;
+  --pre: #1d4ed8; --post: #6d28d9; --undated: #6b7280;
+  --holy: #d97706; --cross: #b91c1c;
+  --cm: #f0fdf4; --cmb: #86efac; --cmt: #14532d;
+  --cs: #fef3c7; --csb: #fcd34d; --cst: #78350f;
+  --cg: #f8fafc; --cgb: #cbd5e1; --cgt: #9ca3af;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -62,43 +65,219 @@ body {
   font-family: 'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
   font-size: 16px; line-height: 1.65;
 }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 52px 28px; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 52px 28px 80px; }
 .mono { font-family: 'JetBrains Mono', 'Fira Mono', monospace; }
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
 
 /* ── Report header ── */
 .report-header { border-bottom: 1px solid var(--border);
-                 padding-bottom: 38px; margin-bottom: 44px; }
-.report-title { font-size: 34px; font-weight: 600; color: #000;
-                letter-spacing: -0.3px; }
+                 padding-bottom: 44px; margin-bottom: 44px; }
+.report-title { font-size: 38px; font-weight: 600; color: #000;
+                letter-spacing: -0.5px; line-height: 1.2; }
 .report-subtitle { font-size: 17px; color: var(--accent); font-style: italic;
-                   margin-top: 6px; }
+                   margin-top: 8px; }
 .report-meta { margin-top: 20px; font-family: 'JetBrains Mono', monospace;
-               font-size: 11px; color: var(--muted); line-height: 2.2; }
+               font-size: 11px; color: var(--muted); line-height: 2.4; }
 .report-meta b { color: #333; }
-.abstract { margin-top: 20px; font-size: 14px; color: #333;
-            max-width: 800px; line-height: 1.85; }
+.abstract { margin-top: 22px; font-size: 14.5px; color: #333;
+            max-width: 840px; line-height: 1.9;
+            border-left: 3px solid var(--accent); padding-left: 18px; }
 .abstract p + p { margin-top: 12px; }
 
 /* ── Summary stats ── */
-.stats-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 40px; }
+.stats-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 44px; }
 .stat-card { background: var(--surface); border: 1px solid var(--border);
-             border-radius: 6px; padding: 16px 22px; min-width: 110px;
-             text-align: center; }
-.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 28px;
-              font-weight: 500; color: var(--accent); }
-.stat-label { font-size: 11px; color: var(--muted); margin-top: 4px;
-              font-family: 'JetBrains Mono', monospace; }
+             border-radius: 8px; padding: 18px 24px; min-width: 110px;
+             text-align: center; transition: box-shadow .15s; }
+.stat-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 30px;
+              font-weight: 500; color: var(--accent); line-height: 1; margin-bottom: 6px; }
+.stat-label { font-size: 9.5px; color: var(--muted); margin-top: 4px;
+              font-family: 'JetBrains Mono', monospace;
+              text-transform: uppercase; letter-spacing: .05em; }
 .stat-card.holy .stat-value { color: var(--holy); }
 .stat-card.cross .stat-value { color: var(--cross); }
+.stat-card.pre .stat-value { color: var(--pre); }
 
 /* ── Section label ── */
 .section-label { font-family: 'JetBrains Mono', monospace; font-size: 9px;
                  color: var(--muted); letter-spacing: 0.1em;
                  text-transform: uppercase; margin-bottom: 12px; }
 
-/* ── Passage table (summary) ── */
+/* ── Holy Grail Spotlight ── */
+.hg-section { background: linear-gradient(135deg, #fffbf0, #fff8e8);
+              border: 1px solid #f6c549; border-left: 4px solid var(--holy);
+              border-radius: 8px; padding: 28px 32px; margin-bottom: 44px; }
+.hg-title { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            font-weight: 600; color: var(--holy); text-transform: uppercase;
+            letter-spacing: .12em; margin-bottom: 6px; }
+.hg-sub { font-size: 13.5px; color: #666; margin-bottom: 22px; font-style: italic; }
+.hg-card { background: #fff; border: 1px solid #f6c549; border-radius: 6px;
+           padding: 20px 24px; margin-bottom: 14px; }
+.hg-card:last-child { margin-bottom: 0; }
+.hg-head { display: flex; align-items: center; gap: 12px;
+           margin-bottom: 16px; flex-wrap: wrap; }
+.hg-pid { font-family: 'JetBrains Mono', monospace; font-size: 13px;
+          font-weight: 500; color: var(--holy); }
+.hg-pos { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.hg-diff { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.hg-sign-grp { display: flex; flex-direction: column; gap: 4px; }
+.hg-sign-lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px;
+               text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.hg-sign { font-family: 'JetBrains Mono', monospace; font-size: 18px;
+           font-weight: 500; padding: 7px 14px; border-radius: 5px; display: inline-block; }
+.hg-sign.pre-s { background: #dbeafe; color: var(--pre); border: 1px solid #bfdbfe; }
+.hg-sign.post-s { background: #ede9fe; color: var(--post); border: 1px solid #ddd6fe; }
+.hg-arrow { font-size: 22px; color: var(--muted); align-self: flex-end; padding-bottom: 8px; }
+.hg-tablets { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+              color: var(--muted); margin-top: 10px; }
+.hg-tablets b { color: #333; }
+.hg-canon { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.hg-canon-lbl { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted);
+                text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+.hg-chip { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px;
+           border-radius: 3px; border: 1px solid var(--border);
+           background: var(--surface2); color: #333; }
+.hg-chip.hl { background: var(--cs); border-color: var(--csb); color: var(--cst); font-weight: 700; }
+
+/* ── Filter bar ── */
+.filter-bar { position: sticky; top: 0; background: rgba(254,254,254,.94);
+              backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+              border-bottom: 1px solid var(--border); padding: 10px 0 9px;
+              margin: 0 0 24px; display: flex; align-items: center;
+              flex-wrap: wrap; gap: 8px; z-index: 100; }
+.fb-search { border: 1px solid var(--border); border-radius: 5px;
+             padding: 6px 12px; font-family: 'JetBrains Mono', monospace;
+             font-size: 11px; background: var(--surface); width: 200px;
+             outline: none; transition: border-color .12s; }
+.fb-search:focus { border-color: var(--accent); }
+.filter-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 4px 11px;
+        border-radius: 20px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--muted); cursor: pointer;
+        text-transform: uppercase; letter-spacing: .05em; transition: all .12s; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip.c-holy.active { background: var(--holy); border-color: var(--holy); }
+.chip.c-cross.active { background: var(--cross); border-color: var(--cross); }
+.fb-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fb-sort { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+           border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px;
+           background: var(--surface); cursor: pointer; }
+.fb-count { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            color: var(--muted); white-space: nowrap; }
+.fb-btn { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+          padding: 4px 9px; border-radius: 4px; border: 1px solid var(--border);
+          background: var(--surface); color: var(--muted); cursor: pointer;
+          text-transform: uppercase; letter-spacing: .04em; }
+.fb-btn:hover { background: var(--surface2); }
+
+/* ── Passage cards (interactive accordion) ── */
+.pc { border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 10px; overflow: hidden; transition: box-shadow .15s; }
+.pc:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.pc.holy-p { border-color: #f6c549; border-left: 3px solid var(--holy); }
+.pc.dia-p:not(.holy-p) { border-left: 3px solid var(--pre); }
+.pc-summary { padding: 12px 18px; display: flex; align-items: center;
+              gap: 12px; cursor: pointer; background: var(--bg);
+              flex-wrap: wrap; user-select: none; }
+.pc-summary:hover { background: var(--surface); }
+.pc.open .pc-summary { background: var(--surface); border-bottom: 1px solid var(--border); }
+.pc-toggle { font-size: 9px; color: var(--muted); width: 14px; text-align: center;
+             flex-shrink: 0; transition: transform .15s;
+             font-family: 'JetBrains Mono', monospace; }
+.pc.open .pc-toggle { transform: rotate(90deg); }
+.pc-id { font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+         color: var(--accent); font-weight: 500; flex-shrink: 0; min-width: 70px; }
+.pc-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.bd-holy { background: #fff3cd; color: var(--holy); border-color: #fde68a; }
+.bd-cross { background: #fde8e8; color: var(--cross); border-color: #fca5a5; }
+.bd-dia { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+.pc-canonical { display: flex; flex-wrap: wrap; gap: 3px;
+                align-items: center; flex: 1; }
+.s-chip { font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+          padding: 2px 6px; background: var(--surface2);
+          border: 1px solid var(--border); border-radius: 3px; color: #333; }
+.pc-right { display: flex; align-items: center; gap: 14px;
+            margin-left: auto; flex-shrink: 0; }
+.pc-tablet-list { font-family: 'JetBrains Mono', monospace;
+                  font-size: 9.5px; color: var(--muted); }
+.pc-score { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #555; }
+.pc-detail { padding: 22px 22px 26px; background: var(--bg); }
+.pc-meta-row { display: flex; gap: 18px; flex-wrap: wrap;
+               font-family: 'JetBrains Mono', monospace; font-size: 10px;
+               color: var(--muted); margin-bottom: 16px; }
+.pc-meta-row b { color: #444; }
+
+/* ── Alignment grid ── */
+.ag-wrap { overflow-x: auto; margin-bottom: 22px; -webkit-overflow-scrolling: touch; }
+.ag-table { border-collapse: separate; border-spacing: 2px;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            min-width: max-content; }
+.ag-corner { font-size: 8px; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .05em; padding: 3px 10px 3px 4px;
+             text-align: right; vertical-align: bottom; white-space: nowrap; }
+.ag-pos-h { font-size: 8px; color: var(--muted); text-align: center;
+            padding: 3px 2px; vertical-align: bottom; width: 54px; min-width: 54px; }
+.ag-lbl { text-align: right; padding: 0 10px 0 4px;
+          vertical-align: middle; white-space: nowrap; }
+.ag-lbl-in { display: flex; align-items: center; justify-content: flex-end;
+             gap: 5px; height: 36px; }
+.ag-tid { font-weight: 600; font-size: 12px; color: #333; }
+.ag-dot { width: 7px; height: 7px; border-radius: 50%;
+          display: inline-block; flex-shrink: 0; }
+.ag-dot.pre  { background: var(--pre); }
+.ag-dot.post { background: var(--post); }
+.ag-dot.und  { background: var(--undated); }
+.ag-dot.exc  { background: #d1d5db; }
+.ag-pre-row .ag-lbl { border-left: 3px solid var(--pre);
+                       background: rgba(29,78,216,.03); }
+.ag-cell { width: 54px; min-width: 54px; height: 34px; text-align: center;
+           vertical-align: middle; padding: 2px; }
+.ag-cell-in { display: flex; align-items: center; justify-content: center;
+              height: 100%; font-size: 10px; font-weight: 500; border-radius: 3px;
+              padding: 0 3px; border: 1px solid transparent; flex-direction: column; }
+.ag-can .ag-cell-in { background: var(--surface2); border-color: var(--border);
+                       color: #333; font-weight: 600; }
+.ag-mat .ag-cell-in { background: var(--cm); border-color: var(--cmb); color: var(--cmt); }
+.ag-sub .ag-cell-in { background: var(--cs); border-color: var(--csb);
+                       color: var(--cst); font-weight: 700; }
+.ag-gap .ag-cell-in { background: var(--cg); border-color: var(--cgb);
+                       border-style: dashed; color: var(--cgt); font-style: italic; }
+.ag-nocc { font-size: 8px; color: var(--muted); font-weight: normal; }
+.ag-cons-row .ag-lbl { font-size: 8px; color: var(--muted); font-style: italic; }
+.ag-cons-cell { width: 54px; min-width: 54px; padding: 2px;
+                vertical-align: middle; text-align: center; }
+.ag-cbar-w { width: 46px; height: 8px; background: var(--surface2);
+             border-radius: 3px; overflow: hidden; margin: 0 auto 2px; }
+.ag-cbar { height: 100%; background: var(--cmb); border-radius: 3px; }
+.ag-cpct { font-size: 8px; color: var(--muted); }
+
+/* ── Inline changes ── */
+.chg-wrap { margin-top: 6px; }
+.chg-lbl { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+           color: var(--muted); text-transform: uppercase;
+           letter-spacing: .08em; margin-bottom: 8px; }
+.chg-item { display: flex; align-items: flex-start; gap: 10px;
+            padding: 11px 14px; background: var(--surface);
+            border: 1px solid var(--border); border-left: 3px solid var(--accent2);
+            border-radius: 4px; margin-bottom: 7px; flex-wrap: wrap; }
+.chg-item.holy  { border-left-color: var(--holy);  background: #fffbf0; }
+.chg-item.cross { border-left-color: var(--cross); background: #fff8f8; }
+.chg-pos { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+           color: var(--muted); min-width: 56px; padding-top: 2px; }
+.chg-signs { display: flex; align-items: center; gap: 8px; }
+.chg-sign { font-family: 'JetBrains Mono', monospace; font-size: 13px;
+            padding: 4px 10px; border-radius: 4px; }
+.chg-sign.pre-s  { background: #dbeafe; color: var(--pre);  border: 1px solid #bfdbfe; }
+.chg-sign.post-s { background: #ede9fe; color: var(--post); border: 1px solid #ddd6fe; }
+.chg-arr { color: var(--muted); font-size: 14px; }
+.chg-meta { font-size: 11px; color: var(--muted);
+            display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.chg-flags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ── Passage table (summary / individual pages) ── */
 .passage-table-wrap { overflow-x: auto; margin-bottom: 44px; }
 .passage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .passage-table thead th { font-family: 'JetBrains Mono', monospace;
@@ -106,7 +285,8 @@ body {
                           text-transform: uppercase; letter-spacing: 0.08em;
                           padding: 6px 10px; border-bottom: 1px solid var(--border);
                           text-align: left; }
-.passage-table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border)60; }
+.passage-table tbody td { padding: 7px 10px;
+                           border-bottom: 1px solid rgba(221,221,232,.6); }
 .passage-table tbody tr:last-child td { border-bottom: none; }
 .passage-table tbody tr:hover { background: var(--surface); }
 .pt-id { font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
@@ -130,10 +310,10 @@ body {
               font-size: 8px; background: #dbeafe; color: var(--pre);
               border: 1px solid #bfdbfe; border-radius: 3px; padding: 1px 5px;
               margin-left: 6px; }
-.row-anchor > td { background: rgba(37,99,235,0.03); }
+.row-anchor > td { background: rgba(29,78,216,0.03); }
 .row-anchor > td:first-child { border-left: 3px solid var(--pre); padding-left: 7px; }
 
-/* ── Passage detail card ── */
+/* ── Passage detail card (individual pages) ── */
 .passage-card { background: var(--surface); border: 1px solid var(--border);
                 border-radius: 8px; margin-bottom: 36px; overflow: hidden; }
 .passage-card-header { padding: 16px 22px 12px; border-bottom: 1px solid var(--border);
@@ -157,7 +337,7 @@ body {
                    font-weight: 600; color: var(--muted); text-transform: uppercase;
                    letter-spacing: 0.06em; padding: 5px 8px;
                    border-bottom: 1px solid var(--border); text-align: left; }
-.attest-table td { padding: 5px 8px; border-bottom: 1px solid var(--border)50;
+.attest-table td { padding: 5px 8px; border-bottom: 1px solid rgba(221,221,232,.5);
                    vertical-align: top; }
 .attest-table tr:last-child td { border-bottom: none; }
 .attest-seq { font-family: 'JetBrains Mono', monospace; font-size: 10px;
@@ -165,7 +345,7 @@ body {
 .attest-ed  { font-family: 'JetBrains Mono', monospace; font-size: 11px;
               color: var(--muted); text-align: center; }
 
-/* ── Alignment row ── */
+/* ── Alignment row (legacy per-attestation view) ── */
 .align-row { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 8px; }
 .align-cell { width: 26px; height: 26px; display: flex; align-items: center;
               justify-content: center; border-radius: 3px; font-size: 9px;
@@ -174,7 +354,7 @@ body {
 .align-sub   { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .align-gap   { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
 
-/* ── Change cards ── */
+/* ── Change cards (individual page) ── */
 .changes-section { margin-top: 18px; }
 .change-card { background: var(--bg); border: 1px solid var(--border);
                border-left: 3px solid var(--accent2);
@@ -200,6 +380,10 @@ body {
                  padding-top: 26px; font-size: 12px; color: var(--muted);
                  line-height: 2.0; }
 .report-footer a { color: var(--accent); text-decoration: none; }
+.page-nav { font-family: 'JetBrains Mono', monospace; font-size: 11px;
+            color: var(--accent); margin-bottom: 32px; text-decoration: none;
+            display: inline-block; }
+.page-nav:hover { text-decoration: underline; }
 """
 
 # ---------------------------------------------------------------------------
@@ -247,6 +431,410 @@ def _alignment_html(alignment: list[dict]) -> str:
         sym = {"match": "=", "substitution": "S", "insertion": "I", "deletion": "D"}.get(mt, "?")
         cells.append(f'<div class="align-cell {css}" title="{tip}">{sym}</div>')
     return f'<div class="align-row">{"".join(cells)}</div>'
+
+
+# ---------------------------------------------------------------------------
+# Interactive JavaScript for single-page summary
+# ---------------------------------------------------------------------------
+
+_JS = """
+(function(){
+  var _pcs = Array.from(document.querySelectorAll('.pc'));
+  var _filter = 'all', _sort = 'score', _search = '';
+
+  function _refresh() {
+    var shown = 0;
+    _pcs.forEach(function(pc) {
+      var s = pc.dataset, ok = true;
+      if (_search) ok = (s.pid||'').toLowerCase().indexOf(_search)>=0 ||
+                        (s.canonical||'').toLowerCase().indexOf(_search)>=0;
+      if (ok && _filter==='diachronic') ok = s.diachronic==='1';
+      else if (ok && _filter==='holygrail') ok = s.holy==='1';
+      else if (ok && _filter==='familycross') ok = s.cross==='1';
+      pc.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    var container = document.getElementById('passages');
+    if (container) {
+      var vis = _pcs.filter(function(pc){ return pc.style.display!=='none'; });
+      vis.sort(function(a,b){
+        if (_sort==='score')   return parseFloat(b.dataset.score||0)  - parseFloat(a.dataset.score||0);
+        if (_sort==='tablets') return parseInt(b.dataset.tablets||0)  - parseInt(a.dataset.tablets||0);
+        if (_sort==='changes') return parseInt(b.dataset.changes||0)  - parseInt(a.dataset.changes||0);
+        if (_sort==='pid')     return (a.dataset.pid||'').localeCompare(b.dataset.pid||'');
+        return 0;
+      });
+      vis.forEach(function(pc){ container.appendChild(pc); });
+    }
+    var el = document.getElementById('fb-count');
+    if (el) el.textContent = 'Showing '+shown+' of '+_pcs.length;
+  }
+
+  window.togglePassage = function(pid) {
+    var pc = document.getElementById('pc-'+pid);
+    var det = document.getElementById('det-'+pid);
+    if (!pc || !det) return;
+    if (pc.classList.contains('open')) {
+      det.style.display='none'; pc.classList.remove('open');
+    } else {
+      det.style.display='block'; pc.classList.add('open');
+    }
+  };
+  window.setFilter = function(f, el) {
+    _filter = f;
+    document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); });
+    if (el) el.classList.add('active');
+    _refresh();
+  };
+  window.setSort = function(v) { _sort=v; _refresh(); };
+  window.searchPassages = function(q) { _search=q.toLowerCase().trim(); _refresh(); };
+  window.expandAll = function() {
+    _pcs.forEach(function(pc){
+      if (pc.style.display==='none') return;
+      var det = document.getElementById('det-'+pc.dataset.pid);
+      if (det){ det.style.display='block'; pc.classList.add('open'); }
+    });
+  };
+  window.collapseAll = function() {
+    _pcs.forEach(function(pc){
+      var det = document.getElementById('det-'+pc.dataset.pid);
+      if (det){ det.style.display='none'; pc.classList.remove('open'); }
+    });
+  };
+  // Auto-expand holy-grail passages on load
+  _pcs.forEach(function(pc){
+    if (pc.dataset.holy!=='1') return;
+    var det = document.getElementById('det-'+pc.dataset.pid);
+    if (det){ det.style.display='block'; pc.classList.add('open'); }
+  });
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# Tablet name lookup
+# ---------------------------------------------------------------------------
+
+_TABLET_NAMES: dict[str, str] = {
+    "A": "Keiti",        "B": "Mamari",       "C": "Échancrée C",
+    "D": "Échancrée D",  "E": "Tablet E",     "F": "Tablet F",
+    "G": "Tablet G",     "H": "Tablet H",     "I": "Tablet I",
+    "J": "Tablet J",     "K": "Tablet K",     "L": "Tablet L",
+    "M": "Tablet M",     "N": "Tablet N",     "O": "Tablet O",
+    "P": "Tablet P",     "Q": "Tablet Q",     "R": "Tablet R",
+    "S": "Tablet S",     "T": "Tablet T",     "U": "Tablet U",
+    "V": "Tablet V",     "W": "Tablet W",     "X": "Tablet X",
+    "Y": "Tablet Y",
+}
+
+
+# ---------------------------------------------------------------------------
+# Alignment grid helpers
+# ---------------------------------------------------------------------------
+
+def _build_tablet_consensus(attestations: list[dict]) -> list[dict]:
+    """One consensus row per tablet: majority-vote form, sorted pre → post → undated."""
+    from collections import Counter as _Counter
+    by_tablet: dict[str, list] = {}
+    for att in attestations:
+        tid = att.get("tablet", "?")
+        by_tablet.setdefault(tid, []).append(att)
+
+    rows = []
+    for tid, atts in sorted(by_tablet.items()):
+        forms = [tuple(a.get("form") or []) for a in atts]
+        majority = list(_Counter(forms).most_common(1)[0][0])
+        stratum = next(
+            (a["stratum"] for a in atts if a.get("stratum") not in ("", None)),
+            "unknown",
+        )
+        rows.append({"tablet": tid, "stratum": stratum, "form": majority, "n_occ": len(atts)})
+
+    _order = {"pre_contact": 0, "post_contact": 1, "undated": 2, "unknown": 3}
+    rows.sort(key=lambda r: (_order.get(r["stratum"], 4), r["tablet"]))
+    return rows
+
+
+def _render_alignment_grid(canonical_form: list[str], attestations: list[dict]) -> str:
+    """Render a colour-coded per-tablet alignment grid."""
+    if not attestations:
+        return '<p class="muted small">No attestations.</p>'
+
+    tablet_rows = _build_tablet_consensus(attestations)
+    n_pos = len(canonical_form)
+
+    # Column headers
+    pos_headers = "".join(
+        f'<th class="ag-pos-h">{i + 1}</th>' for i in range(n_pos)
+    )
+    # Canonical row
+    can_cells = "".join(
+        f'<td class="ag-cell ag-can"><div class="ag-cell-in">{code}</div></td>'
+        for code in canonical_form
+    )
+
+    # Per-position consistency across non-excluded tablets
+    relevant = [r for r in tablet_rows if r["stratum"] != "excluded"]
+    consistency: list[float] = []
+    for i in range(n_pos):
+        if not relevant:
+            consistency.append(0.0)
+            continue
+        matches = sum(
+            1 for r in relevant
+            if i < len(r["form"]) and r["form"][i] == canonical_form[i]
+        )
+        consistency.append(matches / len(relevant))
+
+    # Tablet data rows
+    att_rows_html: list[str] = []
+    for row in tablet_rows:
+        tid = row["tablet"]
+        stratum = row["stratum"]
+        form = row["form"]
+        n_occ = row["n_occ"]
+
+        dot_cls = {"pre_contact": "pre", "post_contact": "post", "undated": "und"}.get(
+            stratum, "exc"
+        )
+        row_cls = "ag-pre-row" if stratum == "pre_contact" else ""
+        name = _TABLET_NAMES.get(tid, tid)
+        occ_html = f'<span class="ag-nocc">×{n_occ}</span>' if n_occ > 1 else ""
+
+        lbl_html = (
+            f'<td class="ag-lbl">'
+            f'<div class="ag-lbl-in">'
+            f'<span class="ag-dot {dot_cls}"></span>'
+            f'<span class="ag-tid" title="{name}">{tid}</span>'
+            f'{occ_html}</div></td>'
+        )
+
+        cells = []
+        for i, canon_code in enumerate(canonical_form):
+            if i < len(form):
+                css = "ag-mat" if form[i] == canon_code else "ag-sub"
+                content = form[i]
+            else:
+                css = "ag-gap"
+                content = "—"
+            cells.append(
+                f'<td class="ag-cell {css}"><div class="ag-cell-in">{content}</div></td>'
+            )
+        att_rows_html.append(f'<tr class="{row_cls}">{lbl_html}{"".join(cells)}</tr>')
+
+    # Consistency bar row
+    cons_cells = "".join(
+        f'<td class="ag-cons-cell">'
+        f'<div class="ag-cbar-w"><div class="ag-cbar" style="width:{c*100:.0f}%"></div></div>'
+        f'<div class="ag-cpct">{c*100:.0f}%</div></td>'
+        for c in consistency
+    )
+
+    return (
+        f'<div class="ag-wrap"><table class="ag-table"><thead>'
+        f'<tr><th class="ag-corner">Tablet</th>{pos_headers}</tr>'
+        f'<tr><td class="ag-corner" style="font-style:italic">Canonical</td>{can_cells}</tr>'
+        f'</thead><tbody>{"".join(att_rows_html)}'
+        f'<tr class="ag-cons-row">'
+        f'<td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td>'
+        f'{cons_cells}</tr>'
+        f'</tbody></table></div>'
+    )
+
+
+def _render_changes_inline(changes: list[dict]) -> str:
+    """Render inline diachronic change items for a passage card."""
+    if not changes:
+        return (
+            '<p class="muted small" style="font-style:italic;margin-top:4px">'
+            'No diachronic changes detected — passage may lack co-occurrence of '
+            'pre- and post-contact attestations at a consistent position.</p>'
+        )
+    items: list[str] = []
+    for c in changes:
+        is_holy = bool(c.get("is_holy_grail_candidate"))
+        is_cross = bool(c.get("crosses_barthel_family"))
+        item_cls = "holy" if is_holy else ("cross" if is_cross else "")
+        pos = c.get("position", -1)
+        pos_label = f"pos {pos + 1}" if pos >= 0 else "—"
+        pre = c.get("pre_contact_sign", "—")
+        post_sign = c.get("post_contact_sign", "—")
+        n_cons = c.get("n_tablets_consistent", 0)
+        ct = c.get("change_type", "substitution")
+
+        flags: list[str] = []
+        if is_holy:
+            flags.append('<span class="badge bd-holy">★ Holy Grail</span>')
+        if is_cross:
+            flags.append('<span class="badge bd-cross">↕ Family-Crossing</span>')
+        flags_html = (
+            f'<div class="chg-flags">{"".join(flags)}</div>' if flags else ""
+        )
+
+        items.append(
+            f'<div class="chg-item {item_cls}">'
+            f'<div class="chg-pos">{pos_label}<br>'
+            f'<span style="font-size:8px">{ct}</span></div>'
+            f'<div class="chg-signs">'
+            f'<span class="chg-sign pre-s">{pre}</span>'
+            f'<span class="chg-arr">→</span>'
+            f'<span class="chg-sign post-s">{post_sign}</span>'
+            f'</div>'
+            f'<div class="chg-meta">'
+            f'<span><b>{n_cons}</b> post-contact tablet{"s" if n_cons != 1 else ""} consistent</span>'
+            f'{flags_html}</div></div>'
+        )
+    return (
+        f'<div class="chg-wrap">'
+        f'<div class="chg-lbl">Diachronic changes ({len(changes)})</div>'
+        f'{"".join(items)}</div>'
+    )
+
+
+def _render_passage_card(passage: dict, idx: int) -> str:
+    """Render a collapsible accordion card for one passage."""
+    pid = passage.get("passage_id", f"P{idx:03d}")
+    canonical_form = passage.get("canonical_form") or []
+    attestations = passage.get("attestations", [])
+    changes = passage.get("diachronic_changes", [])
+    score = passage.get("interest_score", 0.0)
+
+    tablets = sorted({str(a.get("tablet", "")) for a in attestations if a.get("tablet")})
+    strata = {a.get("stratum", "") for a in attestations}
+    is_diachronic = "pre_contact" in strata and "post_contact" in strata
+    n_holy = sum(1 for c in changes if c.get("is_holy_grail_candidate"))
+    n_cross = sum(1 for c in changes if c.get("crosses_barthel_family"))
+
+    card_cls = "holy-p" if n_holy else ("dia-p" if is_diachronic else "")
+
+    badges: list[str] = []
+    if n_holy:
+        badges.append('<span class="badge bd-holy">★ Holy Grail</span>')
+    if n_cross:
+        badges.append('<span class="badge bd-cross">↕ Family-Crossing</span>')
+    if is_diachronic and not n_holy:
+        badges.append('<span class="badge bd-dia">⚓ Diachronic</span>')
+    badges_html = (
+        f'<div class="pc-badges">{"".join(badges)}</div>' if badges else ""
+    )
+
+    chips = "".join(f'<span class="s-chip">{c}</span>' for c in canonical_form)
+    tablet_str = " · ".join(tablets)
+
+    pre_count = sum(1 for a in attestations if a.get("stratum") == "pre_contact")
+    post_count = sum(1 for a in attestations if a.get("stratum") == "post_contact")
+
+    grid_html = _render_alignment_grid(canonical_form, attestations)
+    changes_html = _render_changes_inline(changes)
+
+    return (
+        f'<div class="pc {card_cls}" id="pc-{pid}"'
+        f' data-pid="{pid}" data-score="{score}" data-tablets="{len(tablets)}"'
+        f' data-changes="{len(changes)}" data-holy="{1 if n_holy else 0}"'
+        f' data-cross="{1 if n_cross else 0}" data-diachronic="{1 if is_diachronic else 0}"'
+        f' data-canonical="{" ".join(str(c) for c in canonical_form)}">'
+        f'<div class="pc-summary" onclick="togglePassage(\'{pid}\')">'
+        f'<span class="pc-toggle">▶</span>'
+        f'<span class="pc-id">{pid}</span>'
+        f'{badges_html}'
+        f'<div class="pc-canonical">{chips}</div>'
+        f'<div class="pc-right">'
+        f'<span class="pc-tablet-list">{tablet_str}</span>'
+        f'<span class="pc-score">{score:.2f}</span>'
+        f'</div></div>'
+        f'<div class="pc-detail" id="det-{pid}" style="display:none">'
+        f'<div class="pc-meta-row">'
+        f'<span><b>Tablets:</b> {len(tablets)} ({", ".join(tablets)})</span>'
+        f'<span><b>Attestations:</b> {len(attestations)}</span>'
+        f'<span><b>Pre-contact:</b> {pre_count}</span>'
+        f'<span><b>Post-contact:</b> {post_count}</span>'
+        f'<span><b>Canonical length:</b> {len(canonical_form)}</span>'
+        f'</div>'
+        f'<div class="section-label">Attestation alignment — one row per tablet'
+        f' (majority form; ×N = repeated occurrences on that tablet)</div>'
+        f'{grid_html}'
+        f'{changes_html}'
+        f'</div></div>'
+    )
+
+
+def _render_holy_grail_spotlight(passages: list[dict]) -> str:
+    """Render the highlighted holy-grail candidates section."""
+    cards: list[str] = []
+    for p in sorted(passages, key=lambda x: x.get("interest_score", 0), reverse=True):
+        pid = p.get("passage_id", "?")
+        canonical = p.get("canonical_form") or []
+        attestations = p.get("attestations", [])
+        holy_changes = [
+            c for c in p.get("diachronic_changes", [])
+            if c.get("is_holy_grail_candidate")
+        ]
+        if not holy_changes:
+            continue
+
+        pre_tablets = sorted({
+            str(a.get("tablet")) for a in attestations
+            if a.get("stratum") == "pre_contact"
+        })
+        post_tablets = sorted({
+            str(a.get("tablet")) for a in attestations
+            if a.get("stratum") == "post_contact"
+        })
+
+        for change in holy_changes:
+            pos = change.get("position", -1)
+            pre_sign = change.get("pre_contact_sign", "—")
+            post_sign = change.get("post_contact_sign", "—")
+            n_cons = change.get("n_tablets_consistent", 0)
+            is_cross = bool(change.get("crosses_barthel_family"))
+
+            cross_badge = (
+                ' <span class="badge bd-cross">↕ Family-Crossing</span>' if is_cross else ""
+            )
+            pre_label = (
+                f'Pre-contact ({", ".join(pre_tablets) or "—"})'
+            )
+            post_suffix = "…" if len(post_tablets) > 4 else ""
+            post_label = f'Post-contact ({", ".join(post_tablets[:4])}{post_suffix})'
+
+            canon_chips = "".join(
+                f'<span class="hg-chip{"  hl" if i == pos else ""}">{code}</span>'
+                for i, code in enumerate(canonical)
+            )
+
+            cards.append(
+                f'<div class="hg-card">'
+                f'<div class="hg-head">'
+                f'<span class="hg-pid">{pid}</span>'
+                f'<span class="hg-pos">Position {pos + 1 if pos >= 0 else "?"}</span>'
+                f'<span class="badge bd-holy">★ Holy Grail candidate</span>'
+                f'{cross_badge}</div>'
+                f'<div class="hg-diff">'
+                f'<div class="hg-sign-grp">'
+                f'<div class="hg-sign-lbl">{pre_label}</div>'
+                f'<span class="hg-sign pre-s">{pre_sign}</span></div>'
+                f'<div class="hg-arrow">→</div>'
+                f'<div class="hg-sign-grp">'
+                f'<div class="hg-sign-lbl">{post_label}</div>'
+                f'<span class="hg-sign post-s">{post_sign}</span></div>'
+                f'</div>'
+                f'<div class="hg-canon">'
+                f'<span class="hg-canon-lbl">Canonical:</span>{canon_chips}</div>'
+                f'<div class="hg-tablets"><b>{n_cons}</b> post-contact tablet'
+                f'{"s" if n_cons != 1 else ""} show this substitution consistently.</div>'
+                f'</div>'
+            )
+
+    if not cards:
+        return ""
+
+    return (
+        f'<div class="hg-section">'
+        f'<div class="hg-title">★ Holy Grail Candidates</div>'
+        f'<div class="hg-sub">Non-allographic substitutions consistent across ≥ 2 '
+        f'post-contact tablets — the strongest computational evidence for systematic '
+        f'sign change across the pre/post-contact divide.</div>'
+        f'{"".join(cards)}</div>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -509,142 +1097,113 @@ def _render_passage_page(passage: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _render_summary_page(passages: list[dict], meta: dict[str, Any]) -> str:
-    """Render the diachronic cross-passage summary — the primary scholar view."""
-    generated = meta.get("generated", datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
+    """Render the interactive single-page diachronic passage summary."""
+    generated = meta.get(
+        "generated", datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    )
     source_file = meta.get("source_file", "—")
 
     n_passages = len(passages)
-    n_with_diachronic = sum(
+    all_attestations = [a for p in passages for a in p.get("attestations", [])]
+    all_changes = [c for p in passages for c in p.get("diachronic_changes", [])]
+    n_diachronic = sum(
         1 for p in passages
         if any(a.get("stratum") == "pre_contact" for a in p.get("attestations", []))
         and any(a.get("stratum") == "post_contact" for a in p.get("attestations", []))
     )
-    all_changes = [c for p in passages for c in p.get("diachronic_changes", [])]
     n_holy = sum(1 for c in all_changes if c.get("is_holy_grail_candidate"))
     n_cross = sum(1 for c in all_changes if c.get("crosses_barthel_family"))
+    all_tablets = sorted({a.get("tablet", "") for a in all_attestations if a.get("tablet")})
 
-    # Summary stats
-    stats_html = f"""<div class="stats-row">
-  <div class="stat-card">
-    <div class="stat-value">{n_passages}</div>
-    <div class="stat-label">parallel passages</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">{n_with_diachronic}</div>
-    <div class="stat-label">with diachronic signal</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">{len(all_changes)}</div>
-    <div class="stat-label">total changes detected</div>
-  </div>
-  <div class="stat-card holy">
-    <div class="stat-value">{n_holy}</div>
-    <div class="stat-label">holy-grail candidates</div>
-  </div>
-  <div class="stat-card cross">
-    <div class="stat-value">{n_cross}</div>
-    <div class="stat-label">family-crossing changes</div>
-  </div>
-</div>"""
+    # ── Stats cards ──────────────────────────────────────────────────────────
+    stats_html = (
+        f'<div class="stats-row">'
+        f'<div class="stat-card"><div class="stat-value">{n_passages}</div>'
+        f'<div class="stat-label">Parallel passages</div></div>'
+        f'<div class="stat-card pre"><div class="stat-value">{n_diachronic}</div>'
+        f'<div class="stat-label">With pre+post signal</div></div>'
+        f'<div class="stat-card"><div class="stat-value">{len(all_tablets)}</div>'
+        f'<div class="stat-label">Tablets covered</div></div>'
+        f'<div class="stat-card"><div class="stat-value">{len(all_changes)}</div>'
+        f'<div class="stat-label">Diachronic changes</div></div>'
+        f'<div class="stat-card holy"><div class="stat-value">{n_holy}</div>'
+        f'<div class="stat-label">Holy-Grail candidates</div></div>'
+        f'<div class="stat-card cross"><div class="stat-value">{n_cross}</div>'
+        f'<div class="stat-label">Family-Crossing changes</div></div>'
+        f'</div>'
+    )
 
-    # Holy-grail summary (top of report — most scientifically interesting)
-    holy_rows = []
-    for p in sorted(passages, key=lambda x: x.get("interest_score", 0), reverse=True):
-        pid = p.get("passage_id", "—")
-        for c in p.get("diachronic_changes", []):
-            if not c.get("is_holy_grail_candidate"):
-                continue
-            pre = c.get("pre_contact_sign", "—")
-            post = c.get("post_contact_sign", "—")
-            pos = c.get("position", -1)
-            n_cons = c.get("n_tablets_consistent", 0)
-            ct = c.get("change_type", "substitution")
-            holy_rows.append(
-                f'<tr>'
-                f'<td><a class="pt-id" href="{pid}.html">{pid}</a></td>'
-                f'<td>{_change_type_tag(ct)}</td>'
-                f'<td><span class="mono" style="font-size:11px">{pre} → {post}</span></td>'
-                f'<td class="muted small" style="text-align:center">'
-                f'{pos + 1 if pos >= 0 else "—"}</td>'
-                f'<td class="muted small" style="text-align:center">{n_cons}</td>'
-                f'</tr>'
-            )
+    # ── Holy-grail spotlight ─────────────────────────────────────────────────
+    hg_html = _render_holy_grail_spotlight(passages)
 
-    holy_section = ""
-    if holy_rows:
-        holy_section = f"""
-<div class="section-label" style="color:var(--holy);margin-bottom:10px">
-  Holy Grail candidates — cross-contact substitutions consistent across ≥ 2 post-contact tablets
-</div>
-<div class="passage-table-wrap">
-<table class="passage-table">
-<thead><tr>
-  <th>Passage</th><th>Type</th><th>Pre → Post sign</th>
-  <th style="text-align:center">Position</th>
-  <th style="text-align:center">Tablets consistent</th>
-</tr></thead>
-<tbody>{"".join(holy_rows)}</tbody>
-</table>
-</div>"""
+    # ── Filter bar ───────────────────────────────────────────────────────────
+    n_dia_chip = n_diachronic
+    n_holy_chip = sum(
+        1 for p in passages
+        if any(c.get("is_holy_grail_candidate") for c in p.get("diachronic_changes", []))
+    )
+    n_cross_chip = sum(
+        1 for p in passages
+        if any(c.get("crosses_barthel_family") for c in p.get("diachronic_changes", []))
+    )
+    filter_bar = (
+        f'<div class="filter-bar">'
+        f'<input type="search" class="fb-search" placeholder="Search passages…"'
+        f' oninput="searchPassages(this.value)">'
+        f'<div class="filter-chips">'
+        f'<button class="chip active" onclick="setFilter(\'all\',this)">All ({n_passages})</button>'
+        f'<button class="chip" onclick="setFilter(\'diachronic\',this)">Diachronic ({n_dia_chip})</button>'
+        f'<button class="chip c-holy" onclick="setFilter(\'holygrail\',this)">Holy Grail ({n_holy_chip})</button>'
+        f'<button class="chip c-cross" onclick="setFilter(\'familycross\',this)">Family-Crossing ({n_cross_chip})</button>'
+        f'</div>'
+        f'<div class="fb-right">'
+        f'<select class="fb-sort" onchange="setSort(this.value)">'
+        f'<option value="score">↓ Interest score</option>'
+        f'<option value="tablets">↓ Tablet count</option>'
+        f'<option value="changes">↓ Changes</option>'
+        f'<option value="pid">↑ Passage ID</option>'
+        f'</select>'
+        f'<span id="fb-count" class="fb-count">Showing {n_passages} of {n_passages}</span>'
+        f'<button class="fb-btn" onclick="expandAll()">Expand all</button>'
+        f'<button class="fb-btn" onclick="collapseAll()">Collapse all</button>'
+        f'</div></div>'
+    )
 
-    # Full passage table — all passages, pre-contact anchors highlighted
-    def _row(p: dict) -> str:
-        pid = p.get("passage_id", "—")
-        score = p.get("interest_score", 0.0)
-        atts = p.get("attestations", [])
-        n_tabs = len({a.get("tablet") for a in atts})
-        pre_c = sum(1 for a in atts if a.get("stratum") == "pre_contact")
-        post_c = sum(1 for a in atts if a.get("stratum") == "post_contact")
-        changes = p.get("diachronic_changes", [])
-        ph = sum(1 for c in changes if c.get("is_holy_grail_candidate"))
-        pc = sum(1 for c in changes if c.get("crosses_barthel_family"))
+    # ── Passage cards ────────────────────────────────────────────────────────
+    sorted_passages = sorted(
+        passages, key=lambda p: p.get("interest_score", 0), reverse=True
+    )
+    cards = "".join(
+        _render_passage_card(p, i) for i, p in enumerate(sorted_passages, 1)
+    )
 
-        is_anchor = pre_c > 0
-        row_class = ' class="row-anchor"' if is_anchor else ""
-        anchor_tag = '<span class="tag-anchor">⚓ pre-contact</span>' if is_anchor else ""
-
-        diachronic_cell = (
-            f'<span class="badge badge-pre">{pre_c} pre</span> '
-            f'<span class="badge badge-post">{post_c} post</span>'
-            if pre_c and post_c else
-            f'<span class="badge badge-none">{"pre only" if pre_c else "post only" if post_c else "—"}</span>'
-        )
-        holy_tag = f' <span class="tag-holy">★ {ph} holy</span>' if ph else ""
-        cross_tag = f' <span class="tag-cross">↕ {pc} cross</span>' if pc else ""
-        return (
-            f'<tr{row_class}>'
-            f'<td><a class="pt-id" href="{pid}.html">{pid}</a> {anchor_tag}</td>'
-            f'<td class="score-val">{score:.2f}</td>'
-            f'<td style="text-align:center" class="muted small">{n_tabs}</td>'
-            f'<td>{diachronic_cell}</td>'
-            f'<td class="muted small" style="text-align:center">{len(changes)}{holy_tag}{cross_tag}</td>'
-            f'</tr>'
-        )
-
-    sorted_passages = sorted(passages, key=lambda p: p.get("interest_score", 0), reverse=True)
-    table_rows = "".join(_row(p) for p in sorted_passages)
-
-    passage_table = f"""
-<div class="section-label" style="margin-bottom:10px">All passages — ranked by interest score</div>
-<div class="passage-table-wrap">
-<table class="passage-table">
-<thead><tr>
-  <th>Passage ID</th>
-  <th>Interest score</th>
-  <th style="text-align:center">Tablets</th>
-  <th>Strata</th>
-  <th>Changes</th>
-</tr></thead>
-<tbody>{table_rows}</tbody>
-</table>
-</div>"""
+    # ── Abstract ─────────────────────────────────────────────────────────────
+    abstract = (
+        f'<div class="abstract">'
+        f'<p>Rongorongo contains at least {n_passages} passages attested on multiple '
+        f'tablets. Where the same passage appears on both the pre-contact Tablet D '
+        f'(radiocarbon-dated 1493–1509 CE; Ferrara et al. 2024) and post-contact '
+        f'tablets, sign substitutions at consistent canonical positions provide '
+        f'direct computational evidence for systematic change across the contact '
+        f'horizon.</p>'
+        f'<p>A <b>Holy Grail candidate</b> is a non-allographic substitution '
+        f'consistent at the same position in ≥ 2 independent post-contact tablets — '
+        f'making idiosyncratic scribal error unlikely. There are <b>{n_holy}</b> '
+        f'such candidates. A <b>Family-Crossing change</b> involves signs from '
+        f'different Barthel century blocks — iconographically surprising and '
+        f'potentially reflecting sign innovation or tradition discontinuity. '
+        f'There are <b>{n_cross}</b> family-crossing changes.</p>'
+        f'<p>Click any passage row to expand its attestation alignment grid. '
+        f'<b>We invite Prof. Ferrara, Dr. Horley, and rongorongo scholars to '
+        f'review these candidates.</b></p></div>'
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>hackingrongo — Diachronic Passage Analysis</title>
+<title>hackingrongo — Parallel Passage Analysis</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>{_CSS}</style>
 </head>
@@ -652,60 +1211,47 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any]) -> str:
 <div class="wrap">
 
 <div class="report-header">
-  <div class="report-title">hackingrongo<br>Diachronic Passage Analysis</div>
-  <div class="report-subtitle">Cross-contact sign changes in repeated passage sequences — for scholar review</div>
+  <div class="report-title">Parallel Passage<br>Diachronic Analysis</div>
+  <div class="report-subtitle">Cross-contact sign changes in repeated rongorongo sequences</div>
   <div class="report-meta">
     <b>Passages:</b> {n_passages} &nbsp;·&nbsp;
-    <b>With pre/post signal:</b> {n_with_diachronic} &nbsp;·&nbsp;
-    <b>Total changes detected:</b> {len(all_changes)} &nbsp;·&nbsp;
+    <b>With diachronic signal:</b> {n_diachronic} &nbsp;·&nbsp;
+    <b>Holy-Grail candidates:</b> {n_holy} &nbsp;·&nbsp;
+    <b>Tablets covered:</b> {len(all_tablets)} ({", ".join(all_tablets)}) &nbsp;·&nbsp;
     <b>Source:</b> {source_file} &nbsp;·&nbsp;
     <b>Generated:</b> {generated}
   </div>
-  <div class="abstract">
-    <p>Rongorongo contains at least {n_passages} passages that appear on multiple tablets.
-    Where the same passage occurs on both a pre-contact tablet (Tablet D, radiocarbon-dated
-    to before 1722 CE; Ferrara et al. 2024) and one or more post-contact tablets, sign
-    substitutions at consistent positions across multiple post-contact attestations provide
-    the strongest available evidence for systematic scribal or linguistic change across
-    the contact boundary.</p>
-    <p>A <b>holy-grail candidate</b> is a non-allographic substitution that recurs at
-    the same canonical position in ≥ 2 independent post-contact tablets, making
-    idiosyncratic scribal error unlikely. There are {n_holy} such candidates in this
-    dataset. A <b>family-crossing change</b> involves pre- and post-contact consensus
-    signs from different Barthel century blocks (e.g. 200-series → 700-series), which
-    is iconographically surprising and may reflect sign innovation, semantic shift, or
-    scribal tradition discontinuity. There are {n_cross} family-crossing changes.</p>
-    <p>Each passage links to a detail page with the full attestation table, glyph-level
-    alignment visualisation, and per-change analysis. <b>We invite Prof. Ferrara,
-    Dr. Horley, and other rongorongo scholars to review these candidates and advise
-    on their linguistic and epigraphic interpretation.</b></p>
-  </div>
+  {abstract}
 </div>
 
 {stats_html}
 
-{holy_section}
+{hg_html}
 
-{passage_table}
+<div class="section-label">All parallel passages</div>
+{filter_bar}
+
+<div id="passages">
+{cards}
+</div>
 
 <div class="report-footer">
-  <p><b>hackingrongo</b> · Parallel passage alignment · MIT License ·
-  <a href="https://github.com/violasarah2000/hackingrongo" target="_blank">GitHub</a></p>
-  <p>Alignment method: Needleman-Wunsch global alignment with diagonal-first tie-breaking.
-  Diachronic analysis: majority-vote consensus sign per stratum, then cross-stratum comparison.
-  Holy-grail criterion: non-allographic substitution consistent in ≥ 2 post-contact tablets
-  at the same canonical position (Barthel 1958 allograph catalog).
+  <p><b>hackingrongo</b> · Parallel passage alignment report · MIT License</p>
+  <p>Alignment: position-based with majority-vote consensus per tablet.
+  Levenshtein threshold = 1 for passage matching against corpus sequences.</p>
+  <p>Pre-contact anchor: Tablet D (radiocarbon 1493–1509 CE, Ferrara et al. 2024).
+  Post-contact tablets: B, C, E, G, H, I, K, P, Q, S and others (RC min ≥ 1650 CE).
+  Holy-Grail criterion: non-allographic substitution consistent in ≥ 2 post-contact
+  tablets at the same canonical position (Barthel 1958 allograph catalog).
   Family-Crossing: pre/post consensus signs in different Barthel century blocks.</p>
-  <p>Pre-contact anchor: Tablet D (radiocarbon 1390–1520 CE, Ferrara et al. 2024).
-  Post-contact tablets: H, G, P, Q, and others per Barthel (1958) / Fischer (1997) dating.</p>
-  <p>This is a computational hypothesis report. All change candidates require expert
+  <p>This is a computational hypothesis report. All candidates require expert
   epigraphic and linguistic review before any interpretive claim.</p>
   <p><b>SperksWerks LLC</b> ·
-  <a href="https://sperkswerks.ai" target="_blank">sperkswerks.ai</a> ·
-  <a href="mailto:studio@sperkswerks.ai">studio@sperkswerks.ai</a></p>
+  <a href="https://sperkswerks.ai" target="_blank">sperkswerks.ai</a></p>
 </div>
 
 </div>
+<script>{_JS}</script>
 </body>
 </html>"""
 

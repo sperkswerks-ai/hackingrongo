@@ -29,6 +29,13 @@ Derived from de Souza (2023) rongopy (GPL-3.0); original catalogue: Horley, P. (
 `data/catalog/horley_encoding.json` — Barthel→Horley mapping.
 Source: de Souza (2023) rongopy (GPL-3.0); encoding revision: Horley (2021).
 
+### Data Curation Notes (May 2026)
+
+- Barthel reference images were manually reviewed to remove non-glyph artifacts (notably Arabic numeral labels captured during PDF extraction).
+- Ambiguous positional reference filenames (for example `100_42_barthel_...`) are no longer used by default in fallback image resolution.
+- SVG glyphs are transparent by design; rasterization composites onto white before grayscale conversion to avoid dark/checkerboard background artifacts in model inputs.
+- 3D crop and synthetic-view assets are optional. For baseline training runs, excluding them from packaged datasets is supported and often preferred for cleaner image quality.
+
 ---
 
 ## License

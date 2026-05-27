@@ -1127,7 +1127,11 @@ def frequency_language_match(
         n = len(counts)
         if x_min <= 0:
             return float("nan")
-        return 1.0 + n * (sum(math.log(c / x_min) for c in counts) ** -1)
+        s = sum(math.log(c / x_min) for c in counts)
+        if s == 0.0:
+            # All counts are equal — power-law exponent is undefined.
+            return float("nan")
+        return 1.0 + n / s
 
     zipf_alpha_signs = _zipf_alpha(sign_freqs)
 

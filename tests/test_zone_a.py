@@ -808,6 +808,7 @@ class TestBuildWarmupCosineScheduler:
         opt = self._opt(cfg)
         sched = build_warmup_cosine_scheduler(opt, warmup_epochs=3, cosine_T_max=7)
         for _ in range(10):
+            opt.step()
             sched.step()
 
 

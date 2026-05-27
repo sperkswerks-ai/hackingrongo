@@ -244,6 +244,36 @@ class TestGlyphImagePipelineRasterize:
         assert result.dtype == np.float32
         assert result.shape == (16, 16)
 
+    def test_transparent_png_background_is_composited_to_white(self, tmp_path):
+        """Transparent SVG render output should become white background, not dark."""
+        svg_path = tmp_path / "test.svg"
+        svg_path.write_text("<svg/>", encoding="utf-8")
+
+        from PIL import Image
+
+        rgba = np.zeros((16, 16, 4), dtype=np.uint8)
+        rgba[..., 3] = 0  # fully transparent background
+        rgba[4:12, 7:9, :3] = 0
+        rgba[4:12, 7:9, 3] = 255  # opaque black glyph stroke
+
+        img = Image.fromarray(rgba, mode="RGBA")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        mock_cairo = MagicMock()
+        mock_cairo.svg2png.return_value = png_bytes
+
+        import sys
+        with patch.dict(sys.modules, {"cairosvg": mock_cairo}):
+            result = GlyphImagePipeline.rasterize_svg(svg_path, target_size=16)
+
+        assert result is not None
+        # Transparent background should map near white after compositing.
+        assert float(result[0, 0]) > 0.95
+        # Opaque black stroke should remain dark.
+        assert float(result[6, 8]) < 0.1
+
 
 class TestGlyphImagePipelineCall:
     def _pipeline_with_mocked_rasterize(

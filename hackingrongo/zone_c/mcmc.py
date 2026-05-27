@@ -348,22 +348,46 @@ class MCMCSampler:
             for chain_id in range(self._num_chains)
         ]
 
-        # Colab's Jupyter kernel is not fork-safe: spawned worker processes
-        # inherit complex kernel state and hang silently on f.result().
-        # Detect Colab (or any environment that sets HACKINGRONGO_SEQUENTIAL=1)
-        # and force sequential execution.
+        # Colab's Jupyter kernel is not fork-safe: the default 'fork' start method
+        # lets worker processes inherit complex kernel state and they hang silently.
+        # On Colab we use the 'spawn' start method instead, which starts clean
+        # worker processes without kernel state.  HACKINGRONGO_SEQUENTIAL=1
+        # forces sequential execution regardless of environment.
+        _force_sequential = os.environ.get("HACKINGRONGO_SEQUENTIAL", "") == "1"
         _in_colab = (
             "COLAB_RELEASE_TAG" in os.environ
             or "COLAB_GPU" in os.environ
-            or os.environ.get("HACKINGRONGO_SEQUENTIAL", "") == "1"
         )
 
-        if self._num_chains > 1 and not _in_colab:
+        # Resolve which multiprocessing context (if any) to use.
+        _mp_context = None
+        if self._num_chains > 1 and not _force_sequential:
+            if _in_colab:
+                import multiprocessing as _mp
+                try:
+                    _mp_context = _mp.get_context("spawn")
+                    logger.info(
+                        "Colab environment: using 'spawn' mp_context for "
+                        "ProcessPoolExecutor to avoid fork/kernel hang."
+                    )
+                except Exception as _ctx_err:
+                    logger.warning(
+                        "Could not obtain 'spawn' context (%s); "
+                        "will run chains sequentially.",
+                        _ctx_err,
+                    )
+            else:
+                _mp_context = None  # default fork/forkserver on non-Colab
+
+        if self._num_chains > 1 and not _force_sequential and (_mp_context is not None or not _in_colab):
             n_workers = min(self._num_chains, os.cpu_count() or self._num_chains)
             # Per-chain timeout: 20 min per 1 000 iterations (generous).
             _timeout = max(1200, self._num_iterations * 1.2)
+            _executor_kwargs: dict = {"max_workers": n_workers}
+            if _mp_context is not None:
+                _executor_kwargs["mp_context"] = _mp_context
             try:
-                with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                with ProcessPoolExecutor(**_executor_kwargs) as pool:
                     futures = [
                         pool.submit(_run_chain_worker, self, chain_id, seed)
                         for chain_id, seed in chain_configs
@@ -383,11 +407,11 @@ class MCMCSampler:
                     all_samples.append(samples)
                     all_rates.append(rate)
         else:
-            if _in_colab and self._num_chains > 1:
+            if (_in_colab or _force_sequential) and self._num_chains > 1:
+                reason = "HACKINGRONGO_SEQUENTIAL=1" if _force_sequential else "spawn context unavailable"
                 logger.info(
-                    "Colab environment detected — running %d chains sequentially "
-                    "(ProcessPoolExecutor skipped to avoid kernel fork hang).",
-                    self._num_chains,
+                    "Running %d chains sequentially (%s).",
+                    self._num_chains, reason,
                 )
             for chain_id, seed in chain_configs:
                 samples, rate = self._run_chain(chain_id, seed)
@@ -677,6 +701,16 @@ class MCMCSampler:
                 else:
                     reassign_prob = max(reassign_prob * 0.9, 0.05)
                 recent_accepted = 0
+
+            # Periodic progress report every 10 000 iterations.
+            _progress_every = 10_000
+            if it > 0 and it % _progress_every == 0:
+                logger.info(
+                    "Chain %d  %d/%d iters  (%.0f%%)  lp=%.3f",
+                    chain_id, it, self._num_iterations,
+                    100.0 * it / self._num_iterations,
+                    current_lp,
+                )
 
         post_rate = accepted_post_burn / max(post_burn_steps, 1)
         return samples, post_rate

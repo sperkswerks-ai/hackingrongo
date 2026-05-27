@@ -101,7 +101,7 @@ The quantum analysis does not promise to solve Rongorongo. It provides the first
 
 ## Limitations and Honest Caveats
 
-The Rongorongo glyphs included for computational analysis are only from wooden objects and reimiro ornaments, however, cave petroglyphs have not been included. The IC finding is evidence of structure, not proof of language. Zone C has not yet produced a validated decipherment hypothesis. The Barthel family labels are an arithmetic function of the sign code, not a faithful representation of Barthel's iconographic taxonomy. 16.5% of corpus tokens have no image file (415 unique codes). These fall back to zero tensors during training. Running `scripts/extract_barthel_glyphs.py --source both` with the Barthel (1958) PDFs in `data/barthel_pdfs/` will close most of this gap.
+The Rongorongo glyphs included for computational analysis are only from wooden objects and reimiro ornaments, however, cave petroglyphs have not been included. The IC finding is evidence of structure, not proof of language. Zone C has not yet produced a validated decipherment hypothesis. The Barthel family labels are an arithmetic function of the sign code, not a faithful representation of Barthel's iconographic taxonomy. Some corpus tokens still have no resolvable image file; these tokens are excluded from image-model training (not replaced with zero tensors). Running `scripts/extract_barthel_glyphs.py --source both` with the Barthel (1958) PDFs in `data/barthel_pdfs/` can close part of this gap.
 
 ---
 

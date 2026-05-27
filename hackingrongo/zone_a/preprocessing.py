@@ -428,7 +428,17 @@ class GlyphImagePipeline:
         # Decode PNG bytes to numpy
         import io
         from PIL import Image as _Image  # type: ignore[import]
-        img = _Image.open(io.BytesIO(png_bytes)).convert("L")
+        img = _Image.open(io.BytesIO(png_bytes))
+
+        # Scraped SVG glyphs are transparent by default. Composite onto white
+        # so transparency never becomes a dark checkerboard/black background
+        # after grayscale conversion.
+        if img.mode in {"RGBA", "LA"} or (img.mode == "P" and "transparency" in img.info):
+            rgba = img.convert("RGBA")
+            white = _Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+            img = _Image.alpha_composite(white, rgba)
+
+        img = img.convert("L")
         arr = np.asarray(img, dtype=np.float32) / 255.0
         return arr
 

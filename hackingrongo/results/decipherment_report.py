@@ -634,6 +634,60 @@ body {
   margin-bottom: 20px;
 }
 
+/* ── Crib playbook (DefCon-facing) ── */
+.playbook-section { margin-top: 56px; }
+.playbook-heading {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted);
+  margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.playbook-heading span { color: #0f766e; margin-right: 6px; }
+.playbook-intro {
+  font-size: 13.5px; color: #333; line-height: 1.85; max-width: 900px;
+  margin-bottom: 14px;
+}
+.playbook-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.playbook-tile {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px;
+}
+.playbook-k {
+  font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);
+  margin-bottom: 6px;
+}
+.playbook-v {
+  font-family: 'JetBrains Mono', monospace; font-size: 22px;
+  color: #0f172a; font-weight: 600; line-height: 1.1;
+}
+.playbook-sub {
+  margin-top: 4px; font-size: 11px; color: #555;
+}
+.playbook-equation {
+  margin-top: 10px; background: var(--surface2); border-left: 3px solid #0f766e66;
+  border-radius: 0 4px 4px 0; padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #0f172a;
+}
+.playbook-steps {
+  margin-top: 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+}
+.playbook-steps-title {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #0f766e;
+  margin-bottom: 8px;
+}
+.playbook-step {
+  font-size: 12.5px; color: #222; line-height: 1.7; margin-bottom: 6px;
+}
+.playbook-step:last-child { margin-bottom: 0; }
+.mono-inline {
+  font-family: 'JetBrains Mono', monospace;
+}
+
 /* ── MCMC diagnostics panel ── */
 .diag-section { margin-top: 56px; }
 .diag-heading {
@@ -865,6 +919,135 @@ def _render_crib_panel(
   <div class="crib-heading"><span>&#128273;</span>Known-Plaintext Cribs &amp; Calendar Anchors</div>
   {intro}
   <div class="crib-grid">{cards_html}</div>
+</div>"""
+
+
+def _render_crib_playbook_panel(
+    qubo_data: dict | None,
+    diag_data: dict | None,
+    mixed_data: dict | None,
+    top_hyp_assignments: list | None = None,
+) -> str:
+    """Render a DefCon-facing summary of crib-induced search-space reduction."""
+    cribs: dict[str, str] = {}
+    if qubo_data and qubo_data.get("cribs"):
+        cribs.update({str(k): str(v) for k, v in dict(qubo_data["cribs"]).items()})
+
+    if diag_data and diag_data.get("calendar_anchors"):
+        for sign, phoneme in dict(diag_data["calendar_anchors"]).items():
+            cribs.setdefault(str(sign), str(phoneme))
+
+    mixed_cribs = {}
+    if mixed_data:
+        mixed_cribs = (mixed_data.get("mixed_model") or {}).get("taxogram_cribs") or {}
+        for sign, phoneme in dict(mixed_cribs).items():
+            cribs.setdefault(str(sign), str(phoneme))
+
+    if not cribs:
+        return ""
+
+    taxogram_signs = set()
+    if qubo_data and qubo_data.get("taxogram_signs_excluded_from_lm"):
+        taxogram_signs.update(str(s) for s in qubo_data.get("taxogram_signs_excluded_from_lm", []))
+    taxogram_signs.update(str(s) for s in dict(mixed_cribs).keys())
+
+    inventory_size = None
+    if diag_data and isinstance(diag_data.get("sign_inventory_size"), int):
+        inventory_size = int(diag_data["sign_inventory_size"])
+    elif top_hyp_assignments:
+        inventory_size = len(top_hyp_assignments)
+
+    unique_phonemes: set[str] = set()
+    if top_hyp_assignments:
+        for a in top_hyp_assignments:
+            if hasattr(a, "phoneme"):
+                unique_phonemes.add(str(a.phoneme))
+            elif isinstance(a, dict) and "phoneme" in a:
+                unique_phonemes.add(str(a["phoneme"]))
+
+    phoneme_space = len(unique_phonemes) if len(unique_phonemes) >= 2 else None
+    k = len(cribs)
+    log2_drop = None
+    log10_factor = None
+    if phoneme_space is not None:
+        log2_drop = k * math.log2(float(phoneme_space))
+        log10_factor = k * math.log10(float(phoneme_space))
+
+    k_taxogram = sum(1 for s in cribs if s in taxogram_signs)
+
+    if inventory_size and inventory_size > 0:
+        pinned_pct = (100.0 * k) / float(inventory_size)
+        pinned_str = f"{pinned_pct:.1f}%"
+    else:
+        pinned_str = "n/a"
+
+    if log10_factor is not None:
+        collapse_str = f"~10^{log10_factor:.1f}"
+        entropy_str = f"{log2_drop:.1f} bits"
+        equation = (
+            "Search-space collapse model: "
+            f"|Omega_0| = m^n, |Omega_1| = m^(n-k), reduction = m^k, "
+            f"DeltaH = k*log2(m) = {entropy_str}"
+        )
+    else:
+        collapse_str = "estimated"
+        entropy_str = "insufficient data"
+        equation = (
+            "Search-space collapse model available once phoneme-space size is known: "
+            "|Omega_0| = m^n, |Omega_1| = m^(n-k), reduction = m^k."
+        )
+
+    inventory_str = str(inventory_size) if inventory_size is not None else "n/a"
+    phoneme_str = str(phoneme_space) if phoneme_space is not None else "n/a"
+
+    return f"""
+<div class="playbook-section" id="crib-playbook">
+  <div class="playbook-heading"><span>&#9876;</span>Crib Playbook: Entropy Collapse Dashboard</div>
+  <p class="playbook-intro">
+    This panel quantifies how the pipeline injects high-confidence structure before key search.
+    Pinned cribs (calendar anchors plus taxogram constraints such as Barthel 200) are removed
+    from the proposal surface, shrinking the substitution search space before MCMC and QUBO optimization.
+  </p>
+  <div class="playbook-grid">
+    <div class="playbook-tile">
+      <div class="playbook-k">Pinned signs (k)</div>
+      <div class="playbook-v">{k}</div>
+      <div class="playbook-sub">calendar + taxogram + configured cribs</div>
+    </div>
+    <div class="playbook-tile">
+      <div class="playbook-k">Taxogram-pinned signs</div>
+      <div class="playbook-v">{k_taxogram}</div>
+      <div class="playbook-sub">excluded from LM scoring in mixed/QUBO paths</div>
+    </div>
+    <div class="playbook-tile">
+      <div class="playbook-k">Sign inventory (n)</div>
+      <div class="playbook-v">{inventory_str}</div>
+      <div class="playbook-sub">active sign set in this run</div>
+    </div>
+    <div class="playbook-tile">
+      <div class="playbook-k">Phoneme-space (m)</div>
+      <div class="playbook-v">{phoneme_str}</div>
+      <div class="playbook-sub">distinct phoneme values in top map</div>
+    </div>
+    <div class="playbook-tile">
+      <div class="playbook-k">Pinned fraction</div>
+      <div class="playbook-v">{pinned_str}</div>
+      <div class="playbook-sub">of active sign inventory</div>
+    </div>
+    <div class="playbook-tile">
+      <div class="playbook-k">Reduction factor</div>
+      <div class="playbook-v">{collapse_str}</div>
+      <div class="playbook-sub">approximate shrink of keyspace</div>
+    </div>
+  </div>
+  <div class="playbook-equation"><span class="mono-inline">{equation}</span></div>
+  <div class="playbook-steps">
+    <div class="playbook-steps-title">Attack Chain Summary</div>
+    <div class="playbook-step"><b>Recon:</b> detect structural signs from omission/frequency behavior across parallel passages.</div>
+    <div class="playbook-step"><b>Injection:</b> pin trusted sign->phoneme assignments as cribs before search starts.</div>
+    <div class="playbook-step"><b>Containment:</b> keep taxogram signs out of LM scoring where appropriate to avoid delimiter contamination.</div>
+    <div class="playbook-step"><b>Exploitation:</b> run MCMC/QUBO on a reduced space and compare gains against unconstrained baselines.</div>
+  </div>
 </div>"""
 
 
@@ -1439,6 +1622,50 @@ def _render_quantum_section(
   </div>
 </div>"""
 
+
+def _infer_corpus_stats_from_ranking_path(ranking_path: Path) -> tuple[int | None, int | None]:
+  """Infer (n_tablets, total_glyphs) from sibling project data/corpus directory.
+
+  Returns ``(None, None)`` when the expected corpus directory cannot be found
+  or parsed. This keeps report generation robust for ad-hoc ranking files.
+  """
+  try:
+    # Expected layout: <project>/outputs/decipherment/ranking.json
+    # hence project root is ranking_path.parents[2].
+    project_root = ranking_path.resolve().parents[2]
+    corpus_dir = project_root / "data" / "corpus"
+    if not corpus_dir.exists():
+      return None, None
+
+    tablet_files = sorted(corpus_dir.glob("[A-Z].json"))
+    if not tablet_files:
+      return None, None
+
+    total_glyphs = 0
+    n_tablets = 0
+    for tablet_path in tablet_files:
+      try:
+        data = json.loads(tablet_path.read_text(encoding="utf-8"))
+      except Exception as exc:  # noqa: BLE001
+        logger.warning(
+          "Could not parse corpus tablet JSON %s: %s",
+          tablet_path,
+          exc,
+        )
+        continue
+
+      glyphs = data.get("glyphs")
+      if isinstance(glyphs, list):
+        total_glyphs += len(glyphs)
+        n_tablets += 1
+
+    if n_tablets == 0:
+      return None, None
+    return n_tablets, total_glyphs
+  except Exception as exc:  # noqa: BLE001
+    logger.warning("Could not infer corpus stats from ranking path %s: %s", ranking_path, exc)
+    return None, None
+
     parts: list[str] = []
     if mixed_data is not None:
         parts.append(_render_mixed_model_panel(mixed_data))
@@ -1462,6 +1689,7 @@ def _render_quantum_section(
 
 def _render_html(
     ranking: HypothesisRanking,
+  ranking_path: Path,
     top_n: int,
     null_baseline: float | None = None,
     pgood_data: dict | None = None,
@@ -1496,6 +1724,7 @@ def _render_html(
 
     # Optional enhanced-metrics sections
     top_assignments = hypotheses[0].assignments if hypotheses else None
+    playbook_section = _render_crib_playbook_panel(qubo_data, diag_data, mixed_data, top_assignments)
     crib_section  = _render_crib_panel(qubo_data, diag_data, top_assignments)
     diag_section  = _render_mcmc_diagnostics_panel(diag_data) if diag_data else ""
     freq_section  = _render_freq_match_panel(freq_data) if freq_data else ""
@@ -1503,6 +1732,8 @@ def _render_html(
 
     # TOC chips — add links for whichever optional sections are present
     toc_extra = ""
+    if playbook_section:
+      toc_extra += '<a class="toc-chip" href="#crib-playbook" style="color:#0f766e">&#9876; Crib playbook</a>'
     if crib_section:
         toc_extra += '<a class="toc-chip" href="#crib-anchors" style="color:#c4692a">&#128273; Cribs</a>'
     if diag_section:
@@ -1523,6 +1754,9 @@ def _render_html(
     toc_chips += toc_extra
 
     n_assignments_top = len(hypotheses[0].assignments) if hypotheses else 0
+    n_tablets, total_glyphs = _infer_corpus_stats_from_ranking_path(ranking_path)
+    corpus_scope = f"across {n_tablets} tablets" if n_tablets is not None else "across unknown tablets"
+    glyph_total = f"{total_glyphs:,}" if total_glyphs is not None else "unknown"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1573,6 +1807,8 @@ def _render_html(
 
 {quantum_section}
 
+{playbook_section}
+
 {crib_section}
 
 {diag_section}
@@ -1589,7 +1825,7 @@ def _render_html(
   Language models: <code>hackingrongo.zone_c.lm_scoring.LMScorer</code>
   (Polynesian n-gram LMs from ABVD + Hawaiian corpus).</p>
   <p>Sign inventory: Horley (2010) coding system. Barthel (1958) base codes.
-  Corpus: {n_assignments_top}-sign active inventory across 26 tablets ({15273} total glyphs).</p>
+  Corpus: {n_assignments_top}-sign active inventory {corpus_scope} ({glyph_total} total glyphs).</p>
   <p>This is a computational hypothesis report, not a decipherment claim.
   All hypotheses require expert linguistic and epigraphic review.</p>
   <p><b>SperksWerks LLC</b> &middot;
@@ -1677,7 +1913,7 @@ def build_decipherment_report(
     morph_data = _load_opt(morph_path, "morpheme segmentation")
 
     return _render_html(
-        ranking, top_n,
+      ranking, ranking_path, top_n,
         null_baseline=null_baseline,
         pgood_data=pgood_data,
         qubo_data=qubo_data,
