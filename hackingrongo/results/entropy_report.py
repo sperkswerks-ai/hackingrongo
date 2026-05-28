@@ -578,11 +578,13 @@ def _section_language_likeness(sensitivity: dict, zipf: dict, boust: dict) -> st
         _score("Non-random sign usage",
                ic_norm_range,
                "strong signal", "ok",
-               f"IC × k ranges from "
-               f"{min(r[4] for r in rows_data):.1f}–{max(r[5] for r in rows_data):.1f} "
-               f"across all scenarios and strata — all are far above the random baseline (1.0) "
-               f"and above the English reference ({eng_ic_norm:.2f}). "
-               "The sign distribution is highly concentrated relative to a uniform draw.") +
+               (f"IC × k ranges from "
+                f"{min(r[4] for r in rows_data):.1f}–{max(r[5] for r in rows_data):.1f} "
+                f"across all scenarios and strata — all are far above the random baseline (1.0) "
+                f"and above the English reference ({eng_ic_norm:.2f}). "
+                "The sign distribution is highly concentrated relative to a uniform draw."
+                if rows_data else
+                "No scenario data available.")) +
         _score("Zipf power-law distribution",
                zipf_val,
                "partial" if not zipf_ok else "consistent", "warn" if not zipf_ok else "ok",
