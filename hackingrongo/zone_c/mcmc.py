@@ -204,6 +204,7 @@ class MCMCSampler:
         phoneme_priors: list[float] | None = None,
         seed: int | None = None,
         cribs: dict[str, str] | None = None,
+        sign_ic_weights: dict[str, float] | None = None,
     ) -> None:
         self._scorer = lm_scorer
         self._corpus_sequences = corpus_sequences
@@ -242,6 +243,25 @@ class MCMCSampler:
                 "MCMCSampler: %d crib assignments pinned: %s",
                 len(self._cribs),
                 self._cribs,
+            )
+
+        # IC-weighted proposal: signs with higher IC contribution receive
+        # proportionally more proposal attempts, so their assignments are
+        # refined more aggressively.  Weights are normalised to sum=1.
+        # Falls back to uniform if not supplied.
+        self._sign_proposal_weights: dict[str, float] = {}
+        if sign_ic_weights:
+            free = self._free_sign_ids if self._free_sign_ids else self._sign_ids
+            raw_w = [max(sign_ic_weights.get(s, 0.0), 1e-6) for s in free]
+            total_w = sum(raw_w)
+            self._sign_proposal_weights = {
+                s: w / total_w for s, w in zip(free, raw_w)
+            }
+            logger.info(
+                "MCMCSampler: IC-weighted proposals enabled for %d free signs "
+                "(top-3 by weight: %s).",
+                len(free),
+                sorted(self._sign_proposal_weights, key=self._sign_proposal_weights.get, reverse=True)[:3],
             )
 
         mc = cfg.zone_c.mcmc
@@ -832,8 +852,9 @@ class MCMCSampler:
         for a standard random-walk proposal.  The fraction of steps using
         this move is controlled by :attr:`_lm_guided_prob`.
         """
-        n_cand = min(self._lm_guided_n_candidates, len(self._free_sign_ids or self._sign_ids))
-        signs_to_try = rng.sample(self._free_sign_ids if self._free_sign_ids else self._sign_ids, n_cand)
+        free = self._free_sign_ids if self._free_sign_ids else self._sign_ids
+        n_cand = min(self._lm_guided_n_candidates, len(free))
+        signs_to_try = self._sample_sign(free, rng, n=n_cand)
 
         # Draw top_k phonemes weighted by prior (fast unigram guidance).
         top_k = min(self._lm_guided_top_k, len(self._phoneme_inventory))
@@ -876,6 +897,29 @@ class MCMCSampler:
             changes[best_sign] = (best_old_ph, best_new_ph)
         return proposal, changes
 
+    def _sample_sign(
+        self,
+        sign_ids: list[str],
+        rng: random.Random,
+        n: int = 1,
+    ) -> list[str]:
+        """Sample ``n`` sign(s) from ``sign_ids`` using IC proposal weights.
+
+        Falls back to uniform sampling when no weights are set.
+        """
+        if self._sign_proposal_weights and n == 1:
+            weights = [self._sign_proposal_weights.get(s, 1e-6) for s in sign_ids]
+            return rng.choices(sign_ids, weights=weights, k=1)
+        if self._sign_proposal_weights and n == 2 and len(sign_ids) >= 2:
+            # Weighted sampling without replacement: draw first, then second from remainder.
+            weights = [self._sign_proposal_weights.get(s, 1e-6) for s in sign_ids]
+            s1 = rng.choices(sign_ids, weights=weights, k=1)[0]
+            rest = [s for s in sign_ids if s != s1]
+            rest_w = [self._sign_proposal_weights.get(s, 1e-6) for s in rest]
+            s2 = rng.choices(rest, weights=rest_w, k=1)[0]
+            return [s1, s2]
+        return rng.sample(sign_ids, n)
+
     def _propose(
         self,
         current: PhonemeMap,
@@ -884,6 +928,9 @@ class MCMCSampler:
     ) -> tuple[PhonemeMap, dict[str, tuple[str, str]]]:
         """Produce a proposal and return ``(proposal, changes)``.
 
+        Sign selection is weighted by IC contribution when ``sign_ic_weights``
+        was supplied at construction — high-IC signs are proposed more often,
+        focusing search budget where it matters most for LM scoring.
         Crib signs are never included in proposals.
         """
         proposal = dict(current)
@@ -891,16 +938,16 @@ class MCMCSampler:
         sign_ids = self._free_sign_ids if self._free_sign_ids else self._sign_ids
 
         if len(sign_ids) < 2 or rng.random() < reassign_prob:
-            # Random reassignment: pick one free sign, assign a random phoneme.
-            sign = rng.choice(sign_ids)
+            # Random reassignment: pick one free sign (IC-weighted), assign a random phoneme.
+            sign = self._sample_sign(sign_ids, rng, n=1)[0]
             old_ph = proposal[sign]
             new_ph = rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
             proposal[sign] = new_ph
             if old_ph != new_ph:
                 changes[sign] = (old_ph, new_ph)
         else:
-            # Swap: pick two free signs, exchange their phoneme assignments.
-            s1, s2 = rng.sample(sign_ids, 2)
+            # Swap: pick two free signs (IC-weighted), exchange their phoneme assignments.
+            s1, s2 = self._sample_sign(sign_ids, rng, n=2)
             old_ph1, old_ph2 = proposal[s1], proposal[s2]
             proposal[s1], proposal[s2] = old_ph2, old_ph1
             if old_ph1 != old_ph2:

@@ -137,6 +137,8 @@ class BeamSearchDecoder:
         cfg: DictConfig,
         lm_scorer: LMScorer,
         phoneme_inventory: list[str] | None = None,
+        ic_weights: dict[str, float] | None = None,
+        positional_entropies: dict[str, float] | None = None,
     ) -> None:
         self._scorer = lm_scorer
         self._phoneme_inventory = (
@@ -153,6 +155,19 @@ class BeamSearchDecoder:
         self._patience: int = int(bsc.early_stopping_patience)
         self._min_improvement: float = float(bsc.min_improvement)
         self._top_k: int = int(bsc.top_k)
+
+        # IC contribution weights and positional entropies for priority ordering.
+        # When supplied, signs are ordered by IC × constraint_bonus instead of
+        # raw frequency, committing well-evidenced high-impact signs first.
+        self._ic_weights: dict[str, float] = dict(ic_weights) if ic_weights else {}
+        self._positional_entropies: dict[str, float] = (
+            dict(positional_entropies) if positional_entropies else {}
+        )
+        if self._ic_weights:
+            logger.info(
+                "BeamSearchDecoder: IC-priority ordering enabled for %d signs.",
+                len(self._ic_weights),
+            )
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -184,8 +199,13 @@ class BeamSearchDecoder:
         if not sign_ids:
             return BeamSearchResult(top_hypotheses=[], n_signs=0)
 
-        # Order signs by descending frequency in corpus.
-        ordered_signs = self._order_signs_by_frequency(sign_ids, corpus_sequences)
+        # Order signs by decipherment priority:
+        # IC × constraint bonus when ic_weights are available,
+        # falling back to raw frequency rank.
+        if self._ic_weights:
+            ordered_signs = self._order_signs_by_decipherment_priority(sign_ids)
+        else:
+            ordered_signs = self._order_signs_by_frequency(sign_ids, corpus_sequences)
 
         # Precompute sign → per-sequence position index for incremental scoring.
         # sign_positions[sign][seq_idx] = list of 0-based positions in that sequence.
@@ -429,6 +449,67 @@ class BeamSearchDecoder:
                 if token in freq:
                     freq[token] += 1
         return sorted(sign_ids, key=lambda s: freq[s], reverse=True)
+
+    def _order_signs_by_decipherment_priority(
+        self,
+        sign_ids: list[str],
+        constraint_bonus_weight: float = 1.0,
+    ) -> list[str]:
+        """Return ``sign_ids`` sorted by IC contribution × constraint bonus.
+
+        Priority score
+        --------------
+        ``priority(s) = ic_weight(s) × (1 + w × (1 − pos_entropy_norm(s)))``
+
+        where ``pos_entropy_norm`` is the sign's positional entropy divided
+        by the maximum positional entropy across the inventory, and ``w``
+        controls how much positional constraint boosts priority.
+
+        Rationale
+        ---------
+        Raw frequency ordering (the previous behaviour) and IC-contribution
+        ordering are equivalent in sort order — both are monotone functions
+        of frequency.  The distinction is the *bonus*: a sign with moderate
+        IC contribution but strong positional constraint (low positional
+        entropy) scores higher than a sign with slightly higher IC but no
+        constraint.  This means the beam commits well-evidenced assignments
+        first, reducing the risk of a high-IC sign with a flat posterior
+        (e.g. sign 001) locking in a wrong phoneme and corrupting the
+        subsequent cascade.
+
+        Parameters
+        ----------
+        sign_ids : list[str]
+        constraint_bonus_weight : float
+            ``w`` in the formula above.  Default 1.0 gives a 2× bonus to
+            perfectly constrained signs vs perfectly free signs.
+
+        Returns
+        -------
+        list[str]
+            Signs sorted by descending priority score.
+        """
+        if not self._positional_entropies:
+            # No entropy data — fall back to pure IC ordering.
+            return sorted(
+                sign_ids,
+                key=lambda s: self._ic_weights.get(s, 0.0),
+                reverse=True,
+            )
+
+        max_pos_h = max(
+            (self._positional_entropies.get(s, 0.0) for s in sign_ids),
+            default=1.0,
+        )
+        max_pos_h = max(max_pos_h, 1e-9)
+
+        def _priority(s: str) -> float:
+            ic = self._ic_weights.get(s, 0.0)
+            pos_h_norm = self._positional_entropies.get(s, max_pos_h) / max_pos_h
+            constraint_bonus = 1.0 + constraint_bonus_weight * (1.0 - pos_h_norm)
+            return ic * constraint_bonus
+
+        return sorted(sign_ids, key=_priority, reverse=True)
 
     def _fill_remaining(
         self,

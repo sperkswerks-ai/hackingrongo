@@ -750,6 +750,20 @@ def run_analysis(cfg: DictConfig) -> None:
     # --- Hierarchy analysis: embedding dendrogram vs Barthel tree (200–399) ---
     run_hierarchy_analysis(embeddings, codes, cfg, out_dir)
 
+    # --- Embedding space report (scatter plots + explanations) ---
+    try:
+        from hackingrongo.results.embedding_report import save_embedding_report
+        save_embedding_report(
+            analysis_dir=out_dir,
+            output_path=out_dir / "embedding_report.html",
+            run_metadata={
+                "corpus": f"{len(codes)} glyphs · 25 tablets",
+                "clusters": str(n_clusters),
+            },
+        )
+    except Exception as exc:
+        log.warning("Embedding report generation failed (non-fatal): %s", exc)
+
 
 def _write_umap_plot(
     embedding_2d: np.ndarray,

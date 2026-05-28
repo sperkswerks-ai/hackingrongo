@@ -292,7 +292,7 @@ def step2_train_autoencoder(
 
 
 def step3_analyze_embeddings(dry_run: bool = False) -> tuple[int, float]:
-    """Project embeddings to UMAP, cluster, generate divergence report."""
+    """Project embeddings to UMAP, cluster, generate divergence + embedding reports."""
     if not dry_run and not _check(
         PROJECT_ROOT / "outputs" / "embeddings_cache.pt",
         "Embeddings cache (run Step 2 first, or restore from Drive)",

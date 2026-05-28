@@ -135,6 +135,187 @@ def ic_random_baseline(k: int) -> float:
     return 1.0 / k if k > 0 else float("nan")
 
 
+def normalized_ic(tokens: list[str]) -> float:
+    """Vocabulary-size-corrected IC: IC × k.
+
+    Motivation
+    ----------
+    Raw IC is biased by vocabulary size: for a *uniform* distribution over k
+    sign types, IC = 1/k.  Multiplying by k removes this dependence so that
+    the random baseline is always 1.0 regardless of vocabulary size.
+
+        normalized_IC = IC / (1/k) = IC × k
+
+    Interpretation:
+      = 1.0  →  indistinguishable from random usage of the observed vocabulary
+      > 1.0  →  structure beyond random (concentrated usage of some signs)
+    """
+    k = len(set(tokens))
+    if k == 0:
+        return float("nan")
+    return index_of_coincidence(tokens) * k
+
+
+def bootstrap_h_ci(
+    tokens: list[str],
+    n_resamples: int = 2000,
+    ci: float = 0.95,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """Return (lower, upper) bootstrap CI for Shannon entropy H of *tokens*.
+
+    Uses the same fully-vectorised NumPy row-offset trick as
+    :func:`bootstrap_ic_ci` for efficiency.
+    """
+    n = len(tokens)
+    if n < 2:
+        return float("nan"), float("nan")
+
+    _, encoded = np.unique(tokens, return_inverse=True)
+    k = int(encoded.max()) + 1
+
+    rng = np.random.default_rng(seed)
+    sample_indices = rng.integers(0, n, size=(n_resamples, n))
+    samples = encoded[sample_indices]
+
+    row_offsets = (np.arange(n_resamples, dtype=np.int64) * k).reshape(-1, 1)
+    flat_counts = np.bincount(
+        (samples + row_offsets).ravel(), minlength=n_resamples * k
+    ).reshape(n_resamples, k)
+
+    probs = flat_counts / n
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_probs = np.where(probs > 0, np.log2(probs), 0.0)
+    boot_h = -(probs * log_probs).sum(axis=1)
+    boot_h.sort()
+
+    a = (1.0 - ci) / 2
+    lo = float(boot_h[max(0, int(a * n_resamples))])
+    hi = float(boot_h[min(int((1 - a) * n_resamples), n_resamples - 1)])
+    return lo, hi
+
+
+def conditional_bigram_entropy(tokens: list[str]) -> float:
+    """Bigram approximation of entropy rate: H(S_n | S_{n-1}).
+
+    Derivation
+    ----------
+    The conditional entropy of the next token given the previous is::
+
+        H(S_n | S_{n-1}) = -Σ_{s,t} P(s,t) log₂ P(t | s)
+
+    where P(s,t) is the empirical bigram probability and P(t|s) = P(s,t)/P(s).
+
+    This is the entropy rate under a first-order Markov (bigram) model.
+    For natural text H(S_n | S_{n-1}) < H(S_n): knowledge of the preceding
+    sign reduces uncertainty about the next.  The difference
+    H(S_n) − H(S_n | S_{n-1}) = I(S_n ; S_{n-1}) is the bigram mutual
+    information — a direct measure of sequential sign dependency.
+    """
+    if len(tokens) < 2:
+        return float("nan")
+    bigrams: Counter = Counter(zip(tokens[:-1], tokens[1:]))
+    unigrams: Counter = Counter(tokens[:-1])
+    total = sum(bigrams.values())
+    h = 0.0
+    for (s, t), cnt in bigrams.items():
+        p_st = cnt / total
+        p_t_given_s = cnt / unigrams[s]
+        h -= p_st * math.log2(p_t_given_s)
+    return h
+
+
+def positional_mutual_information(
+    corpus_dir: "Path",
+    n_bins: int = 5,
+) -> dict:
+    """I(sign ; relative_position) = H(sign) − H(sign | position_bin).
+
+    Loads all Horley tokens from the corpus and computes the mutual
+    information between sign identity and where it appears within its line
+    (expressed as a relative-position quintile).
+
+    Parameters
+    ----------
+    corpus_dir : Path
+        Corpus directory (``data/corpus/``).
+    n_bins : int
+        Number of equal-width relative-position bins.  Default 5 (quintiles):
+        0–20 %, 20–40 %, 40–60 %, 60–80 %, 80–100 % of line length.
+
+    Returns
+    -------
+    dict
+        Keys: n_tokens, n_types, n_bins, h_sign_bits,
+        h_sign_given_position_bits, mutual_information_bits,
+        mutual_info_pct_of_h, bin_label.
+
+    Notes
+    -----
+    Mutual information I ≈ 0 means sign identity and position are
+    independent — every sign is equally likely at every position.
+    I > 0 means some signs are positionally concentrated (e.g. taxograms
+    that tend to appear post-line-boundary, sequence-initial particles).
+    I / H(sign) is the fraction of sign entropy explained by position.
+    """
+    from collections import defaultdict
+
+    tokens_by_pos: list[tuple[str, float]] = []
+    for path in sorted(corpus_dir.glob("[A-Z].json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for g in data.get("glyphs", []):
+            hc = g.get("horley_code")
+            if not hc:
+                continue
+            # relative_position: pos / (line_len - 1), clamped to [0, 1]
+            pos = g.get("position_in_line")
+            line_len = g.get("line_length")
+            if pos is not None and line_len and line_len > 1:
+                rel = min(1.0, max(0.0, pos / (line_len - 1)))
+            else:
+                rel = 0.5  # unknown position → put in middle bin
+            tokens_by_pos.append((hc, rel))
+
+    if not tokens_by_pos:
+        return {
+            "n_tokens": 0, "mutual_information_bits": float("nan"),
+            "note": "No position data available in corpus.",
+        }
+
+    tokens = [t for t, _ in tokens_by_pos]
+    h_sign = shannon_entropy(tokens)
+
+    from collections import defaultdict
+    bin_tokens: dict[int, list[str]] = defaultdict(list)
+    for tok, rel in tokens_by_pos:
+        b = min(int(rel * n_bins), n_bins - 1)
+        bin_tokens[b].append(tok)
+
+    n = len(tokens)
+    h_cond = 0.0
+    for b, toks_in_bin in bin_tokens.items():
+        p_b = len(toks_in_bin) / n
+        h_b = shannon_entropy(toks_in_bin)
+        if math.isfinite(h_b):
+            h_cond += p_b * h_b
+
+    mi = h_sign - h_cond
+    mi_pct = round(mi / h_sign * 100, 2) if h_sign > 0 else 0.0
+
+    bin_labels = [f"{100*i//n_bins}–{100*(i+1)//n_bins}%" for i in range(n_bins)]
+
+    return {
+        "n_tokens": n,
+        "n_types": len(set(tokens)),
+        "n_bins": n_bins,
+        "bin_labels": bin_labels,
+        "h_sign_bits": round(h_sign, 4),
+        "h_sign_given_position_bits": round(h_cond, 4),
+        "mutual_information_bits": round(mi, 4),
+        "mutual_info_pct_of_h": mi_pct,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Scenario-aware token loading
 # ---------------------------------------------------------------------------
@@ -545,25 +726,46 @@ def analyse(emit_json: bool = False, uncertain_weight: float = 0.0) -> dict:
             lo, hi = float("nan"), float("nan")
             ci_str = "n/a (n < 30)"
 
+        # Bootstrap CI on Shannon H
+        if len(tokens) >= 30:
+            h_lo, h_hi = bootstrap_h_ci(tokens)
+        else:
+            h_lo, h_hi = float("nan"), float("nan")
+
+        # Conditional bigram entropy (entropy rate approximation)
+        h_cond = conditional_bigram_entropy(tokens)
+
+        # Normalized IC (vocabulary-size corrected)
+        norm_ic = normalized_ic(tokens)
+
         results[cluster] = {
             "n_tokens": len(tokens),
             "n_types": k,
             "ic": round(ic, 6),
             "ic_ci_95_lo": round(lo, 6) if not math.isnan(lo) else None,
             "ic_ci_95_hi": round(hi, 6) if not math.isnan(hi) else None,
+            "ic_normalized": round(norm_ic, 4) if math.isfinite(norm_ic) else None,
             "ic_random_own_vocab": round(ic_rand, 6),
             "ic_random_shared_vocab": round(ic_rand_shared, 6) if not math.isnan(ic_rand_shared) else None,
             "entropy_bits": round(h, 4),
+            "entropy_ci_95_lo": round(h_lo, 4) if math.isfinite(h_lo) else None,
+            "entropy_ci_95_hi": round(h_hi, 4) if math.isfinite(h_hi) else None,
+            "conditional_entropy_bigram": round(h_cond, 4) if math.isfinite(h_cond) else None,
+            "bigram_mi_bits": round(h - h_cond, 4) if math.isfinite(h_cond) else None,
             "ttr": round(ttr, 4),
         }
 
+        h_ci_str = f"[{h_lo:.4f}, {h_hi:.4f}]" if math.isfinite(h_lo) else "n/a (n < 30)"
         log.info("Cluster: %s", cluster)
         log.info("  tokens=%d  types=%d  TTR=%.3f", len(tokens), k, ttr)
         log.info("  IC         = %.6f  95%% CI %s", ic, ci_str)
+        log.info("  IC_norm    = %.4f  (IC × k; random baseline = 1.0)", norm_ic)
         log.info("  IC_random (own vocab, k=%d)    = %.6f", k, ic_rand)
         log.info("  IC_random (shared vocab, k=%d) = %.6f", len(shared_vocab), ic_rand_shared)
         log.info("  IC / IC_random (own) = %.2fx", ic / ic_rand if (ic_rand != 0.0 and not math.isnan(ic_rand)) else float("nan"))
-        log.info("  Shannon H  = %.4f bits  (max=%.4f for k=%d)", h, math.log2(k) if k > 1 else 0.0, k)
+        log.info("  Shannon H  = %.4f bits  95%% CI %s  (max=%.4f for k=%d)", h, h_ci_str, math.log2(k) if k > 1 else 0.0, k)
+        log.info("  H(S|S-1)   = %.4f bits  (bigram entropy rate approx)", h_cond if math.isfinite(h_cond) else float("nan"))
+        log.info("  I(S;S-1)   = %.4f bits  (bigram mutual information)", (h - h_cond) if math.isfinite(h_cond) else float("nan"))
         log.info("")
 
     # Headline comparison: pre vs post
@@ -587,6 +789,9 @@ def analyse(emit_json: bool = False, uncertain_weight: float = 0.0) -> dict:
     # Boustrophedon voice-split test
     results["boustrophedon_ic"] = compute_ic_by_line_parity(corpus_dir)
 
+    # Positional mutual information I(sign ; relative_position)
+    results["positional_mutual_information"] = positional_mutual_information(corpus_dir)
+
     if emit_json:
         print(json.dumps(results, indent=2))
 
@@ -594,7 +799,7 @@ def analyse(emit_json: bool = False, uncertain_weight: float = 0.0) -> dict:
 
 
 def ic_for_clusters(by_cluster: dict[str, list[str]]) -> dict[str, dict]:
-    """Compute IC, CI, and entropy for pre and post clusters only."""
+    """Compute IC, CI, entropy, and entropy-rate metrics for pre and post clusters."""
     shared_vocab = set(by_cluster.get(PRE_CONTACT, [])) | set(by_cluster.get(POST_CONTACT, []))
     out: dict[str, dict] = {}
     for cluster in (PRE_CONTACT, POST_CONTACT):
@@ -603,14 +808,25 @@ def ic_for_clusters(by_cluster: dict[str, list[str]]) -> dict[str, dict]:
             continue
         ic = index_of_coincidence(tokens)
         k = len(set(tokens))
-        lo, hi = bootstrap_ic_ci(tokens) if len(tokens) >= 30 else (float("nan"), float("nan"))
+        n = len(tokens)
+        lo, hi = bootstrap_ic_ci(tokens) if n >= 30 else (float("nan"), float("nan"))
+        h = shannon_entropy(tokens)
+        h_lo, h_hi = bootstrap_h_ci(tokens) if n >= 30 else (float("nan"), float("nan"))
+        h_cond = conditional_bigram_entropy(tokens)
+        norm_ic = normalized_ic(tokens)
         out[cluster] = {
-            "n_tokens": len(tokens), "n_types": k,
+            "n_tokens": n,
+            "n_types": k,
             "ic": round(ic, 6),
-            "ic_ci_95_lo": round(lo, 6) if not math.isnan(lo) else None,
-            "ic_ci_95_hi": round(hi, 6) if not math.isnan(hi) else None,
+            "ic_ci_95_lo": round(lo, 6) if math.isfinite(lo) else None,
+            "ic_ci_95_hi": round(hi, 6) if math.isfinite(hi) else None,
+            "ic_normalized": round(norm_ic, 4) if math.isfinite(norm_ic) else None,
             "ic_random_shared": round(1.0 / len(shared_vocab), 6) if shared_vocab else None,
-            "entropy_bits": round(shannon_entropy(tokens), 4),
+            "entropy_bits": round(h, 4),
+            "entropy_ci_95_lo": round(h_lo, 4) if math.isfinite(h_lo) else None,
+            "entropy_ci_95_hi": round(h_hi, 4) if math.isfinite(h_hi) else None,
+            "conditional_entropy_bigram": round(h_cond, 4) if math.isfinite(h_cond) else None,
+            "bigram_mi_bits": round(h - h_cond, 4) if math.isfinite(h_cond) else None,
         }
     return out
 
