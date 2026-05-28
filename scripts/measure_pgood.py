@@ -138,6 +138,13 @@ def _sample_scores(
             eta = elapsed / i * (n_samples - i)
             log.info("  %d/%d  (%.0fs elapsed, ETA %.0fs)", i, n_samples, elapsed, eta)
 
+        # Clear LM n-gram caches between samples: each sample uses a different
+        # phoneme mapping so cached n-gram lookups from prior samples are never
+        # reused and would otherwise accumulate to hundreds of millions of entries
+        # (up to V^order, e.g. 45^5 ≈ 184 M for order-5 LMs), exhausting RAM.
+        for lm in lms:
+            lm._lp_cache.clear()
+
         idx = rng.integers(0, n_phonemes, size=n_signs)
         phone_map = {sign: phonemes_arr[k] for sign, k in zip(signs, idx)}
         scores.append(_score_assignment(phone_map, corpus_seqs, lms))
@@ -332,6 +339,8 @@ def _iqae_estimate(
         # Sample a batch of random assignments.
         idxs = rng.integers(0, n_ph, size=(batch_size, n_sg))
         for row in idxs:
+            for lm in lms:
+                lm._lp_cache.clear()
             phone_map = {sign: phonemes_arr[k] for sign, k in zip(signs, row)}
             score = _score_assignment(phone_map, corpus_seqs, lms)
             if math.isfinite(score) and score >= cutoff:

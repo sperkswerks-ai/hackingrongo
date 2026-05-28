@@ -109,6 +109,9 @@ def _load_svg_catalog(catalog_path: Path) -> dict[str, list[Path]]:
         base = re.sub(r'[!?()\s]+$', '', code).strip()
         if base != code:
             base_map[base].append(full)
+        numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+        if numeric_base and numeric_base != code and numeric_base != base:
+            base_map[numeric_base].append(full)
 
     merged: dict[str, list[Path]] = dict(exact)
     for base_code, paths in base_map.items():
@@ -136,10 +139,13 @@ def _load_svg_catalog(catalog_path: Path) -> dict[str, list[Path]]:
                 png_full = glyph_dir / png_rel
                 if png_full.exists():
                     png_stage[code] = png_full
-        # Only fill codes that have no SVG
+        # Only fill codes (and their numeric bases) that have no SVG
         for code, png_path in png_stage.items():
             if code not in merged:
                 merged[code] = [png_path]
+            numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+            if numeric_base and numeric_base != code and numeric_base not in merged:
+                merged[numeric_base] = [png_path]
         logger.info(
             "barthel_catalog fallback: %d PNG codes added (%d total SVG codes).",
             sum(1 for c in png_stage if c not in exact),
@@ -183,6 +189,10 @@ def _best_instance_svg(
     if not instances:
         base = re.sub(r'[!?()\s]+$', '', code).strip()
         instances = catalog.get(base, [])
+    if not instances:
+        numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+        if numeric_base and numeric_base != code:
+            instances = catalog.get(numeric_base, [])
     if not instances:
         return None
     path = instances[0]

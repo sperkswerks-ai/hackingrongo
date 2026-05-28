@@ -35,14 +35,154 @@ Matches compound_report, divergence_report, and decipherment_report:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
+import re
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# ---------------------------------------------------------------------------
+# Glyph catalog loading (SVG + PNG fallback, same pattern as compound_report)
+# ---------------------------------------------------------------------------
+
+def _load_svg_catalog(catalog_path: Path | None = None) -> dict[str, list[Path]]:
+    if catalog_path is None:
+        catalog_path = _REPO_ROOT / "data" / "glyphs" / "svg" / "catalog.json"
+    if not catalog_path.exists():
+        logger.warning("SVG catalog not found: %s — glyphs will not render.", catalog_path)
+        return {}
+
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    svg_dir = catalog_path.parent
+
+    exact: dict[str, list[Path]] = defaultdict(list)
+    base_map: dict[str, list[Path]] = defaultdict(list)
+
+    for r in catalog.get("records", []):
+        code = str(r.get("barthel_code", "")).strip()
+        if not code:
+            continue
+        rel = str(r.get("svg_path", "")).replace("svg/", "", 1)
+        full = svg_dir / rel
+        if not full.exists():
+            continue
+        exact[code].append(full)
+        base = re.sub(r'[!?()\s]+$', '', code).strip()
+        if base != code:
+            base_map[base].append(full)
+        numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+        if numeric_base and numeric_base != code and numeric_base != base:
+            base_map[numeric_base].append(full)
+
+    merged: dict[str, list[Path]] = dict(exact)
+    for base_code, paths in base_map.items():
+        if base_code not in merged:
+            merged[base_code] = paths
+
+    # PNG fallback
+    bc_path = catalog_path.parent.parent / "barthel_catalog.json"
+    if bc_path.exists():
+        glyph_dir = catalog_path.parent.parent
+        bc_records = json.loads(bc_path.read_text(encoding="utf-8")).get("records", [])
+        png_stage: dict[str, Path] = {}
+        for source_pref in ("barthel_formentafeln", "barthel_tafeln"):
+            for r in bc_records:
+                if r.get("source") != source_pref:
+                    continue
+                code = str(r.get("barthel_code") or "").strip()
+                png_rel = r.get("path", "")
+                if not code or not png_rel or not png_rel.endswith(".png"):
+                    continue
+                png_full = glyph_dir / png_rel
+                if png_full.exists():
+                    png_stage[code] = png_full
+        for code, png_path in png_stage.items():
+            if code not in merged:
+                merged[code] = [png_path]
+            numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+            if numeric_base and numeric_base != code and numeric_base not in merged:
+                merged[numeric_base] = [png_path]
+
+    return merged
+
+
+def _normalise_svg(svg_text: str, size: int = 60) -> str:
+    svg = svg_text.strip()
+    svg = re.sub(r'width="[^"]*"',  f'width="{size}"',  svg)
+    svg = re.sub(r'height="[^"]*"', f'height="{size}"', svg)
+    svg = re.sub(
+        r"<path ",
+        '<path fill="none" stroke="currentColor" stroke-width="1.5" '
+        'stroke-linecap="round" stroke-linejoin="round" ',
+        svg,
+    )
+    return svg
+
+
+def _get_glyph_html(code: str, catalog: dict[str, list[Path]], size: int = 60) -> str | None:
+    """Return inline SVG or base64 img HTML for a Barthel code. None if unavailable."""
+    instances = catalog.get(code, [])
+    if not instances:
+        base = re.sub(r'[!?()\s]+$', '', code).strip()
+        instances = catalog.get(base, [])
+    if not instances:
+        numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+        if numeric_base and numeric_base != code:
+            instances = catalog.get(numeric_base, [])
+    if not instances:
+        return None
+    path = instances[0]
+    try:
+        if path.suffix.lower() == ".png":
+            b64 = base64.b64encode(path.read_bytes()).decode()
+            return (
+                f'<img src="data:image/png;base64,{b64}" '
+                f'style="max-width:{size}px;max-height:{size}px;display:block;margin:auto;" '
+                f'alt="Barthel {code}">'
+            )
+        return _normalise_svg(path.read_text(encoding="utf-8"), size=size)
+    except Exception:
+        return None
+
+
+def _glyph_cell(code: str, catalog: dict[str, list[Path]], size: int = 56,
+                cls: str = "", label_override: str | None = None) -> str:
+    """Return a single glyph cell div (image + code label)."""
+    glyph_html = _get_glyph_html(code, catalog, size)
+    label = label_override if label_override is not None else code
+    if glyph_html:
+        return (
+            f'<div class="g-cell {cls}">'
+            f'<div class="g-img" style="color:var(--accent)">{glyph_html}</div>'
+            f'<div class="g-code">{label}</div>'
+            f'</div>'
+        )
+    return (
+        f'<div class="g-cell g-missing {cls}">'
+        f'<div class="g-img">?</div>'
+        f'<div class="g-code">{label}</div>'
+        f'</div>'
+    )
+
+
+def _glyph_strip(codes: list[str], catalog: dict[str, list[Path]],
+                 highlight_pos: int | None = None, size: int = 52) -> str:
+    """Return a horizontal strip of glyph cells for a sequence of Barthel codes."""
+    if not codes or not catalog:
+        return ""
+    cells = []
+    for i, code in enumerate(codes):
+        cls = "g-hl" if i == highlight_pos else ""
+        cells.append(_glyph_cell(str(code), catalog, size=size, cls=cls))
+    return f'<div class="g-strip">{"".join(cells)}</div>'
 
 # ---------------------------------------------------------------------------
 # Shared CSS  (mirrors decipherment_report / divergence_report variables)
@@ -384,6 +524,40 @@ body {
             color: var(--accent); margin-bottom: 32px; text-decoration: none;
             display: inline-block; }
 .page-nav:hover { text-decoration: underline; }
+
+/* ── Glyph strips ── */
+.g-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; align-items: flex-end; }
+.g-cell { display: flex; flex-direction: column; align-items: center; gap: 3px;
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 5px; padding: 6px 5px 4px; min-width: 52px; }
+.g-cell.g-hl { background: var(--cs); border-color: var(--csb); }
+.g-cell.g-missing .g-img { width: 52px; height: 52px; display: flex; align-items: center;
+                            justify-content: center; color: var(--muted); font-size: 20px; }
+.g-img { display: flex; align-items: center; justify-content: center; }
+.g-img svg { display: block; }
+.g-code { font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--muted);
+           text-align: center; line-height: 1; }
+/* ── Sign-pair glyph display (holy grail / change cards) ── */
+.sign-pair { display: flex; align-items: center; gap: 14px; margin: 10px 0; }
+.sign-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sign-slot-lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px;
+                 color: var(--muted); text-transform: uppercase; letter-spacing:.05em; }
+.sign-glyph-box { background: var(--surface); border: 1px solid var(--border);
+                  border-radius: 6px; padding: 8px 10px;
+                  display: flex; align-items: center; justify-content: center; }
+.sign-glyph-box.pre-box  { border-color: #93c5fd; background: #eff6ff; }
+.sign-glyph-box.post-box { border-color: #c4b5fd; background: #f5f3ff; }
+.sign-glyph-box svg { color: #1d4ed8; }
+.sign-glyph-box.post-box svg { color: #6d28d9; }
+.sign-arrow { font-size: 20px; color: var(--muted); padding-bottom: 10px; }
+/* ── Hacker callout box ── */
+.hack-box { background: #0f172a; color: #94a3b8; border-radius: 8px;
+            padding: 18px 24px; margin-bottom: 28px; font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; line-height: 1.8; }
+.hack-box .hack-title { color: #38bdf8; font-weight: 500; margin-bottom: 6px;
+                        font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.hack-box b { color: #e2e8f0; }
+.hack-box .hack-hl { color: #fbbf24; }
 """
 
 # ---------------------------------------------------------------------------
@@ -757,8 +931,9 @@ def _render_passage_card(passage: dict, idx: int) -> str:
     )
 
 
-def _render_holy_grail_spotlight(passages: list[dict]) -> str:
+def _render_holy_grail_spotlight(passages: list[dict], catalog: dict | None = None) -> str:
     """Render the highlighted holy-grail candidates section."""
+    catalog = catalog or {}
     cards: list[str] = []
     for p in sorted(passages, key=lambda x: x.get("interest_score", 0), reverse=True):
         pid = p.get("passage_id", "?")
@@ -790,12 +965,36 @@ def _render_holy_grail_spotlight(passages: list[dict]) -> str:
             cross_badge = (
                 ' <span class="badge bd-cross">↕ Family-Crossing</span>' if is_cross else ""
             )
-            pre_label = (
-                f'Pre-contact ({", ".join(pre_tablets) or "—"})'
-            )
+            pre_label = f'Pre-contact ({", ".join(pre_tablets) or "—"})'
             post_suffix = "…" if len(post_tablets) > 4 else ""
             post_label = f'Post-contact ({", ".join(post_tablets[:4])}{post_suffix})'
 
+            # Glyph display for the sign pair
+            pre_glyph = _get_glyph_html(str(pre_sign), catalog, size=72) if catalog else None
+            post_glyph = _get_glyph_html(str(post_sign), catalog, size=72) if catalog else None
+            pre_glyph_html = pre_glyph or f'<span class="hg-sign pre-s">{pre_sign}</span>'
+            post_glyph_html = post_glyph or f'<span class="hg-sign post-s">{post_sign}</span>'
+
+            sign_pair_html = (
+                f'<div class="sign-pair">'
+                f'<div class="sign-slot">'
+                f'<div class="sign-slot-lbl">{pre_label}</div>'
+                f'<div class="sign-glyph-box pre-box" style="color:#1d4ed8">{pre_glyph_html}</div>'
+                f'<div class="g-code">{pre_sign}</div>'
+                f'</div>'
+                f'<div class="sign-arrow">→</div>'
+                f'<div class="sign-slot">'
+                f'<div class="sign-slot-lbl">{post_label}</div>'
+                f'<div class="sign-glyph-box post-box" style="color:#6d28d9">{post_glyph_html}</div>'
+                f'<div class="g-code">{post_sign}</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+            # Canonical sequence glyph strip with highlighted position
+            canon_strip = _glyph_strip(
+                [str(c) for c in canonical], catalog, highlight_pos=pos, size=44
+            ) if catalog else ""
             canon_chips = "".join(
                 f'<span class="hg-chip{"  hl" if i == pos else ""}">{code}</span>'
                 for i, code in enumerate(canonical)
@@ -808,19 +1007,14 @@ def _render_holy_grail_spotlight(passages: list[dict]) -> str:
                 f'<span class="hg-pos">Position {pos + 1 if pos >= 0 else "?"}</span>'
                 f'<span class="badge bd-holy">★ Holy Grail candidate</span>'
                 f'{cross_badge}</div>'
-                f'<div class="hg-diff">'
-                f'<div class="hg-sign-grp">'
-                f'<div class="hg-sign-lbl">{pre_label}</div>'
-                f'<span class="hg-sign pre-s">{pre_sign}</span></div>'
-                f'<div class="hg-arrow">→</div>'
-                f'<div class="hg-sign-grp">'
-                f'<div class="hg-sign-lbl">{post_label}</div>'
-                f'<span class="hg-sign post-s">{post_sign}</span></div>'
-                f'</div>'
-                f'<div class="hg-canon">'
-                f'<span class="hg-canon-lbl">Canonical:</span>{canon_chips}</div>'
-                f'<div class="hg-tablets"><b>{n_cons}</b> post-contact tablet'
+                f'{sign_pair_html}'
+                f'<div class="hg-tablets" style="margin-top:8px"><b>{n_cons}</b> post-contact tablet'
                 f'{"s" if n_cons != 1 else ""} show this substitution consistently.</div>'
+                f'<div style="margin-top:12px">'
+                f'<div class="section-label" style="margin-bottom:4px">Canonical sequence (highlighted = changed position)</div>'
+                f'{canon_strip}'
+                f'<div class="hg-canon" style="margin-top:4px">{canon_chips}</div>'
+                f'</div>'
                 f'</div>'
             )
 
@@ -830,9 +1024,9 @@ def _render_holy_grail_spotlight(passages: list[dict]) -> str:
     return (
         f'<div class="hg-section">'
         f'<div class="hg-title">★ Holy Grail Candidates</div>'
-        f'<div class="hg-sub">Non-allographic substitutions consistent across ≥ 2 '
-        f'post-contact tablets — the strongest computational evidence for systematic '
-        f'sign change across the pre/post-contact divide.</div>'
+        f'<div class="hg-sub">Sign substitutions consistent across ≥ 2 post-contact tablets — '
+        f'same passage slot, different glyph. Pre-contact → post-contact. '
+        f'This is your strongest computational evidence for systematic change.</div>'
         f'{"".join(cards)}</div>'
     )
 
@@ -841,7 +1035,8 @@ def _render_holy_grail_spotlight(passages: list[dict]) -> str:
 # Change card
 # ---------------------------------------------------------------------------
 
-def _render_change_card(change: dict) -> str:
+def _render_change_card(change: dict, catalog: dict | None = None) -> str:
+    catalog = catalog or {}
     is_holy = bool(change.get("is_holy_grail_candidate"))
     is_cross = bool(change.get("crosses_barthel_family"))
     card_cls = " holy" if is_holy else (" cross" if is_cross else "")
@@ -858,9 +1053,37 @@ def _render_change_card(change: dict) -> str:
     ct = change.get("change_type", "substitution")
     pos = change.get("position", -1)
     pos_label = f"Position {pos + 1}" if pos >= 0 else "—"
-    pre_sign = change.get("pre_contact_sign", "—")
-    post_sign = change.get("post_contact_sign", "—")
+    pre_sign = str(change.get("pre_contact_sign", "—"))
+    post_sign = str(change.get("post_contact_sign", "—"))
     n_cons = change.get("n_tablets_consistent", 0)
+
+    pre_glyph = _get_glyph_html(pre_sign, catalog, size=64) if catalog else None
+    post_glyph = _get_glyph_html(post_sign, catalog, size=64) if catalog else None
+    _pre_fallback = f'<span class="chg-sign pre-s">{pre_sign}</span>'
+    _post_fallback = f'<span class="chg-sign post-s">{post_sign}</span>'
+    n_tablets_str = f'{n_cons} post-contact tablet{"s" if n_cons != 1 else ""}'
+
+    sign_pair_html = (
+        f'<div class="sign-pair">'
+        f'<div class="sign-slot">'
+        f'<div class="sign-slot-lbl">Pre-contact</div>'
+        f'<div class="sign-glyph-box pre-box" style="color:#1d4ed8">'
+        f'{pre_glyph or _pre_fallback}</div>'
+        f'<div class="g-code">{pre_sign}</div>'
+        f'</div>'
+        f'<div class="sign-arrow">→</div>'
+        f'<div class="sign-slot">'
+        f'<div class="sign-slot-lbl">Post-contact</div>'
+        f'<div class="sign-glyph-box post-box" style="color:#6d28d9">'
+        f'{post_glyph or _post_fallback}</div>'
+        f'<div class="g-code">{post_sign}</div>'
+        f'</div>'
+        f'<div style="margin-left:16px;align-self:center;font-size:12px;color:var(--muted)">'
+        f'<div class="change-field-label">Consistent across</div>'
+        f'<div class="change-field-val">{n_tablets_str}</div>'
+        f'</div>'
+        f'</div>'
+    )
 
     return f"""<div class="change-card{card_cls}">
   <div class="change-head">
@@ -868,20 +1091,7 @@ def _render_change_card(change: dict) -> str:
     <span class="muted small">{pos_label}</span>
     {tag_html}
   </div>
-  <div class="change-grid">
-    <div>
-      <div class="change-field-label">Pre-contact sign</div>
-      <div class="change-field-val">{pre_sign}</div>
-    </div>
-    <div>
-      <div class="change-field-label">Post-contact sign</div>
-      <div class="change-field-val">{post_sign}</div>
-    </div>
-    <div>
-      <div class="change-field-label">Consistent across</div>
-      <div class="change-field-val">{n_cons} post-contact tablet{"s" if n_cons != 1 else ""}</div>
-    </div>
-  </div>
+  {sign_pair_html}
 </div>"""
 
 
@@ -889,7 +1099,8 @@ def _render_change_card(change: dict) -> str:
 # Attestation table
 # ---------------------------------------------------------------------------
 
-def _render_attestation_table(attestations: list[dict]) -> str:
+def _render_attestation_table(attestations: list[dict], catalog: dict | None = None) -> str:
+    catalog = catalog or {}
     if not attestations:
         return '<p class="muted small">No attestations recorded.</p>'
     rows = []
@@ -902,17 +1113,16 @@ def _render_attestation_table(attestations: list[dict]) -> str:
         ed = att.get("edit_distance", "—")
         align = att.get("alignment", [])
 
-        seq_html = (
-            '<span class="attest-seq">' + " ".join(str(c) for c in seq) + "</span>"
-        ) if seq else "—"
-
+        seq_codes = [str(c) for c in seq]
+        seq_text = '<span class="attest-seq">' + " ".join(seq_codes) + "</span>" if seq else "—"
+        glyph_row = _glyph_strip(seq_codes, catalog, size=40) if catalog and seq else ""
         align_html = _alignment_html(align) if align else ""
 
         rows.append(f"""<tr>
   <td><b>{tablet}</b> <span class="muted small">{tablet_name}</span></td>
   <td>{_stratum_badge(stratum)}</td>
   <td class="muted small">{date_range}</td>
-  <td>{seq_html}<br>{align_html}</td>
+  <td>{glyph_row}{seq_text}<br>{align_html}</td>
   <td class="attest-ed">{ed}</td>
 </tr>""")
 
@@ -929,8 +1139,19 @@ def _render_attestation_table(attestations: list[dict]) -> str:
 # Single-passage detail page
 # ---------------------------------------------------------------------------
 
-def _render_passage_page(passage: dict) -> str:
+def _holy_signal_line(n_holy: int) -> str:
+    if not n_holy:
+        return ""
+    subs = "substitutions" if n_holy != 1 else "substitution"
+    return (
+        f'<br><span class="hack-hl">⚡ {n_holy} holy-grail {subs} detected</span>'
+        " — same position, different glyph, consistent across ≥ 2 post-contact tablets."
+    )
+
+
+def _render_passage_page(passage: dict, catalog: dict | None = None) -> str:
     """Full standalone HTML for a single passage."""
+    catalog = catalog or {}
     pid = passage.get("passage_id", "unknown")
     score = passage.get("interest_score", 0.0)
     canonical_seq = passage.get("canonical_sequence") or passage.get("canonical_form", [])
@@ -972,7 +1193,7 @@ def _render_passage_page(passage: dict) -> str:
     )
 
     # Attestation / change sections
-    attest_html = _render_attestation_table(attestations)
+    attest_html = _render_attestation_table(attestations, catalog)
 
     holy_html = cross_html = other_html = ""
     holy_changes = [c for c in changes if c.get("is_holy_grail_candidate")]
@@ -983,19 +1204,19 @@ def _render_passage_page(passage: dict) -> str:
         holy_html = (
             '<div class="section-label" style="margin-top:20px;color:var(--holy)">'
             'Holy Grail candidates — consistent substitutions across ≥ 2 post-contact tablets</div>'
-            + "".join(_render_change_card(c) for c in holy_changes)
+            + "".join(_render_change_card(c, catalog) for c in holy_changes)
         )
     if cross_changes:
         cross_html = (
             '<div class="section-label" style="margin-top:16px;color:var(--cross)">'
             'Family-Crossing changes — substitutions spanning Barthel century blocks</div>'
-            + "".join(_render_change_card(c) for c in cross_changes)
+            + "".join(_render_change_card(c, catalog) for c in cross_changes)
         )
     if other_changes:
         other_html = (
             '<div class="section-label" style="margin-top:16px">'
             'Other diachronic changes</div>'
-            + "".join(_render_change_card(c) for c in other_changes)
+            + "".join(_render_change_card(c, catalog) for c in other_changes)
         )
 
     no_changes_note = (
@@ -1036,6 +1257,14 @@ def _render_passage_page(passage: dict) -> str:
   </div>
 </div>
 
+<div class="hack-box">
+  <div class="hack-title">// what you're looking at</div>
+  This glyph sequence appears in <b>{n_tablets} tablet{"s" if n_tablets != 1 else ""}</b> — the algorithm found it by aligning rongorongo tablets pairwise and clustering matching subsequences.
+  Each row in the attestation table below is one tablet's version of the same passage.
+  {_holy_signal_line(n_holy)}
+  {('<br>Pre-contact tablets (' + str(pre_count) + ' attestations) and post-contact tablets (' + str(post_count) + ' attestations) are compared at each position.') if has_diachronic else ''}
+</div>
+
 <div class="stats-row">
   <div class="stat-card">
     <div class="stat-value">{len(attestations)}</div>
@@ -1064,6 +1293,7 @@ def _render_passage_page(passage: dict) -> str:
 </div>
 
 <div class="section-label">Canonical sequence (from Tablet {canonical_tablet})</div>
+{_glyph_strip([str(c) for c in canonical_seq], catalog)}
 {_sign_seq_html(canonical_seq)}
 
 <div class="section-label" style="margin-top:24px">All attestations</div>
@@ -1096,8 +1326,9 @@ def _render_passage_page(passage: dict) -> str:
 # Diachronic cross-passage summary page (the main report)
 # ---------------------------------------------------------------------------
 
-def _render_summary_page(passages: list[dict], meta: dict[str, Any]) -> str:
+def _render_summary_page(passages: list[dict], meta: dict[str, Any], catalog: dict | None = None) -> str:
     """Render the interactive single-page diachronic passage summary."""
+    catalog = catalog or {}
     generated = meta.get(
         "generated", datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     )
@@ -1134,7 +1365,7 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any]) -> str:
     )
 
     # ── Holy-grail spotlight ─────────────────────────────────────────────────
-    hg_html = _render_holy_grail_spotlight(passages)
+    hg_html = _render_holy_grail_spotlight(passages, catalog)
 
     # ── Filter bar ───────────────────────────────────────────────────────────
     n_dia_chip = n_diachronic
@@ -1180,22 +1411,18 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any]) -> str:
     # ── Abstract ─────────────────────────────────────────────────────────────
     abstract = (
         f'<div class="abstract">'
-        f'<p>Rongorongo contains at least {n_passages} passages attested on multiple '
-        f'tablets. Where the same passage appears on both the pre-contact Tablet D '
-        f'(radiocarbon-dated 1493–1509 CE; Ferrara et al. 2024) and post-contact '
-        f'tablets, sign substitutions at consistent canonical positions provide '
-        f'direct computational evidence for systematic change across the contact '
-        f'horizon.</p>'
-        f'<p>A <b>Holy Grail candidate</b> is a non-allographic substitution '
-        f'consistent at the same position in ≥ 2 independent post-contact tablets — '
-        f'making idiosyncratic scribal error unlikely. There are <b>{n_holy}</b> '
-        f'such candidates. A <b>Family-Crossing change</b> involves signs from '
-        f'different Barthel century blocks — iconographically surprising and '
-        f'potentially reflecting sign innovation or tradition discontinuity. '
-        f'There are <b>{n_cross}</b> family-crossing changes.</p>'
-        f'<p>Click any passage row to expand its attestation alignment grid. '
-        f'<b>We invite Prof. Ferrara, Dr. Horley, and rongorongo scholars to '
-        f'review these candidates.</b></p></div>'
+        f'<p><b>TL;DR:</b> {n_passages} glyph sequences appear verbatim across multiple rongorongo tablets. '
+        f'Align them, compare pre-contact (Tablet D, ~1500 CE) vs post-contact tablets, '
+        f'and some positions consistently show a <em>different</em> glyph — that\'s a Holy Grail candidate. '
+        f'We found <b>{n_holy}</b>.</p>'
+        f'<p><b>Holy Grail candidate:</b> same passage position, different glyph, consistent across '
+        f'≥ 2 independent post-contact tablets. Idiosyncratic scribal error can\'t explain it. '
+        f'<b>Family-Crossing:</b> the pre- and post-contact glyphs are in different Barthel century '
+        f'blocks — e.g. a bird-headed sign replaced by an object. Iconographically surprising. '
+        f'There are <b>{n_cross}</b> such changes.</p>'
+        f'<p>Click any passage row to expand its attestation alignment. '
+        f'The <span style="color:var(--holy)">★ Holy Grail</span> section above shows glyphs.</p>'
+        f'</div>'
     )
 
     return f"""<!DOCTYPE html>
@@ -1297,12 +1524,13 @@ def build_passage_report(
             passages_json.stat().st_size,
         )
 
+    catalog = _load_svg_catalog()
     meta = {
         "generated": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "source_file": passages_json.name,
     }
     logger.info("Building passage summary report: %d passages.", len(passages))
-    return _render_summary_page(passages, meta)
+    return _render_summary_page(passages, meta, catalog)
 
 
 def build_single_passage_report(passage: dict) -> str:
@@ -1318,7 +1546,8 @@ def build_single_passage_report(passage: dict) -> str:
     str
         Complete HTML document string.
     """
-    return _render_passage_page(passage)
+    catalog = _load_svg_catalog()
+    return _render_passage_page(passage, catalog)
 
 
 def save_passage_report(
@@ -1356,7 +1585,7 @@ class PassageReportGenerator:
 
     def render_passage(self, passage: dict) -> str:
         """Return the detail-page HTML for a single passage dict."""
-        return _render_passage_page(passage)
+        return _render_passage_page(passage, _load_svg_catalog())
 
     def generate_report(
         self,
@@ -1395,10 +1624,12 @@ class PassageReportGenerator:
                 passages_json.stat().st_size,
             )
 
+        catalog = _load_svg_catalog()
+
         if individual_files:
             for passage in filtered:
                 pid = passage.get("passage_id", "unknown")
-                html = _render_passage_page(passage)
+                html = _render_passage_page(passage, catalog)
                 out = output_dir / f"{pid}.html"
                 out.write_text(html, encoding="utf-8")
                 logger.info("  %s → %s", pid, out.name)
@@ -1407,7 +1638,7 @@ class PassageReportGenerator:
             "generated": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "source_file": passages_json.name,
         }
-        index_html = _render_summary_page(filtered, meta)
+        index_html = _render_summary_page(filtered, meta, catalog)
         index_file = output_dir / "index.html"
         index_file.write_text(index_html, encoding="utf-8")
         logger.info("Summary index → %s", index_file)

@@ -153,84 +153,37 @@ def _family_colour(family: str) -> str:
 
 _PAIR_REASONS: dict[frozenset, str] = {
     frozenset({"zoomorphic", "anthropomorphic_type2"}): (
-        "Zoomorphic signs (700-series) and type-2 anthropomorphic signs (200-series) "
-        "share bilateral body symmetry and similar limb-like stroke extensions. "
-        "The autoencoder encodes body-plan geometry rather than head morphology, "
-        "collapsing Barthel's iconographic distinction between anthropomorphic and "
-        "zoomorphic figures when posture dominates the visual field."
+        "700-series and 200-series share bilateral body symmetry — the encoder weights posture over head morphology."
     ),
     frozenset({"zoomorphic", "anthropomorphic_type3"}): (
-        "Zoomorphic signs (700-series) and type-3 anthropomorphic signs (300-series) "
-        "overlap in body-posture geometry when the zoomorphic figure is erect or "
-        "the anthropomorphic figure is crouched. The encoder's spatial-frequency "
-        "filters respond to silhouette outline and limb orientation; when these "
-        "align across families, the iconographic distinction is not recoverable "
-        "from the visual signal alone."
+        "Erect zoomorphic vs crouching anthropomorphic figures overlap in silhouette; limb orientation dominates the embedding."
     ),
     frozenset({"miscellaneous_300series", "anthropomorphic_type2"}): (
-        "Barthel's 400-series (miscellaneous signs with 300-series heads) uses the "
-        "same three-digit head / body / hand grammar as the 200-series humanoids. "
-        "Signs near this boundary share body-posture geometry; the embedding reflects "
-        "posture more than head morphology, causing cross-family clustering when "
-        "body position dominates the visual field."
+        "400-series uses the same head/body/hand grammar as 200-series; the encoder reads posture before head type."
     ),
     frozenset({"miscellaneous_300series", "anthropomorphic_type3"}): (
-        "The 400-series signs carry 300-series head morphology by definition, so "
-        "their upper-body embedding is structurally identical to pure 300-series "
-        "signs. The encoder resolves ambiguity primarily through body/limb geometry "
-        "below the head; when that region is similarly posed, the two families "
-        "become inseparable in the learned feature space."
+        "400-series carries 300-series head morphology by definition — body geometry below the head is the only discriminant."
     ),
     frozenset({"bird_headed", "zoomorphic"}): (
-        "Bird-headed figures (600-series) and general zoomorphic signs (700-series) "
-        "share avian or creature-body geometry. The key iconographic distinction — "
-        "whether the head is bird-shaped or the body is a non-human animal — is "
-        "subtle in the embedding when the body silhouette dominates. Signs near "
-        "this boundary typically have ambiguous head-body proportions in the "
-        "corpus transcription imagery."
+        "Bird-headed (600-series) vs general zoomorphic (700-series): the body silhouette dominates when head-to-body ratio is ambiguous."
     ),
     frozenset({"miscellaneous_anthropomorphic", "anthropomorphic_type2"}): (
-        "The 500-series (miscellaneous anthropomorphic) and 200-series share "
-        "upright bipedal posture and similar arm-extension geometry. Barthel's "
-        "distinction relies on secondary iconographic cues — appendages, held "
-        "objects, or decorative elements — that the convolutional encoder "
-        "down-weights relative to overall body-plan silhouette."
+        "500-series and 200-series share upright bipedal posture; secondary cues (appendages, held objects) are down-weighted."
     ),
     frozenset({"objects_plants_phenomena", "anthropomorphic_type2"}): (
-        "The 1–199 range (objects, plants, and natural phenomena) is iconographically "
-        "heterogeneous; a subset includes stylised plant or tool forms with vertical "
-        "bilateral symmetry that resembles simplified humanoid posture. The autoencoder "
-        "groups these by visual structure rather than semantic content, embedding "
-        "vertically symmetrical plant forms near standing humanoid figures."
+        "Some 1–199 plant/tool forms have vertical bilateral symmetry that the encoder clusters with standing humanoids."
     ),
     frozenset({"anthropomorphic_type2", "anthropomorphic_type3"}): (
-        "Both series represent anthropomorphic figures; Barthel's distinction between "
-        "200-series (type-2 head) and 300-series (type-3 head) rests on head "
-        "morphology details that occupy a small fraction of the bounding box. "
-        "The encoder weights the larger body geometry more heavily, causing "
-        "cross-series clustering when body posture matches across head types."
+        "200-series vs 300-series head differences occupy a small fraction of the bounding box; body geometry dominates."
     ),
     frozenset({"anthropomorphic_type2", "unlabeled"}): (
-        "Unlabeled signs in this cluster are likely damaged, uncertain, or "
-        "ambiguous glyphs that the transcription records with a '?' qualifier. "
-        "The encoder interpolates between the degraded glyph image and the nearest "
-        "clear exemplars in embedding space — in this case, type-2 anthropomorphic "
-        "forms. This may indicate the original glyph was humanoid, or may reflect "
-        "encoder uncertainty on low-quality input."
+        "Unlabeled ('?') signs are damaged or ambiguous; the encoder interpolates toward the nearest clear exemplars — here, type-2 humanoids."
     ),
     frozenset({"additional", "anthropomorphic_type2"}): (
-        "The 'additional' category (800+ codes) covers signs Barthel treated as "
-        "supplementary or rare, including several ligatures and compounds whose "
-        "dominant sub-element is a type-2 anthropomorphic figure. The encoder "
-        "embeds them near their dominant visual component rather than near other "
-        "'additional' signs, which share no common visual property."
+        "800+ ligatures/compounds whose dominant visual element is a type-2 anthropomorphic figure embed near that family, not each other."
     ),
     frozenset({"zoomorphic", "miscellaneous_300series"}): (
-        "Barthel distinguished 400-series miscellaneous signs (with 300-series "
-        "head morphology) from 700-series zoomorphic figures on iconographic "
-        "grounds — primarily leg count, head type, and body orientation. "
-        "The embedding captures overall silhouette shape; signs near this boundary "
-        "share body-mass distribution and are not separable by geometry alone."
+        "400-series vs 700-series separation relies on leg count and head type — cues the embedding partially conflates with body-mass silhouette."
     ),
 }
 
@@ -256,12 +209,9 @@ def _divergence_reason(family_breakdown: dict[str, int]) -> str:
         else:
             # Generic fallback
             reasons.append(
-                f"The visual similarity between {dominant.replace('_', ' ')} and "
-                f"{minority.replace('_', ' ')} signs in this cluster likely reflects "
-                "shared stroke primitives that Barthel distinguished on iconographic "
-                "rather than purely geometric grounds. Further expert review is needed "
-                "to determine whether this grouping reveals genuine scribal ambiguity "
-                "or a limitation of the visual embedding."
+                f"{dominant.replace('_', ' ')} and {minority.replace('_', ' ')} "
+                "share stroke primitives the encoder clusters geometrically; "
+                "Barthel's iconographic distinction may not be recoverable from visual signal alone."
             )
 
     return " ".join(reasons)
@@ -562,7 +512,7 @@ def _render_entry(entry: _ClusterEntry) -> str:
       <div class="content-row">
         <div class="glyphs-row">{glyph_cards}</div>
         <div class="reason-box">
-          <div class="reason-label">⚙ Pipeline reasoning</div>
+          <div class="reason-label">⚙ Why mixed</div>
           <p class="reason-text">{entry.divergence_reason}</p>
           <div class="codes-list">
             <span class="codes-label">All Barthel codes in cluster: </span>

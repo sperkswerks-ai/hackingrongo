@@ -23,6 +23,7 @@ Matches compound_report, divergence_report, passage_report:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -203,6 +204,33 @@ def _load_svg_catalog(catalog_path: Path) -> dict[str, list[Path]]:
         if base_code not in merged:
             merged[base_code] = paths
 
+    # PNG fallback: barthel_catalog.json covers codes not in the SVG-scraped tablets.
+    bc_path = catalog_path.parent.parent / "barthel_catalog.json"
+    if bc_path.exists():
+        glyph_dir = catalog_path.parent.parent
+        bc_records = json.loads(bc_path.read_text(encoding="utf-8")).get("records", [])
+        png_stage: dict[str, Path] = {}
+        for source_pref in ("barthel_formentafeln", "barthel_tafeln"):
+            for r in bc_records:
+                if r.get("source") != source_pref:
+                    continue
+                code = str(r.get("barthel_code") or "").strip()
+                png_rel = r.get("path", "")
+                if not code or not png_rel or not png_rel.endswith(".png"):
+                    continue
+                png_full = glyph_dir / png_rel
+                if png_full.exists():
+                    png_stage[code] = png_full
+        for code, png_path in png_stage.items():
+            if code not in merged:
+                merged[code] = [png_path]
+        logger.info(
+            "barthel_catalog fallback: %d PNG codes added.",
+            sum(1 for c in png_stage if c not in exact),
+        )
+    else:
+        logger.warning("barthel_catalog.json not found — PNG fallback disabled.")
+
     return merged
 
 
@@ -220,15 +248,28 @@ def _normalise_svg(svg_text: str, size: int = 88) -> str:
 
 
 def _get_svg(code: str, catalog: dict[str, list[Path]], size: int = 88) -> str | None:
-    """Return a normalised SVG string. Tries exact code then base code fallback."""
+    """Return an HTML fragment (inline SVG or base64 img). Tries exact code, modifier-stripped base, then all-alpha-stripped numeric base."""
     instances = catalog.get(code, [])
     if not instances:
         base = re.sub(r'[!?()\s]+$', '', code).strip()
         instances = catalog.get(base, [])
     if not instances:
+        numeric_base = re.sub(r'[a-zA-Z!?()\s].*$', '', code).strip()
+        if numeric_base and numeric_base != code:
+            instances = catalog.get(numeric_base, [])
+    if not instances:
         return None
+    path = instances[0]
     try:
-        return _normalise_svg(instances[0].read_text(encoding="utf-8"), size=size)
+        if path.suffix.lower() == ".png":
+            b64 = base64.b64encode(path.read_bytes()).decode()
+            return (
+                f'<img src="data:image/png;base64,{b64}" '
+                f'style="max-width:{size}px;max-height:{size}px;'
+                f'display:block;margin:auto;" '
+                f'alt="Barthel {code}">'
+            )
+        return _normalise_svg(path.read_text(encoding="utf-8"), size=size)
     except Exception:
         return None
 
