@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hackingrongo — Parallel Passage Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fefefe; --surface: #f7f7fa; --surface2: #eeeef4;
+  --border: #dddde8; --text: #1a1a2e; --muted: #6b7280;
+  --accent: #c4a96d; --accent2: #7b9ee0;
+  --pre: #1d4ed8; --post: #6d28d9; --undated: #6b7280;
+  --holy: #d97706; --cross: #b91c1c;
+  --cm: #f0fdf4; --cmb: #86efac; --cmt: #14532d;
+  --cs: #fef3c7; --csb: #fcd34d; --cst: #78350f;
+  --cg: #f8fafc; --cgb: #cbd5e1; --cgt: #9ca3af;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+  font-size: 16px; line-height: 1.65;
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding: 52px 28px 80px; }
+.mono { font-family: 'JetBrains Mono', 'Fira Mono', monospace; }
+.muted { color: var(--muted); }
+.small { font-size: 11px; }
+
+/* ── Report header ── */
+.report-header { border-bottom: 1px solid var(--border);
+                 padding-bottom: 44px; margin-bottom: 44px; }
+.report-title { font-size: 38px; font-weight: 600; color: var(--text);
+                letter-spacing: -0.5px; line-height: 1.2; }
+.report-subtitle { font-size: 17px; color: var(--accent); font-style: italic;
+                   margin-top: 8px; }
+.report-meta { margin-top: 20px; font-family: 'JetBrains Mono', monospace;
+               font-size: 11px; color: var(--muted); line-height: 2.4; }
+.report-meta b { color: #333; }
+.abstract { margin-top: 22px; font-size: 14.5px; color: #333;
+            max-width: 840px; line-height: 1.9;
+            border-left: 3px solid var(--accent); padding-left: 18px; }
+.abstract p + p { margin-top: 12px; }
+
+/* ── Summary stats ── */
+.stats-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 44px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border);
+             border-radius: 8px; padding: 18px 24px; min-width: 110px;
+             text-align: center; transition: box-shadow .15s; }
+.stat-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 30px;
+              font-weight: 500; color: var(--accent); line-height: 1; margin-bottom: 6px; }
+.stat-label { font-size: 9.5px; color: var(--muted); margin-top: 4px;
+              font-family: 'JetBrains Mono', monospace;
+              text-transform: uppercase; letter-spacing: .05em; }
+.stat-card.holy .stat-value { color: var(--holy); }
+.stat-card.cross .stat-value { color: var(--cross); }
+.stat-card.pre .stat-value { color: var(--pre); }
+
+/* ── Section label ── */
+.section-label { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+                 color: var(--muted); letter-spacing: 0.1em;
+                 text-transform: uppercase; margin-bottom: 12px; }
+
+/* ── Holy Grail Spotlight ── */
+.hg-section { background: linear-gradient(135deg, #fffbf0, #fff8e8);
+              border: 1px solid #f6c549; border-left: 4px solid var(--holy);
+              border-radius: 8px; padding: 28px 32px; margin-bottom: 44px; }
+.hg-title { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            font-weight: 600; color: var(--holy); text-transform: uppercase;
+            letter-spacing: .12em; margin-bottom: 6px; }
+.hg-sub { font-size: 13.5px; color: #666; margin-bottom: 22px; font-style: italic; }
+.hg-card { background: #fff; border: 1px solid #f6c549; border-radius: 6px;
+           padding: 20px 24px; margin-bottom: 14px; }
+.hg-card:last-child { margin-bottom: 0; }
+.hg-head { display: flex; align-items: center; gap: 12px;
+           margin-bottom: 16px; flex-wrap: wrap; }
+.hg-pid { font-family: 'JetBrains Mono', monospace; font-size: 13px;
+          font-weight: 500; color: var(--holy); }
+.hg-pos { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.hg-diff { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.hg-sign-grp { display: flex; flex-direction: column; gap: 4px; }
+.hg-sign-lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px;
+               text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.hg-sign { font-family: 'JetBrains Mono', monospace; font-size: 18px;
+           font-weight: 500; padding: 7px 14px; border-radius: 5px; display: inline-block; }
+.hg-sign.pre-s { background: #dbeafe; color: var(--pre); border: 1px solid #bfdbfe; }
+.hg-sign.post-s { background: #ede9fe; color: var(--post); border: 1px solid #ddd6fe; }
+.hg-arrow { font-size: 22px; color: var(--muted); align-self: flex-end; padding-bottom: 8px; }
+.hg-tablets { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+              color: var(--muted); margin-top: 10px; }
+.hg-tablets b { color: #333; }
+.hg-canon { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.hg-canon-lbl { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted);
+                text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+.hg-chip { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px;
+           border-radius: 3px; border: 1px solid var(--border);
+           background: var(--surface2); color: #333; }
+.hg-chip.hl { background: var(--cs); border-color: var(--csb); color: var(--cst); font-weight: 700; }
+
+/* ── Filter bar ── */
+.filter-bar { position: sticky; top: 0; background: rgba(254,254,254,.94);
+              backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+              border-bottom: 1px solid var(--border); padding: 10px 0 9px;
+              margin: 0 0 24px; display: flex; align-items: center;
+              flex-wrap: wrap; gap: 8px; z-index: 100; }
+.fb-search { border: 1px solid var(--border); border-radius: 5px;
+             padding: 6px 12px; font-family: 'JetBrains Mono', monospace;
+             font-size: 11px; background: var(--surface); width: 200px;
+             outline: none; transition: border-color .12s; }
+.fb-search:focus { border-color: var(--accent); }
+.filter-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 4px 11px;
+        border-radius: 20px; border: 1px solid var(--border);
+        background: var(--surface); color: var(--muted); cursor: pointer;
+        text-transform: uppercase; letter-spacing: .05em; transition: all .12s; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.chip.c-holy.active { background: var(--holy); border-color: var(--holy); }
+.chip.c-cross.active { background: var(--cross); border-color: var(--cross); }
+.fb-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fb-sort { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+           border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px;
+           background: var(--surface); cursor: pointer; }
+.fb-count { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            color: var(--muted); white-space: nowrap; }
+.fb-btn { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+          padding: 4px 9px; border-radius: 4px; border: 1px solid var(--border);
+          background: var(--surface); color: var(--muted); cursor: pointer;
+          text-transform: uppercase; letter-spacing: .04em; }
+.fb-btn:hover { background: var(--surface2); }
+
+/* ── Passage cards (interactive accordion) ── */
+.pc { border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 10px; overflow: hidden; transition: box-shadow .15s; }
+.pc:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.pc.holy-p { border-color: #f6c549; border-left: 3px solid var(--holy); }
+.pc.dia-p:not(.holy-p) { border-left: 3px solid var(--pre); }
+.pc-summary { padding: 12px 18px; display: flex; align-items: center;
+              gap: 12px; cursor: pointer; background: var(--bg);
+              flex-wrap: wrap; user-select: none; }
+.pc-summary:hover { background: var(--surface); }
+.pc.open .pc-summary { background: var(--surface); border-bottom: 1px solid var(--border); }
+.pc-toggle { font-size: 9px; color: var(--muted); width: 14px; text-align: center;
+             flex-shrink: 0; transition: transform .15s;
+             font-family: 'JetBrains Mono', monospace; }
+.pc.open .pc-toggle { transform: rotate(90deg); }
+.pc-id { font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+         color: var(--accent); font-weight: 500; flex-shrink: 0; min-width: 70px; }
+.pc-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.bd-holy { background: #fff3cd; color: var(--holy); border-color: #fde68a; }
+.bd-cross { background: #fde8e8; color: var(--cross); border-color: #fca5a5; }
+.bd-dia { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+.pc-canonical { display: flex; flex-wrap: wrap; gap: 3px;
+                align-items: center; flex: 1; }
+.s-chip { font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+          padding: 2px 6px; background: var(--surface2);
+          border: 1px solid var(--border); border-radius: 3px; color: #333; }
+.pc-right { display: flex; align-items: center; gap: 14px;
+            margin-left: auto; flex-shrink: 0; }
+.pc-tablet-list { font-family: 'JetBrains Mono', monospace;
+                  font-size: 9.5px; color: var(--muted); }
+.pc-score { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #555; }
+.pc-detail { padding: 22px 22px 26px; background: var(--bg); }
+.pc-meta-row { display: flex; gap: 18px; flex-wrap: wrap;
+               font-family: 'JetBrains Mono', monospace; font-size: 10px;
+               color: var(--muted); margin-bottom: 16px; }
+.pc-meta-row b { color: #444; }
+
+/* ── Alignment grid ── */
+.ag-wrap { overflow-x: auto; margin-bottom: 22px; -webkit-overflow-scrolling: touch; }
+.ag-table { border-collapse: separate; border-spacing: 2px;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            min-width: max-content; }
+.ag-corner { font-size: 8px; color: var(--muted); text-transform: uppercase;
+             letter-spacing: .05em; padding: 3px 10px 3px 4px;
+             text-align: right; vertical-align: bottom; white-space: nowrap; }
+.ag-pos-h { font-size: 8px; color: var(--muted); text-align: center;
+            padding: 3px 2px; vertical-align: bottom; width: 54px; min-width: 54px; }
+.ag-lbl { text-align: right; padding: 0 10px 0 4px;
+          vertical-align: middle; white-space: nowrap; }
+.ag-lbl-in { display: flex; align-items: center; justify-content: flex-end;
+             gap: 5px; height: 36px; }
+.ag-tid { font-weight: 600; font-size: 12px; color: #333; }
+.ag-dot { width: 7px; height: 7px; border-radius: 50%;
+          display: inline-block; flex-shrink: 0; }
+.ag-dot.pre  { background: var(--pre); }
+.ag-dot.post { background: var(--post); }
+.ag-dot.und  { background: var(--undated); }
+.ag-dot.exc  { background: #d1d5db; }
+.ag-pre-row .ag-lbl { border-left: 3px solid var(--pre);
+                       background: rgba(29,78,216,.03); }
+.ag-cell { width: 54px; min-width: 54px; height: 34px; text-align: center;
+           vertical-align: middle; padding: 2px; }
+.ag-cell-in { display: flex; align-items: center; justify-content: center;
+              height: 100%; font-size: 10px; font-weight: 500; border-radius: 3px;
+              padding: 0 3px; border: 1px solid transparent; flex-direction: column; }
+.ag-can .ag-cell-in { background: var(--surface2); border-color: var(--border);
+                       color: #333; font-weight: 600; }
+.ag-mat .ag-cell-in { background: var(--cm); border-color: var(--cmb); color: var(--cmt); }
+.ag-sub .ag-cell-in { background: var(--cs); border-color: var(--csb);
+                       color: var(--cst); font-weight: 700; }
+.ag-gap .ag-cell-in { background: var(--cg); border-color: var(--cgb);
+                       border-style: dashed; color: var(--cgt); font-style: italic; }
+.ag-nocc { font-size: 8px; color: var(--muted); font-weight: normal; }
+.ag-cons-row .ag-lbl { font-size: 8px; color: var(--muted); font-style: italic; }
+.ag-cons-cell { width: 54px; min-width: 54px; padding: 2px;
+                vertical-align: middle; text-align: center; }
+.ag-cbar-w { width: 46px; height: 8px; background: var(--surface2);
+             border-radius: 3px; overflow: hidden; margin: 0 auto 2px; }
+.ag-cbar { height: 100%; background: var(--cmb); border-radius: 3px; }
+.ag-cpct { font-size: 8px; color: var(--muted); }
+
+/* ── Inline changes ── */
+.chg-wrap { margin-top: 6px; }
+.chg-lbl { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+           color: var(--muted); text-transform: uppercase;
+           letter-spacing: .08em; margin-bottom: 8px; }
+.chg-item { display: flex; align-items: flex-start; gap: 10px;
+            padding: 11px 14px; background: var(--surface);
+            border: 1px solid var(--border); border-left: 3px solid var(--accent2);
+            border-radius: 4px; margin-bottom: 7px; flex-wrap: wrap; }
+.chg-item.holy  { border-left-color: var(--holy);  background: #fffbf0; }
+.chg-item.cross { border-left-color: var(--cross); background: #fff8f8; }
+.chg-pos { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+           color: var(--muted); min-width: 56px; padding-top: 2px; }
+.chg-signs { display: flex; align-items: center; gap: 8px; }
+.chg-sign { font-family: 'JetBrains Mono', monospace; font-size: 13px;
+            padding: 4px 10px; border-radius: 4px; }
+.chg-sign.pre-s  { background: #dbeafe; color: var(--pre);  border: 1px solid #bfdbfe; }
+.chg-sign.post-s { background: #ede9fe; color: var(--post); border: 1px solid #ddd6fe; }
+.chg-arr { color: var(--muted); font-size: 14px; }
+.chg-meta { font-size: 11px; color: var(--muted);
+            display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.chg-flags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ── Passage table (summary / individual pages) ── */
+.passage-table-wrap { overflow-x: auto; margin-bottom: 44px; }
+.passage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.passage-table thead th { font-family: 'JetBrains Mono', monospace;
+                          font-size: 9px; color: var(--muted); font-weight: 600;
+                          text-transform: uppercase; letter-spacing: 0.08em;
+                          padding: 6px 10px; border-bottom: 1px solid var(--border);
+                          text-align: left; }
+.passage-table tbody td { padding: 7px 10px;
+                           border-bottom: 1px solid rgba(221,221,232,.6); }
+.passage-table tbody tr:last-child td { border-bottom: none; }
+.passage-table tbody tr:hover { background: var(--surface); }
+.pt-id { font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+         color: var(--accent); text-decoration: none; }
+.pt-id:hover { text-decoration: underline; }
+.score-val { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+.badge { display: inline-block; font-family: 'JetBrains Mono', monospace;
+         font-size: 8.5px; border-radius: 3px; padding: 2px 6px;
+         border: 1px solid transparent; white-space: nowrap; }
+.badge-pre  { color: var(--pre);  background: #dbeafe; border-color: #bfdbfe; }
+.badge-post { color: var(--post); background: #ede9fe; border-color: #ddd6fe; }
+.badge-none { color: var(--muted); background: var(--surface2);
+              border-color: var(--border); }
+.tag-holy  { display: inline-block; font-family: 'JetBrains Mono', monospace;
+             font-size: 8px; background: #fff3cd; color: var(--holy);
+             border: 1px solid #ffe08a; border-radius: 3px; padding: 1px 5px; }
+.tag-cross { display: inline-block; font-family: 'JetBrains Mono', monospace;
+             font-size: 8px; background: #fde8e8; color: var(--cross);
+             border: 1px solid #f5b7b1; border-radius: 3px; padding: 1px 5px; }
+.tag-anchor { display: inline-block; font-family: 'JetBrains Mono', monospace;
+              font-size: 8px; background: #dbeafe; color: var(--pre);
+              border: 1px solid #bfdbfe; border-radius: 3px; padding: 1px 5px;
+              margin-left: 6px; }
+.row-anchor > td { background: rgba(29,78,216,0.03); }
+.row-anchor > td:first-child { border-left: 3px solid var(--pre); padding-left: 7px; }
+
+/* ── Passage detail card (individual pages) ── */
+.passage-card { background: var(--surface); border: 1px solid var(--border);
+                border-radius: 8px; margin-bottom: 36px; overflow: hidden; }
+.passage-card-header { padding: 16px 22px 12px; border-bottom: 1px solid var(--border);
+                       display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.passage-id { font-size: 15px; color: var(--accent); font-weight: 500;
+              font-family: 'JetBrains Mono', monospace; }
+.passage-score { font-family: 'JetBrains Mono', monospace; font-size: 12px;
+                 color: var(--muted); }
+.passage-body { padding: 20px 22px; }
+
+/* ── Canonical sequence ── */
+.sign-seq { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 18px; }
+.sign-chip { font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+             background: var(--surface2); border: 1px solid var(--border);
+             border-radius: 3px; padding: 3px 7px; color: #333; }
+
+/* ── Attestation table ── */
+.attest-table { width: 100%; border-collapse: collapse; font-size: 12px;
+                margin-bottom: 20px; }
+.attest-table th { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+                   font-weight: 600; color: var(--muted); text-transform: uppercase;
+                   letter-spacing: 0.06em; padding: 5px 8px;
+                   border-bottom: 1px solid var(--border); text-align: left; }
+.attest-table td { padding: 5px 8px; border-bottom: 1px solid rgba(221,221,232,.5);
+                   vertical-align: top; }
+.attest-table tr:last-child td { border-bottom: none; }
+.attest-seq { font-family: 'JetBrains Mono', monospace; font-size: 10px;
+              color: #333; }
+.attest-ed  { font-family: 'JetBrains Mono', monospace; font-size: 11px;
+              color: var(--muted); text-align: center; }
+
+/* ── Alignment row (legacy per-attestation view) ── */
+.align-row { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 8px; }
+.align-cell { width: 26px; height: 26px; display: flex; align-items: center;
+              justify-content: center; border-radius: 3px; font-size: 9px;
+              font-family: 'JetBrains Mono', monospace; border: 1px solid transparent; }
+.align-match { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+.align-sub   { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.align-gap   { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+
+/* ── Change cards (individual page) ── */
+.changes-section { margin-top: 18px; }
+.change-card { background: var(--bg); border: 1px solid var(--border);
+               border-left: 3px solid var(--accent2);
+               border-radius: 4px; padding: 12px 16px; margin-bottom: 10px; }
+.change-card.holy  { border-left-color: var(--holy);  background: #fffbf0; }
+.change-card.cross { border-left-color: var(--cross); background: #fff8f8; }
+.change-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+               flex-wrap: wrap; }
+.change-type-tag { font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
+                   padding: 2px 7px; border-radius: 3px; font-weight: 600;
+                   text-transform: uppercase; }
+.ct-sub  { background: #dbeafe; color: #1d4ed8; }
+.ct-ins  { background: #d1fae5; color: #065f46; }
+.ct-del  { background: #fee2e2; color: #991b1b; }
+.change-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+               gap: 8px; font-size: 12px; }
+.change-field-label { font-family: 'JetBrains Mono', monospace; font-size: 8.5px;
+                      color: var(--muted); margin-bottom: 2px; }
+.change-field-val { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+/* ── Report footer ── */
+.report-footer { border-top: 1px solid var(--border); margin-top: 56px;
+                 padding-top: 26px; font-size: 12px; color: var(--muted);
+                 line-height: 2.0; }
+.report-footer a { color: var(--accent); text-decoration: none; }
+.page-nav { font-family: 'JetBrains Mono', monospace; font-size: 11px;
+            color: var(--accent); margin-bottom: 32px; text-decoration: none;
+            display: inline-block; }
+.page-nav:hover { text-decoration: underline; }
+
+/* ── Glyph strips ── */
+.g-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; align-items: flex-end; }
+.g-cell { display: flex; flex-direction: column; align-items: center; gap: 3px;
+          background: var(--surface); border: 1px solid var(--border);
+          border-radius: 5px; padding: 6px 5px 4px; min-width: 52px; }
+.g-cell.g-hl { background: var(--cs); border-color: var(--csb); }
+.g-cell.g-missing .g-img { width: 52px; height: 52px; display: flex; align-items: center;
+                            justify-content: center; color: var(--muted); font-size: 20px; }
+.g-img { display: flex; align-items: center; justify-content: center; }
+.g-img svg { display: block; }
+.g-code { font-family: 'JetBrains Mono', monospace; font-size: 8px; color: var(--muted);
+           text-align: center; line-height: 1; }
+/* ── Sign-pair glyph display (holy grail / change cards) ── */
+.sign-pair { display: flex; align-items: center; gap: 14px; margin: 10px 0; }
+.sign-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sign-slot-lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px;
+                 color: var(--muted); text-transform: uppercase; letter-spacing:.05em; }
+.sign-glyph-box { background: var(--surface); border: 1px solid var(--border);
+                  border-radius: 6px; padding: 8px 10px;
+                  display: flex; align-items: center; justify-content: center; }
+.sign-glyph-box.pre-box  { border-color: #93c5fd; background: #eff6ff; }
+.sign-glyph-box.post-box { border-color: #c4b5fd; background: #f5f3ff; }
+.sign-glyph-box svg { color: #1d4ed8; }
+.sign-glyph-box.post-box svg { color: #6d28d9; }
+.sign-arrow { font-size: 20px; color: var(--muted); padding-bottom: 10px; }
+/* ── Hacker callout box ── */
+.hack-box { background: #0f172a; color: #94a3b8; border-radius: 8px;
+            padding: 18px 24px; margin-bottom: 28px; font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; line-height: 1.8; }
+.hack-box .hack-title { color: #38bdf8; font-weight: 500; margin-bottom: 6px;
+                        font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.hack-box b { color: #e2e8f0; }
+.hack-box .hack-hl { color: #fbbf24; }
+
+/* ── Dark mode variables ── */
+body.dark {
+  --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+  --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+  --accent: #39d353; --accent2: #58a6ff;
+  --pre: #58a6ff; --post: #f0883e; --undated: #8b949e;
+  --holy: #ff4444; --cross: #ff7a7a;
+  --cm: #0d2818; --cmb: #238636; --cmt: #3fb950;
+  --cs: #2d1800; --csb: #9e4c00; --cst: #f0883e;
+  --cg: #161b22; --cgb: #30363d; --cgt: #8b949e;
+}
+body.dark .hg-section { background: linear-gradient(135deg,#0d1117,#161b22);
+  border-color: #30363d; }
+body.dark .hg-card { background: #0d1117; border-color: #30363d; }
+body.dark .hg-sub { color: #8b949e; }
+body.dark .sign-glyph-box.pre-box  { border-color: #58a6ff; background: #0c1929; }
+body.dark .sign-glyph-box.post-box { border-color: #f0883e; background: #2d1800; }
+body.dark .sign-glyph-box svg      { color: #58a6ff; }
+body.dark .sign-glyph-box.post-box svg { color: #f0883e; }
+body.dark .chg-item.holy  { background: #1a0d00; border-left-color: #ff4444; }
+body.dark .chg-item.cross { background: #2d0000; border-left-color: #ff7a7a; }
+body.dark .filter-bar { background: rgba(13,17,23,.94); border-color: var(--border); }
+body.dark .fb-search  { background: #161b22; color: #e6edf3; border-color: #30363d; }
+body.dark .fb-sort    { background: #161b22; color: #e6edf3; border-color: #30363d; }
+body.dark .fb-btn     { background: #161b22; color: #8b949e; border-color: #30363d; }
+body.dark .fb-btn:hover { background: #21262d; }
+body.dark .hack-box { border: 1px solid #30363d; }
+body.dark .bd-holy  { background: #2d0000; color: #ff4444; border-color: #ff4444; }
+body.dark .bd-cross { background: #2d0000; color: #ff7a7a; border-color: #ff7a7a; }
+body.dark .bd-dia   { background: #0d2818; color: #3fb950; border-color: #238636; }
+body.dark .ag-mat .ag-cell-in { background: #0d2818; border-color: #238636; color: #3fb950; }
+body.dark .ag-sub .ag-cell-in { background: #2d1800; border-color: #9e4c00; color: #f0883e; }
+body.dark .ag-gap .ag-cell-in { background: #161b22; border-color: #30363d; color: #8b949e; }
+body.dark .ag-can .ag-cell-in { background: #21262d; border-color: #30363d; color: #e6edf3; }
+body.dark .ag-pre-row .ag-lbl { border-left-color: #58a6ff; background: rgba(88,166,255,.05); }
+body.dark .row-anchor > td { background: rgba(88,166,255,.05); }
+body.dark .hg-chip { background: #21262d; border-color: #30363d; color: #e6edf3; }
+body.dark .hg-chip.hl { background: #2d1800; border-color: #9e4c00; color: #f0883e; }
+body.dark .s-chip { background: #21262d; border-color: #30363d; color: #e6edf3; }
+body.dark .align-match { background: #0d2818; border-color: #238636; color: #3fb950; }
+body.dark .align-sub   { background: #2d1800; border-color: #9e4c00; color: #f0883e; }
+body.dark .align-gap   { background: #2d0000; border-color: #ff4444; color: #ff7a7a; }
+body.dark .pc-summary  { background: var(--bg); }
+body.dark .pc-summary:hover { background: var(--surface); }
+body.dark .pc.open .pc-summary { background: var(--surface); border-bottom-color: var(--border); }
+body.dark .stat-card   { background: #161b22; border-color: #30363d; }
+body.dark .stat-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.4); }
+body.dark .abstract { border-left-color: var(--accent); }
+body.dark .abstract p { color: var(--muted); }
+
+/* ── Dark mode toggle ── */
+.dark-toggle {
+  position: fixed; top: 16px; right: 20px; z-index: 300;
+  background: #0d1117; color: #39d353; border: 1px solid #30363d;
+  border-radius: 5px; padding: 6px 13px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  cursor: pointer; text-transform: uppercase; letter-spacing: .06em;
+  transition: background .15s;
+}
+.dark-toggle:hover { background: #161b22; }
+body:not(.dark) .dark-toggle {
+  background: #f7f7fa; color: #555; border-color: #dddde8;
+}
+body:not(.dark) .dark-toggle:hover { background: #eeeef4; }
+
+/* ── Mission brief panel ── */
+.mission-brief {
+  display: flex; flex-wrap: wrap; gap: 0;
+  background: #0d1117; border: 1px solid #30363d;
+  border-radius: 6px; padding: 14px 22px;
+  margin-top: 20px; font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; align-items: flex-start;
+}
+.mb-field { display: flex; flex-direction: column; padding: 4px 18px 4px 0; }
+.mb-key   { color: #39d353; font-size: 8.5px; text-transform: uppercase;
+            letter-spacing: .1em; margin-bottom: 3px; }
+.mb-val   { color: #e6edf3; font-size: 11px; }
+.mb-sep   { color: #30363d; font-size: 20px; padding: 4px 4px 0; align-self: center; }
+
+/* ── Attack brief ── */
+.attack-brief {
+  background: #0d1117; border: 1px solid #30363d;
+  border-left: 4px solid #ff4444;
+  border-radius: 6px; padding: 20px 26px;
+  margin-top: 20px; margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.ab-title {
+  color: #ff4444; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .12em; margin-bottom: 14px;
+}
+.ab-grid {
+  display: grid; grid-template-columns: 110px 1fr;
+  gap: 7px 16px; font-size: 11.5px; line-height: 1.7;
+  align-items: start;
+}
+.ab-key { color: #8b949e; white-space: nowrap; padding-top: 1px; }
+.ab-val { color: #e6edf3; }
+.abstract-plain {
+  font-size: 14px; color: var(--muted); margin-top: 14px;
+  font-family: 'Cormorant Garamond', serif; font-style: italic;
+  line-height: 1.8; max-width: 860px;
+}
+
+/* ── Cryptanalytic status badge (injected per-card) ── */
+.pc-status-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  padding: 3px 8px; border-radius: 3px; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+  flex-shrink: 0;
+}
+.psb-key-change { background: #ff4444; color: #fff; }
+.psb-boundary   { background: #f0883e; color: #fff; }
+.psb-single     { background: #6b7280; color: #fff; }
+.psb-anchor     { background: #1d4ed8; color: #fff; }
+
+/* ── Attack relevance line ── */
+.pc-relevance {
+  width: 100%; margin-top: 5px; padding-left: 26px;
+  font-size: 11.5px; color: var(--muted); font-style: italic;
+  font-family: 'Cormorant Garamond', serif; line-height: 1.5;
+}
+
+/* ── Evidence bar ── */
+.evidence-bar-wrap  { width: 110px; flex-shrink: 0; }
+.evidence-bar       { display: flex; height: 6px; border-radius: 3px;
+                       overflow: hidden; background: var(--surface2); margin-bottom: 3px; }
+.eb-pre  { background: #3b82f6; }
+.eb-post { background: #f0883e; }
+.eb-unk  { background: #9ca3af; }
+.evidence-labels { display: flex; gap: 5px; font-family: 'JetBrains Mono', monospace;
+                   font-size: 7.5px; color: var(--muted); flex-wrap: wrap; }
+.eb-lbl-pre  { color: #3b82f6; }
+.eb-lbl-post { color: #f0883e; }
+.eb-lbl-unk  { color: #9ca3af; }
+
+/* ── p-value stat card ── */
+.stat-card.pval .stat-value { color: #39d353; font-size: 22px; }
+body:not(.dark) .stat-card.pval .stat-value { color: #15803d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="report-header">
+  <div class="report-title">HACKING RONGO: Parallel Passage Attack Results</div>
+  <div class="report-subtitle">Kasiski-equivalent analysis on a 15,273-token unknown substitution cipher</div>
+  <div class="mission-brief">
+    <div class="mb-field"><span class="mb-key">CORPUS</span><span class="mb-val">26 objects / 15,273 tokens</span></div>
+    <span class="mb-sep">|</span>
+    <div class="mb-field"><span class="mb-key">CIPHER TYPE</span><span class="mb-val">Unknown substitution</span></div>
+    <span class="mb-sep">|</span>
+    <div class="mb-field"><span class="mb-key">KEY STATUS</span><span class="mb-val">Unrecovered</span></div>
+    <span class="mb-sep">|</span>
+    <div class="mb-field"><span class="mb-key">ATTACK METHOD</span><span class="mb-val">Repeated sequence analysis (Kasiski-equivalent)</span></div>
+    <span class="mb-sep">|</span>
+    <div class="mb-field"><span class="mb-key">CLASSIFICATION</span><span class="mb-val">Ciphertext-only</span></div>
+  </div>
+  <div class="report-meta"><b>Source:</b> parallel_variants_auto.json &nbsp;·&nbsp; <b>Generated:</b> 2026-05-28 01:39 UTC</div>
+  <div class="attack-brief">
+    <div class="ab-title">ATTACK BRIEF</div>
+    <div class="ab-grid">
+      <span class="ab-key">Objective:</span><span class="ab-val">Identify key-consistency constraints across independent ciphertext sources</span>
+      <span class="ab-key">Method:</span><span class="ab-val">Automated Levenshtein search + permutation significance test (p &lt; 0.001)</span>
+      <span class="ab-key">Finding:</span><span class="ab-val">13 repeated sequences across 20 independent tablets</span>
+      <span class="ab-key">Holy Grail:</span><span class="ab-val">Same passage position. Different glyph. Consistent across 2+ tablets.<br>Idiosyncratic scribal error cannot produce this. Systematic key change does.</span>
+      <span class="ab-key">Status:</span><span class="ab-val">2 confirmed key-change events. Both anchored to pre-contact Tablet D (~1500 CE).</span>
+    </div>
+  </div>
+  <p class="abstract-plain">13 glyph sequences appear verbatim across 20 independent rongorongo tablets; permutation test (p &lt; 0.001) confirms the repetitions are non-random. Two sequences satisfy the holy-grail criterion: same position, different glyph, consistent across ≥ 2 post-contact tablets — systematic key change, not scribal error.</p>
+</div>
+
+<div class="stats-row"><div class="stat-card"><div class="stat-value">13</div><div class="stat-label">Repeated Sequences Found</div></div><div class="stat-card pre"><div class="stat-value">3</div><div class="stat-label">Cross-Boundary Signal</div></div><div class="stat-card holy"><div class="stat-value">2</div><div class="stat-label">Confirmed Key-Change Events</div></div><div class="stat-card"><div class="stat-value">20</div><div class="stat-label">Independent Ciphertext Sources</div></div><div class="stat-card pval"><div class="stat-value">&lt;&thinsp;0.001</div><div class="stat-label">Permutation p-value</div></div></div>
+
+<div class="hg-section"><div class="hg-title">■ KEY-CHANGE EVENTS</div><div class="hg-sub">The following passages satisfy the holy-grail criterion: same position, different sign, consistent across two or more independent post-contact tablets. These are the strongest key-consistency constraints recovered from the corpus.</div><div class="hg-card"><div class="hg-head"><span class="hg-pid">P007_ADHS</span><span class="hg-pos">Position 4</span><span class="badge bd-holy">★ Holy Grail candidate</span></div><div class="sign-pair"><div class="sign-slot"><div class="sign-slot-lbl">Pre-contact (D)</div><div class="sign-glyph-box pre-box" style="color:#1d4ed8"><svg xmlns="http://www.w3.org/2000/svg"
+     width="72" height="72"
+     viewBox="868.1691 12.0388 93.0809 98.9360">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 955.84375,31.5625 C 954.04505,34.833309 951.7623,39.017771 949.71875,42.65625 943.69188,53.386959 938,64.687659 938,65.96875 938,68.494404 939.81478,66.512949 942.78125,60.75 946.79252,52.957287 951.45077,44.614011 955.96875,36.8125 L 955.84375,31.5625 z M 956.5625,68.1875 C 956.08219,69.081852 955,70.70079 955,70.9375 955,72.225044 955.67395,72.068672 956.625,71.28125 L 956.5625,68.1875 z M 956.96875,89.3125 C 955.7224,89.716172 954.28763,89.297765 950.0625,87.78125 945.26031,86.057613 942.80576,84.454318 940.125,81.25 936.31101,76.691129 935,76.025451 935,78.65625 935,81.700435 940.06749,87.002729 945.8125,89.96875 950.43751,92.356541 954.03172,93.190192 957.03125,92.46875 L 956.96875,89.3125 z M 957.1875,99.96875 C 953.12427,98.980286 947.93929,96.820065 941.78125,93.34375 937.53783,90.94827 933.8634,89 933.59375,89 932.64398,89 926.14634,93.715923 920.65625,98.40625 914.23666,103.89068 914.02669,103.8908 903.8125,97.8125 896.42916,93.418793 894.38516,93.415213 891,97.71875 889.87795,99.145204 888.72588,100.03838 888.40625,99.71875 887.28793,98.600435 889.13403,93.240147 891.3125,91.28125 895.18289,87.800975 896.61843,87.90539 902.84375,92.0625 906.09899,94.236265 909.93413,96 911.375,96 915.49635,96 933.76895,78.456446 931.75,76.4375 931.47928,76.166779 929.28538,77.911101 926.875,80.34375 919.95337,87.3293 913.95981,92 911.90625,92 910.86655,92 907.87077,90.670803 905.25,89.0625 897.46253,84.283505 895.87554,84.257599 891.21875,88.6875 886.70961,92.976941 884.97098,98.452203 886.84375,102.5625 888.3035,105.76628 889.18832,105.59777 891.09375,101.71875 893.23753,97.354485 896.11511,97.149346 900.9375,100.96875 903.08979,102.67339 906.58592,104.69777 908.6875,105.46875 910.78909,106.23974 912.95,106.88699 913.5,106.90625 915.45681,106.97479 918.93095,104.41499 925.3125,98.25 928.87074,94.8125 932.06006,92 932.375,92 932.68993,92 935.98864,93.962004 939.71875,96.375 945.81806,100.32062 951.97137,102.65921 957.25,103.46875 L 957.1875,99.96875 z M 909.5,16.09375 C 908.90379,16.038836 908.41832,16.229661 908.09375,16.65625 907.73512,17.127607 905.33996,19.461261 902.78125,21.875 L 898.15625,26.28125 893.875,22.625 C 890.76654,19.964281 889.06389,19.148477 887.5625,19.625 882.59689,21.201021 880.67841,28.31664 883.96875,32.9375 886.37523,36.317081 887.02829,36.56546 888.84375,34.75 889.83261,33.761146 890.26329,33.784112 890.9375,34.875 891.57388,35.904687 893.8238,34.235149 900,28.125 904.51878,23.654535 908.48854,20.013759 908.84375,20.03125 910.06018,20.091152 912.65325,22.508576 914.4375,25.25 915.41884,26.757778 916.62153,27.717409 917.125,27.40625 917.62847,27.095091 917.93237,27.429283 917.78125,28.125 917.63012,28.820717 918.2875,29.539507 919.25,29.75 922.1201,30.377674 921.28458,27.537113 917.03125,22.15625 914.12303,18.477066 911.28864,16.258493 909.5,16.09375 z M 944.65625,17 C 944.03094,16.644482 942.64365,17.988674 941.34375,20.4375 940.33595,22.336041 937.22463,28.073541 934.4375,33.1875 931.65037,38.301458 926.76584,47.45 923.59375,53.5 920.42167,59.55 917.40954,64.915 916.90625,65.4375 916.40297,65.96 916,67.325278 916,68.4375 916,70.449844 916.01856,70.431338 917.9375,68.46875 918.9981,67.384028 923.79645,58.85 928.59375,49.5 933.39105,40.15 938.48406,30.7 939.9375,28.5 942.72546,24.280014 945,19.533413 945,17.9375 945,17.416454 944.86469,17.118506 944.65625,17 z M 888.125,23.03125 C 889.53593,22.938655 891.30267,23.691264 893.03125,25.53125 894.9113,27.532465 895.21433,28.440479 894.375,29.78125 893.78794,30.719031 891.97505,31.647666 890.34375,31.8125 887.95453,32.053918 887.13424,31.583941 886.15625,29.4375 884.45542,25.704594 885.77344,23.185575 888.125,23.03125 z M 913.75,43 C 912.45066,43 907.99513,50.555441 908,52.75 908.00572,55.321632 909.76847,53.856648 912.34375,49.125 915.3633,43.577087 915.49278,43 913.75,43 z M 882.03125,46.3125 C 880.98231,46.158498 880.09759,46.535758 878.46875,47.3125 875.94189,48.517472 874.7944,49.931307 873.875,53 872.16908,58.693867 873.94851,69.498614 877.59375,75.71875 879.11638,78.316925 880.54882,79.884797 880.78125,79.1875 881.087,78.270239 881.56675,78.22547 882.5,79 883.53756,79.861096 883.69652,78.831674 883.3125,73.78125 883.04991,70.327913 883.24186,66.422759 883.75,65.09375 884.79455,62.361785 884.02441,61.816146 891.5,70.625 895.81671,75.711596 902.9675,78.77723 906.59375,77.125 909.74798,75.687838 909.65698,74 906.4375,74 902.45152,74 897.95615,71.231309 892.34375,65.375 884.44245,57.130314 880.12692,58.791634 881.46875,69.53125 882.90922,81.06039 878.76569,73.832424 876.4375,60.75 876.07045,58.6875 876.0772,55.420567 876.4375,53.5 877.58083,47.405526 883.30697,47.932411 891.25,54.875 899.39103,61.990645 906.64637,64.999241 908.5,62 908.85812,61.420556 907.87917,61 906.1875,61 903.17553,61 897.05439,57.417395 893.4375,53.53125 892.30451,52.313918 889.21993,50.039044 886.59375,48.5 884.28083,47.144544 883.08019,46.466502 882.03125,46.3125 z"/>
+</svg></div><div class="g-code">010?</div></div><div class="sign-arrow">→</div><div class="sign-slot"><div class="sign-slot-lbl">Post-contact (H, S)</div><div class="sign-glyph-box post-box" style="color:#6d28d9"><svg xmlns="http://www.w3.org/2000/svg"
+     width="72" height="72"
+     viewBox="959.5625 16.3288 41.5422 87.0265">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 966.3125,86.5625 965.09375,90.71875 C 966.16072,90.129878 967.88746,89.660404 969.90625,89.5625 974.69908,89.330063 977.71531,86.856974 980.96875,80.53125 983.66803,75.282996 984.98925,61.762147 983.75,52.03125 982.87739,45.179316 983.64279,31.081572 985.09375,27.25 986.10988,24.566671 988.55088,24.309307 989.84375,26.75 993.11149,32.918884 993.37995,52.527863 990.40625,67.6875 987.12323,84.424011 984.87014,89.860571 979.71875,93.46875 976.918,95.430474 967.0303,94.8769 964.5,92.6875 L 963.5625,95.875 966.40625,96.21875 C 969.64753,96.623629 972.57972,97.235968 972.90625,97.5625 974.699,99.355257 983.62022,95.293907 984.71875,92.1875 985.04779,91.257047 985.82056,89.825 986.46875,89 992.49141,81.334546 997.10474,46.398687 994.03125,31.59375 992.71795,25.267651 989.20083,20.328789 986.71875,21.28125 982.32069,22.968947 979.86341,37.631642 981.3125,53.5 983.26926,74.92775 978.7443,87.585453 969.375,86.8125 L 966.3125,86.5625 z"/>
+</svg></div><div class="g-code">010</div></div></div><div class="hg-tablets" style="margin-top:8px"><b>4</b> post-contact tablets show this substitution consistently.</div><div style="margin-top:12px"><div class="section-label" style="margin-bottom:4px">Canonical sequence (highlighted = changed position)</div><div class="g-strip"><div class="g-cell "><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="849.6099 15.9241 59.6303 93.6665">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 867.45873,43.045599 C 868.94265,41.405893 869.04811,40.576772 868.11372,37.896376 867.50117,36.139223 867,33.643704 867,32.350777 867,29.502833 865.45277,29.285468 864.03518,31.934259 862.23531,35.297353 862.91614,45 864.952,45 865.35791,45 866.48594,44.12052 867.45873,43.045599 z M 898.58793,95.25 C 895.65284,89.957712 893.92005,84.528428 893.31328,78.723166 892.63925,72.274458 891.93981,72.312562 888.23174,79 886.52577,82.076695 885.88038,82.461566 882.89553,82.182214 866.24744,80.624125 861.94172,62.038472 875.47588,50.15532 877.45242,48.419894 879.46713,47 879.95301,47 880.43889,47 881.52569,46.735505 882.36812,46.412233 883.43699,46.002071 884.33103,46.856506 885.32688,49.239911 886.26312,51.480653 888.02798,53.259924 890.45818,54.413133 892.49552,55.37991 894.36184,55.971494 894.60557,55.727763 894.8493,55.484033 894.36276,52.651033 893.52436,49.43221 891.57878,41.962622 891.59302,36.26864 893.57185,30.440127 894.43636,27.893756 894.8996,25.566268 894.60127,25.267932 893.6749,24.341562 888.15123,30.93979 886.85711,34.518621 885.76668,37.534142 884.88615,38.150454 879.06389,39.973362 875.45375,41.103671 871.05993,43.273611 869.29984,44.795451 861.22331,51.778732 856.47128,71.157152 860.78009,79.538296 863.82183,85.454836 867.85411,88.745929 874.01273,90.338608 878.70109,91.551062 879.89539,91.55576 882.21573,90.370878 884.82398,89.038969 885.10986,89.16249 889.43941,93.492043 892.83366,96.886294 894.709,98 897.03022,98 900.0964,98 900.10482,97.985125 898.58793,95.25 z M 860,98.076725 C 860,97.568924 861.19346,95.735108 862.65213,94.001578 L 865.30425,90.849706 862.68243,88.227883 C 861.24043,86.785881 859.78201,85.884658 859.4415,86.225166 858.30277,87.363896 856.93081,95.206654 857.53651,97.115021 858.14549,99.033758 860,99.757726 860,98.076725 z M 857.73616,103.75 C 853.95396,100.87792 853.60989,91.334487 857.05635,84.894709 857.85779,83.397198 857.8399,80.979477 856.99008,75.941163 855.6452,67.967808 856.49645,62.456817 860.45585,53.503919 862.74111,48.336529 862.83749,47.606076 861.48821,45.679712 860.6697,44.511113 860,41.871996 860,39.815006 860,32.346908 866.42617,19.924106 868.91876,22.573629 869.39809,23.083133 869.9712,26.536247 870.19235,30.247216 870.70512,38.851858 871.48942,39.666373 877.54276,37.880807 881.45624,36.726439 882.80059,35.63132 885.74048,31.202857 889.4802,25.569589 894.21454,21.39736 897.5,20.839558 899.95378,20.422958 899.80495,22.351401 896.83455,29.4624 894.21406,35.735729 894.66804,45.736369 897.86589,52.181436 899.86354,56.207584 899.89383,56.584639 898.31319,57.75 897.38069,58.4375 896.0143,59 895.27675,59 892.49568,59 886.72785,55.920173 883.9601,52.957285 881.40961,50.22698 880.83327,50.018863 878.81459,51.09923 872.18648,54.646488 868.54185,64.460637 871.42416,71 874.17235,77.2351 876.34235,79.006005 881.16029,78.945508 885.20386,78.894735 885.71041,78.570602 888.58341,74.195508 891.43761,69.849045 896.25164,65.918311 897.36144,67.028108 897.6226,67.289269 897.35267,69.616333 896.76159,72.199361 895.29265,78.618638 897.81529,88.942307 902.17996,94.373555 905.18034,98.107135 905.24017,98.351215 903.47189,99.644215 901.2227,101.28886 895.66862,101.41026 892.68426,99.880006 891.48292,99.264009 889.1428,97.477791 887.48399,95.910633 884.97909,93.544124 883.7081,93.098167 879.98399,93.279077 877.5178,93.39888 873.84359,93.14554 871.81909,92.7161 868.70083,92.054647 867.80296,92.284164 865.94504,94.217649 864.73881,95.472942 862.88666,98.4125 861.82915,100.75 859.6392,105.59064 859.90424,105.39637 857.73616,103.75 z"/>
+</svg></div><div class="g-code">007</div></div><div class="g-cell "><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="1469.2676 14.9781 48.7916 94.9181">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 1479.4287,101.57885 1474.5,97.110191 1476.9633,92.584015 1479.4266,88.05784 1477.2133,83.502168 C 1474.4841,77.884629 1474.4294,74.544236 1476.9723,68.795426 1478.0571,66.343081 1479.5803,61.612013 1480.3571,58.281944 1481.6296,52.827516 1481.5979,51.720087 1480.0377,47.111303 1479.0851,44.297521 1477.597,41.208885 1476.7308,40.247668 1473.2676,36.404765 1473.6302,33.827849 1478.5259,27.487602 1484.6819,19.515101 1486.0095,18.978064 1490.5842,22.609781 1498.1185,28.591184 1497.4068,28.442268 1502.125,25.024393 1508.5747,20.352287 1511.3935,21.646508 1513.3828,30.193281 1514.0592,33.099345 1511.5918,36.591903 1507.2399,38.888489 1505.2736,39.926136 1504.6678,39.744615 1502.5804,37.492281 L 1500.1811,34.903361 1498.6028,37.15664 C 1495.2847,41.89391 1493.7779,48.804877 1494.3178,56.810269 1494.603,61.039621 1495.3232,65.766795 1495.9182,67.3151 1497.5295,71.508181 1497.2413,75.200325 1494.887,80.522565 1492.8249,85.184176 1492.8155,85.436543 1494.4963,90.987898 1496.0851,96.235122 1496.0944,96.916798 1494.6165,99.774803 1491.7489,105.31996 1488.5536,105.47062 1491.235,99.934245 1492.3825,97.564873 1492.5166,95.930806 1491.7912,93.156109 1489.7615,85.392455 1489.7715,84.050919 1491.8893,79.987967 1494.346,75.274642 1494.4659,71.937727 1492.5,63 1490.173,52.420761 1490.8295,47.56031 1496.4242,33.947766 1497.0406,32.447968 1494.9373,29.881164 1489.097,25.005922 1485.4869,21.992392 1484.5502,22.409735 1480.0647,29.030276 1476.5029,34.287442 1476.3792,35.317321 1478.8856,38.84563 1481.858,43.02984 1484,48.919148 1484,52.907238 1484,54.921882 1482.8216,59.929426 1481.3813,64.035114 1477.6919,74.552096 1477.2573,80.0179 1479.9189,82.426596 1482.3724,84.647031 1482.5796,88.365054 1480.4745,92.401509 1478.5235,96.142732 1479.2535,98.23406 1483.5264,101.14428 1486.8547,103.41108 1487.4954,105.00154 1485.3662,105.71126 1484.8114,105.8962 1482.1395,104.03661 1479.4287,101.57885 z M 1509.4392,34.067162 C 1511.4526,31.842395 1510.7854,26.2386 1508.398,25.322479 1506.7833,24.702882 1502.1516,27.441294 1501.3703,29.477479 1500.6362,31.390355 1503.8799,36 1505.96,36 1506.9115,36 1508.4772,35.130223 1509.4392,34.067162 z"/>
+</svg></div><div class="g-code">600</div></div><div class="g-cell "><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="849.6099 15.9241 59.6303 93.6665">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 867.45873,43.045599 C 868.94265,41.405893 869.04811,40.576772 868.11372,37.896376 867.50117,36.139223 867,33.643704 867,32.350777 867,29.502833 865.45277,29.285468 864.03518,31.934259 862.23531,35.297353 862.91614,45 864.952,45 865.35791,45 866.48594,44.12052 867.45873,43.045599 z M 898.58793,95.25 C 895.65284,89.957712 893.92005,84.528428 893.31328,78.723166 892.63925,72.274458 891.93981,72.312562 888.23174,79 886.52577,82.076695 885.88038,82.461566 882.89553,82.182214 866.24744,80.624125 861.94172,62.038472 875.47588,50.15532 877.45242,48.419894 879.46713,47 879.95301,47 880.43889,47 881.52569,46.735505 882.36812,46.412233 883.43699,46.002071 884.33103,46.856506 885.32688,49.239911 886.26312,51.480653 888.02798,53.259924 890.45818,54.413133 892.49552,55.37991 894.36184,55.971494 894.60557,55.727763 894.8493,55.484033 894.36276,52.651033 893.52436,49.43221 891.57878,41.962622 891.59302,36.26864 893.57185,30.440127 894.43636,27.893756 894.8996,25.566268 894.60127,25.267932 893.6749,24.341562 888.15123,30.93979 886.85711,34.518621 885.76668,37.534142 884.88615,38.150454 879.06389,39.973362 875.45375,41.103671 871.05993,43.273611 869.29984,44.795451 861.22331,51.778732 856.47128,71.157152 860.78009,79.538296 863.82183,85.454836 867.85411,88.745929 874.01273,90.338608 878.70109,91.551062 879.89539,91.55576 882.21573,90.370878 884.82398,89.038969 885.10986,89.16249 889.43941,93.492043 892.83366,96.886294 894.709,98 897.03022,98 900.0964,98 900.10482,97.985125 898.58793,95.25 z M 860,98.076725 C 860,97.568924 861.19346,95.735108 862.65213,94.001578 L 865.30425,90.849706 862.68243,88.227883 C 861.24043,86.785881 859.78201,85.884658 859.4415,86.225166 858.30277,87.363896 856.93081,95.206654 857.53651,97.115021 858.14549,99.033758 860,99.757726 860,98.076725 z M 857.73616,103.75 C 853.95396,100.87792 853.60989,91.334487 857.05635,84.894709 857.85779,83.397198 857.8399,80.979477 856.99008,75.941163 855.6452,67.967808 856.49645,62.456817 860.45585,53.503919 862.74111,48.336529 862.83749,47.606076 861.48821,45.679712 860.6697,44.511113 860,41.871996 860,39.815006 860,32.346908 866.42617,19.924106 868.91876,22.573629 869.39809,23.083133 869.9712,26.536247 870.19235,30.247216 870.70512,38.851858 871.48942,39.666373 877.54276,37.880807 881.45624,36.726439 882.80059,35.63132 885.74048,31.202857 889.4802,25.569589 894.21454,21.39736 897.5,20.839558 899.95378,20.422958 899.80495,22.351401 896.83455,29.4624 894.21406,35.735729 894.66804,45.736369 897.86589,52.181436 899.86354,56.207584 899.89383,56.584639 898.31319,57.75 897.38069,58.4375 896.0143,59 895.27675,59 892.49568,59 886.72785,55.920173 883.9601,52.957285 881.40961,50.22698 880.83327,50.018863 878.81459,51.09923 872.18648,54.646488 868.54185,64.460637 871.42416,71 874.17235,77.2351 876.34235,79.006005 881.16029,78.945508 885.20386,78.894735 885.71041,78.570602 888.58341,74.195508 891.43761,69.849045 896.25164,65.918311 897.36144,67.028108 897.6226,67.289269 897.35267,69.616333 896.76159,72.199361 895.29265,78.618638 897.81529,88.942307 902.17996,94.373555 905.18034,98.107135 905.24017,98.351215 903.47189,99.644215 901.2227,101.28886 895.66862,101.41026 892.68426,99.880006 891.48292,99.264009 889.1428,97.477791 887.48399,95.910633 884.97909,93.544124 883.7081,93.098167 879.98399,93.279077 877.5178,93.39888 873.84359,93.14554 871.81909,92.7161 868.70083,92.054647 867.80296,92.284164 865.94504,94.217649 864.73881,95.472942 862.88666,98.4125 861.82915,100.75 859.6392,105.59064 859.90424,105.39637 857.73616,103.75 z"/>
+</svg></div><div class="g-code">007</div></div><div class="g-cell g-hl"><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="959.5625 16.3288 41.5422 87.0265">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 966.3125,86.5625 965.09375,90.71875 C 966.16072,90.129878 967.88746,89.660404 969.90625,89.5625 974.69908,89.330063 977.71531,86.856974 980.96875,80.53125 983.66803,75.282996 984.98925,61.762147 983.75,52.03125 982.87739,45.179316 983.64279,31.081572 985.09375,27.25 986.10988,24.566671 988.55088,24.309307 989.84375,26.75 993.11149,32.918884 993.37995,52.527863 990.40625,67.6875 987.12323,84.424011 984.87014,89.860571 979.71875,93.46875 976.918,95.430474 967.0303,94.8769 964.5,92.6875 L 963.5625,95.875 966.40625,96.21875 C 969.64753,96.623629 972.57972,97.235968 972.90625,97.5625 974.699,99.355257 983.62022,95.293907 984.71875,92.1875 985.04779,91.257047 985.82056,89.825 986.46875,89 992.49141,81.334546 997.10474,46.398687 994.03125,31.59375 992.71795,25.267651 989.20083,20.328789 986.71875,21.28125 982.32069,22.968947 979.86341,37.631642 981.3125,53.5 983.26926,74.92775 978.7443,87.585453 969.375,86.8125 L 966.3125,86.5625 z"/>
+</svg></div><div class="g-code">010</div></div></div><div class="hg-canon" style="margin-top:4px"><span class="hg-chip">007</span><span class="hg-chip">600</span><span class="hg-chip">007</span><span class="hg-chip  hl">010</span></div></div></div><div class="hg-card"><div class="hg-head"><span class="hg-pid">P012_ABCDEGHINPQSX</span><span class="hg-pos">Position 2</span><span class="badge bd-holy">★ Holy Grail candidate</span> <span class="badge bd-cross">↕ Family-Crossing</span></div><div class="sign-pair"><div class="sign-slot"><div class="sign-slot-lbl">Pre-contact (D)</div><div class="sign-glyph-box pre-box" style="color:#1d4ed8"><svg xmlns="http://www.w3.org/2000/svg"
+     width="72" height="72"
+     viewBox="1268.6363 17.9807 74.5924 88.7557">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 1321.6396,39.25 C 1324.1344,35.846446 1326.2369,30 1324.9662,30 1322.8522,30 1317,36.91771 1317,39.416629 1317,42.796522 1319.0952,42.721274 1321.6396,39.25 z M 1301,37.075842 C 1301,35.062444 1297.3708,30 1295.9274,30 1294.2349,30 1294.9678,34.689392 1297.0801,37.374669 1299.2908,40.185192 1301,40.054897 1301,37.075842 z M 1326.0671,97.964094 C 1331.147,95.245383 1336.3854,75.774067 1333.8388,69.076145 1332.4892,65.526424 1331.508,67.55501 1330.0806,76.846 1328.0954,89.768373 1323.9637,94.055989 1317.0722,90.345548 1311.1502,87.157149 1309.4264,77.229262 1312.6418,64.830767 1313.6871,60.800318 1314.3131,54.139736 1314.3647,46.5 1314.4325,36.443721 1314.1248,33.852093 1312.465,30.5 1311.3756,28.3 1309.8269,26.5 1309.0234,26.5 1308.2049,26.5 1306.6798,28.698226 1305.5545,31.5 1303.7708,35.941419 1303.5755,38.429263 1303.8063,53.769331 1304.011,67.37113 1303.7322,72.022286 1302.4937,75.67026 1299.2681,85.170941 1294.4436,89.172707 1287.6666,87.968742 1281.8885,86.942247 1279.0067,83.464662 1278.3057,76.672861 1277.7228,71.025168 1276.7628,69.569844 1275.607,72.581787 1274.4615,75.566975 1275.0004,88.06509 1276.4212,91.465701 1279.6565,99.20875 1290.1067,100.06453 1296.4073,93.102379 1299.0047,90.232373 1299.7375,90.436079 1301.4356,94.5 1303.2284,98.790932 1304.2572,98.86241 1307.7641,94.939699 L 1310.5,91.879397 1313.5,94.78785 C 1317.8884,99.042315 1322.0752,100.1005 1326.0671,97.964094 z M 1300,98.902137 1297.5,95.810275 1293,98.393092 C 1287.432,101.58892 1283.3094,101.68235 1278.8979,98.71267 1274.0113,95.423185 1273.0397,92.57508 1272.814,80.878713 1272.6363,71.666269 1272.8883,69.938144 1275.0569,65.5 1276.6113,62.318855 1278.2275,60.396288 1279.5,60.214897 1281.3912,59.945303 1281.5,60.501426 1281.5,70.437545 1281.5,79.618174 1281.753,81.198279 1283.5035,82.948342 1286.8874,86.331596 1291.1606,86.577196 1294.7079,83.592321 1300.7492,78.508879 1302.6536,68.590392 1300.6776,52.5 1299.8597,45.83999 1299.1624,43.830005 1296.5146,40.5 1292.1951,35.067739 1290.5152,30.367855 1290.8848,24.75 1291.0671,21.98066 1293.1002,22.681919 1297.5498,27.04885 L 1301.6753,31.097699 1304.0876,27.547344 C 1305.4144,25.594649 1307.3197,23.732107 1308.3217,23.408362 1310.2843,22.774197 1314,25.480577 1314,27.544204 1314,28.223029 1314.8645,29.840785 1315.921,31.139216 L 1317.842,33.5 1322.4042,28.75 C 1327.6024,23.337715 1329,22.889362 1329,26.63398 1329,32.128036 1326.5602,37.582921 1321.8186,42.690139 1317.317,47.538834 1317,48.229625 1317,53.190513 1317,56.111142 1316.3094,61.650579 1315.4654,65.500374 1312.6762,78.222979 1312.676,78.234328 1315.1594,82.911331 1318.2557,88.742357 1320.0869,89.828322 1323.2872,87.73137 1326.0166,85.943032 1327.1773,82.061446 1329.0646,68.410957 1329.6797,63.961984 1330.5575,59.71592 1331.0153,58.975259 1332.4817,56.602639 1334.655,59.594482 1336.3411,66.306778 1339.2287,77.802358 1334.9187,95.110214 1328,99.802765 1323.705,102.71581 1317.1204,102.40118 1313.6233,99.115819 1310.7644,96.430064 1310.0302,96.475563 1307.145,99.517277 1304.0916,102.73638 1303.0261,102.64465 1300,98.902137 z"/>
+</svg></div><div class="g-code">678</div></div><div class="sign-arrow">→</div><div class="sign-slot"><div class="sign-slot-lbl">Post-contact (B, C, E, G…)</div><div class="sign-glyph-box post-box" style="color:#6d28d9"><svg xmlns="http://www.w3.org/2000/svg"
+     width="72" height="72"
+     viewBox="1095.4261 12.5459 47.6677 91.3159">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 1138.7188,87.875 C 1138.1117,87.903029 1137.6216,88 1136.9375,88 1131.283,88 1130.8376,87.002616 1133.5938,80.40625 1136.025,74.587406 1135.1809,64.386584 1131.8438,59.34375 1129.4412,55.713276 1129.2637,54.764112 1129.7188,47.4375 1130.1881,39.882622 1130.4304,39.298752 1134.125,35.28125 1138.2906,30.751652 1138.9342,28.035424 1136.4062,25.9375 1135.2189,24.952023 1134.1465,24.869639 1132.0625,25.65625 1128.1756,27.12339 1120.0782,33.246974 1120.0312,34.75 1119.9725,36.634282 1121.5457,36.278504 1124.6875,33.65625 1128.6853,30.319464 1133.7671,27.852768 1134.4375,28.9375 1134.7488,29.441142 1134.4425,30.424099 1133.75,31.15625 1126.2298,39.106407 1126,39.633286 1126,48.21875 1126,55.491544 1126.2994,56.831693 1128.75,60.375 1131.137,63.826432 1131.4861,65.287269 1131.4375,71.4375 1131.4015,75.993717 1130.7768,79.722695 1129.6875,81.90625 1127.464,86.363411 1127.5513,87.569181 1130.2188,89.4375 1132.2709,90.874859 1135.4549,91.199304 1138.8125,90.84375 L 1138.7188,87.875 z M 1139,96.5625 C 1133.8659,97.115775 1132.3869,96.869441 1127.125,94.375 1123.7962,92.796969 1120.835,90.955273 1120.5625,90.28125 1120.29,89.607228 1120.7287,87.483312 1121.5312,85.5625 1123.738,80.280802 1123.4519,71.852727 1120.9688,69.1875 1116.5529,64.447647 1110.0661,65.901486 1105.9688,72.53125 1102.9003,77.495973 1102.3353,76.118186 1104.5,68.96875 1105.9852,64.063598 1107.0955,62.358451 1110.4062,59.90625 1113.4571,57.646542 1115.1964,57.031398 1117.2812,57.4375 1120.8188,58.12661 1121.1748,57.150158 1120.25,49 L 1119.5,42.5 1114.8438,42.5 C 1109.9966,42.5 1106.5957,40.488249 1105.4688,36.9375 1104.2758,33.178872 1112.2416,22.257633 1115.4062,23.3125 1115.9955,23.508908 1116.9888,25.437832 1117.5938,27.59375 1118.8216,31.969975 1120.6119,32.359602 1120.2812,28.1875 1119.3649,16.623828 1112.1636,16.545893 1105.1875,28.03125 1101.7327,33.719255 1101.3751,38.342864 1104.125,41.65625 1105.9019,43.797292 1112.1375,46.197873 1114.6875,45.71875 1117.1451,45.256991 1118,46.639348 1118,51.125 1118,54.076513 1117.667,54.365175 1113,55.40625 1106.5031,56.855519 1099.4261,68.193631 1100.2812,75.78125 1101.1857,83.80483 1103.5382,83.847939 1107.5625,75.90625 1111.236,68.656999 1118.1536,66.762556 1119.625,72.625 1120.4637,75.966654 1119.3768,83.337119 1117.5312,86.90625 1116.1581,89.561363 1116.2085,90.009708 1118.0938,92.40625 1119.2191,93.836836 1120.8708,95 1121.75,95 1122.6293,95 1124.038,95.621768 1124.9062,96.375 1125.7746,97.128232 1127.85,98.202903 1129.5,98.78125 1132.4327,99.809229 1135.3567,99.861823 1139.0938,99.4375 L 1139,96.5625 z"/>
+</svg></div><div class="g-code">076</div></div></div><div class="hg-tablets" style="margin-top:8px"><b>7</b> post-contact tablets show this substitution consistently.</div><div style="margin-top:12px"><div class="section-label" style="margin-bottom:4px">Canonical sequence (highlighted = changed position)</div><div class="g-strip"><div class="g-cell "><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="1964.1631 10.9343 83.0228 92.7897">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 1981.3104,97.25 C 1980.9657,96.2875 1979.8548,93.345841 1978.8418,90.71298 1975.9875,83.294413 1976.3929,81.193892 1981.9746,74.481949 1984.7106,71.191877 1986.9606,68.197026 1986.9746,67.826725 1986.9886,67.456424 1985.8158,65.746103 1984.3684,64.026012 L 1981.7369,60.898572 1979.306,63.182228 C 1977.9691,64.438239 1975.9666,66.93606 1974.856,68.732942 1972.7881,72.07897 1970.6727,72.897527 1969.403,70.843059 1968.1631,68.836869 1968.7559,61.034149 1970.4136,57.540773 1972.8731,52.357861 1983.9052,45.811227 1985.1667,48.786122 1985.5541,49.699925 1991.5233,54 1992.4044,54 1993.3682,54 1993.0386,40.893778 1991.9517,36 1990.5691,29.774919 1988.9565,26 1987.6796,26 1987.0869,26 1984.4895,28.25 1981.9077,31 1979.3258,33.75 1976.4255,36 1975.4624,36 1973.8983,36 1973.7724,35.192745 1974.2831,28.439904 1975.0991,17.650534 1977.2718,15.867748 1984.4461,20.100712 L 1988.0066,22.201423 1991.5381,19.100712 C 1994.7904,16.245111 1999,14.934289 1999,16.777139 1999,17.204565 2000.3656,19.04943 2002.0347,20.87684 2005.5151,24.687399 2007.3328,24.620603 2013.4687,20.45667 2018.1365,17.289043 2019.6729,18.276644 2020.5741,25.023847 2021.0734,28.761929 2020.8084,29.885115 2018.9673,31.835592 2017.388,33.508685 2016.1581,33.97856 2014.6313,33.492102 2006.4398,30.882104 2005.5643,31.664517 2004.5518,42.5 2004.192,46.35 2003.6871,50.5125 2003.4298,51.75 2002.7971,54.792419 2005.0212,54.670755 2008,51.5 2010.7221,48.602427 2013.1823,48.309774 2015.1264,50.652265 2017.8159,53.893 2027.1193,60.123767 2028.7949,59.806495 2029.9453,59.588663 2030.5895,58.347616 2030.775,55.991811 2031.3494,48.699043 2034.1048,34.236522 2036.1639,27.706156 2037.7328,22.730789 2038.7266,20.993279 2039.8769,21.214805 2042.3,21.681465 2043.1859,28.964413 2042.6484,44 2042.0204,61.56903 2039.5061,69.53966 2033.735,72.257085 2030.0435,73.995271 2029.9035,73.98478 2025.2408,71.620279 2022.6334,70.29802 2019.6428,68.267533 2018.595,67.108086 2016.3506,64.624412 2012.4703,64.332165 2011.607,66.581787 2010.7982,68.689441 2010.6184,68.244864 2014,72.5 2017.3231,76.681623 2017.7449,80.048116 2015.4878,84.376017 2014.6628,85.957826 2013.7021,89.682979 2013.3529,92.654134 2012.6533,98.607331 2012.2761,99.146469 2009.3471,98.380506 2005.6959,97.425697 2003.7773,92.630963 2004.5551,86.405121 2005.232,80.987325 2005.1673,80.783683 2001.8744,77.967308 2000.0185,76.379994 1997.9899,75.062993 1997.3664,75.040641 1995.6545,74.979272 1989.1402,82.593321 1988.4077,85.511579 1988.0541,86.92068 1988.007,89.294525 1988.303,90.786791 1988.69,92.737318 1988.1744,94.273024 1986.4686,96.25 1983.7273,99.427271 1982.1966,99.724027 1981.3104,97.25 z M 1985.1662,89.181126 C 1984.8178,84.864437 1986.3925,81.708667 1991.9109,75.663944 1996.4856,70.65288 1997.3277,70.610572 2003.015,75.106062 L 2008.1901,79.19677 2007.845,85.754132 C 2007.3859,94.480803 2009.1541,94.961023 2011.8922,86.853225 2014.5769,78.903309 2014.5265,78.211096 2010.9594,74.037774 2009.3317,72.13355 2008,69.61176 2008,68.433797 2008,66.164246 2012.1602,61 2013.9885,61 2014.5847,61 2018.0081,63.25 2021.596,66 2025.184,68.75 2028.8925,71 2029.8373,71 2034.0223,71 2036.6293,67.163634 2038.6711,58 2039.468,54.423826 2040.6022,35.032937 2040.2107,31.679433 2039.7482,27.717289 2038.4966,26.85988 2037.5463,29.854087 2036.4728,33.236439 2033.9758,48.400638 2033.4058,55 2033.0944,58.604461 2032.2009,62.162187 2031.3999,62.986499 2030.1243,64.299398 2029.4381,64.198457 2025.5242,62.122167 2023.087,60.82921 2019.3129,58.247786 2017.1375,56.385668 2012.4101,52.339213 2011.1329,52.220683 2007.5945,55.5 2006.1109,56.875 2004.2976,58 2003.5651,58 2000.5864,58 2000.1438,46.953161 2002.6632,35.487708 L 2004.3264,27.918573 2000.4602,23.959287 C 1998.3339,21.781679 1996.2853,20 1995.9078,20 1995.5304,20 1994.209,20.819932 1992.9714,21.822071 L 1990.7212,23.644142 1992.8779,29.876104 C 1996.607,40.65153 1996.9808,58 1993.4839,58 1992.6999,58 1990.0599,56.59128 1987.6172,54.869511 1982.4996,51.262304 1979.8445,51.428255 1975.6556,55.617126 1972.8878,58.384968 1970.1575,65.490855 1971.3888,66.722143 1971.7789,67.112229 1974.2796,65.058426 1976.946,62.158136 L 1981.794,56.884882 1984.314,59.404889 C 1987.8775,62.968384 1990,66.185383 1990,68.022889 1990,68.890721 1987.75,72.125209 1985,75.21064 1979.8967,80.936414 1979.0678,83.575005 1980.9186,88.202947 1981.4239,89.466326 1982.0991,91.324921 1982.4192,92.333158 1983.5207,95.803563 1985.5158,93.514309 1985.1662,89.181126 z M 1980.7024,28.803833 C 1984.3351,25.282873 1984.8207,23.528927 1982.4182,22.606989 1979.2447,21.389212 1978.073,22.075564 1977.0526,25.75 1975.0467,32.973009 1975.7735,33.58114 1980.7024,28.803833 z M 2018,26.559017 C 2018,24.666476 2017.5658,22.84966 2017.035,22.521648 2016.5043,22.193636 2014.1932,23.167299 2011.8993,24.685344 L 2007.7285,27.445425 2010.6143,28.677609 C 2012.2014,29.35531 2014.5125,29.930089 2015.75,29.954896 2017.6561,29.993107 2018,29.474141 2018,26.559017 z"/>
+</svg></div><div class="g-code">205</div></div><div class="g-cell g-hl"><div class="g-img" style="color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg"
+     width="44" height="44"
+     viewBox="268.6250 16.0000 41.9792 89.8437">
+  <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M 272.625,30.40625 272.65625,32.65625 273.71875,34.375 278.75,29.46875 C 287.74396,20.68762 290.92525,20.978976 292.875,30.6875 294.41654,38.363363 294.30818,41.509977 292.4375,43.0625 289.43666,45.55298 285.98529,53.981017 284.84375,61.65625 283.83834,68.416105 283.91676,69.998452 285.5,74.65625 287.20073,79.659722 287.21789,80.258423 285.65625,85.09375 283.99346,90.242277 283.40922,99.09673 284.65625,100.34375 286.01282,101.70033 287.87868,100.93432 288.5625,98.75 289.66507,95.228081 295.01948,87.905946 296.03125,88.53125 297.1779,89.239922 299.63062,94.629505 300.4375,98.25 301.1714,101.54307 303.48822,101.8437 305.09375,98.84375 306.6042,96.021442 305.69445,86.517134 303.5,82.21875 302.06181,79.40168 301.96967,78.003238 302.90625,72.625 303.50852,69.166485 304,63.444926 304,59.90625 304,54.24279 303.53371,52.676916 300.125,46.84375 296.87625,41.284303 296.12815,38.935622 295.53125,32.34375 294.68591,23.008219 293.10655,20 289.0625,20 286.35061,20 280.59645,23.928709 275.65625,29.15625 274.38402,30.502476 273.44241,30.930731 272.625,30.40625 z M 294.78125,45.125 C 295.28486,45.028138 295.68795,45.511685 296.46875,46.5 301.03683,52.282125 302.26776,63.301951 299.625,74.5 298.677,78.516923 298.70378,80.02246 299.78125,82.21875 301.63239,85.992065 303.00945,91.000035 302.1875,91 301.8134,90.999983 300.19787,89.35418 298.59375,87.34375 L 295.65625,83.6875 293.09375,86.625 C 291.67287,88.231212 289.69369,90.633266 288.71875,92 L 286.96875,94.5 287.59375,90 C 287.94106,87.525 288.87056,84.738061 289.6875,83.8125 291.34897,81.930101 290.81606,77.550908 288.28125,72.59375 285.66827,67.483701 288.19026,52.207392 292.46875,47.28125 293.65587,45.914438 294.27764,45.221862 294.78125,45.125 z"/>
+</svg></div><div class="g-code">711v</div></div></div><div class="hg-canon" style="margin-top:4px"><span class="hg-chip">205</span><span class="hg-chip  hl">711v</span></div></div></div></div>
+
+<div class="section-label">All parallel passages</div>
+<div class="filter-bar"><input type="search" class="fb-search" placeholder="Search passages…" oninput="searchPassages(this.value)"><div class="filter-chips"><button class="chip active" onclick="setFilter('all',this)">All (13)</button><button class="chip" onclick="setFilter('diachronic',this)">Diachronic (3)</button><button class="chip c-holy" onclick="setFilter('holygrail',this)">Holy Grail (2)</button><button class="chip c-cross" onclick="setFilter('familycross',this)">Family-Crossing (1)</button></div><div class="fb-right"><select class="fb-sort" onchange="setSort(this.value)"><option value="score">↓ Interest score</option><option value="tablets">↓ Tablet count</option><option value="changes">↓ Changes</option><option value="pid">↑ Passage ID</option></select><span id="fb-count" class="fb-count">Showing 13 of 13</span><button class="fb-btn" onclick="expandAll()">Expand all</button><button class="fb-btn" onclick="collapseAll()">Collapse all</button></div></div>
+
+<div id="passages">
+<div class="pc holy-p" id="pc-P007_ADHS" data-pid="P007_ADHS" data-score="1.0" data-tablets="4" data-changes="1" data-holy="1" data-cross="0" data-diachronic="1" data-canonical="007 600 007 010"><div class="pc-summary" onclick="togglePassage('P007_ADHS')"><span class="pc-toggle">▶</span><span class="pc-id">P007_ADHS</span><div class="pc-badges"><span class="badge bd-holy">★ Holy Grail</span></div><div class="pc-canonical"><span class="s-chip">007</span><span class="s-chip">600</span><span class="s-chip">007</span><span class="s-chip">010</span></div><div class="pc-right"><span class="pc-tablet-list">A · D · H · S</span><span class="pc-score">1.00</span></div></div><div class="pc-detail" id="det-P007_ADHS" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 4 (A, D, H, S)</span><span><b>Attestations:</b> 18</span><span><b>Pre-contact:</b> 4</span><span><b>Post-contact:</b> 12</span><span><b>Canonical length:</b> 4</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">600</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">010</div></td></tr></thead><tbody><tr class="ag-pre-row"><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot pre"></span><span class="ag-tid" title="Échancrée D">D</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">600</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">600</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×10</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">600</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">010</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot exc"></span><span class="ag-tid" title="Keiti">A</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">600</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">010</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:33%"></div></div><div class="ag-cpct">33%</div></td></tr></tbody></table></div><div class="chg-wrap"><div class="chg-lbl">Diachronic changes (1)</div><div class="chg-item holy"><div class="chg-pos">pos 4<br><span style="font-size:8px">substitution</span></div><div class="chg-signs"><span class="chg-sign pre-s">010?</span><span class="chg-arr">→</span><span class="chg-sign post-s">010</span></div><div class="chg-meta"><span><b>4</b> post-contact tablets consistent</span><div class="chg-flags"><span class="badge bd-holy">★ Holy Grail</span></div></div></div></div></div></div><div class="pc dia-p" id="pc-P009_ABCDEFGHIKNOPQRSUY" data-pid="P009_ABCDEFGHIKNOPQRSUY" data-score="1.0" data-tablets="18" data-changes="0" data-holy="0" data-cross="0" data-diachronic="1" data-canonical="098 007"><div class="pc-summary" onclick="togglePassage('P009_ABCDEFGHIKNOPQRSUY')"><span class="pc-toggle">▶</span><span class="pc-id">P009_ABCDEFGHIKNOPQRSUY</span><div class="pc-badges"><span class="badge bd-dia">⚓ Diachronic</span></div><div class="pc-canonical"><span class="s-chip">098</span><span class="s-chip">007</span></div><div class="pc-right"><span class="pc-tablet-list">A · B · C · D · E · F · G · H · I · K · N · O · P · Q · R · S · U · Y</span><span class="pc-score">1.00</span></div></div><div class="pc-detail" id="det-P009_ABCDEFGHIKNOPQRSUY" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 18 (A, B, C, D, E, F, G, H, I, K, N, O, P, Q, R, S, U, Y)</span><span><b>Attestations:</b> 356</span><span><b>Pre-contact:</b> 18</span><span><b>Post-contact:</b> 238</span><span><b>Canonical length:</b> 2</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">098</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">007</div></td></tr></thead><tbody><tr class="ag-pre-row"><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot pre"></span><span class="ag-tid" title="Échancrée D">D</span><span class="ag-nocc">×18</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Mamari">B</span><span class="ag-nocc">×20</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Échancrée C">C</span><span class="ag-nocc">×18</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span><span class="ag-nocc">×20</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span><span class="ag-nocc">×45</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×39</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet I">I</span><span class="ag-nocc">×16</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet K">K</span><span class="ag-nocc">×8</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet O">O</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet P">P</span><span class="ag-nocc">×26</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet Q">Q</span><span class="ag-nocc">×14</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×30</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet F">F</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet N">N</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet R">R</span><span class="ag-nocc">×24</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet U">U</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet Y">Y</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot exc"></span><span class="ag-tid" title="Keiti">A</span><span class="ag-nocc">×66</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">007</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P010_BGHINST" data-pid="P010_BGHINST" data-score="1.0" data-tablets="7" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="430 076 070"><div class="pc-summary" onclick="togglePassage('P010_BGHINST')"><span class="pc-toggle">▶</span><span class="pc-id">P010_BGHINST</span><div class="pc-canonical"><span class="s-chip">430</span><span class="s-chip">076</span><span class="s-chip">070</span></div><div class="pc-right"><span class="pc-tablet-list">B · G · H · I · N · S · T</span><span class="pc-score">1.00</span></div></div><div class="pc-detail" id="det-P010_BGHINST" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 7 (B, G, H, I, N, S, T)</span><span><b>Attestations:</b> 132</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 121</span><span><b>Canonical length:</b> 3</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">070</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Mamari">B</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span><span class="ag-nocc">×15</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet I">I</span><span class="ag-nocc">×94</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet N">N</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet T">T</span><span class="ag-nocc">×9</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:71%"></div></div><div class="ag-cpct">71%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:71%"></div></div><div class="ag-cpct">71%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc holy-p" id="pc-P012_ABCDEGHINPQSX" data-pid="P012_ABCDEGHINPQSX" data-score="1.0" data-tablets="13" data-changes="1" data-holy="1" data-cross="1" data-diachronic="1" data-canonical="205 711v"><div class="pc-summary" onclick="togglePassage('P012_ABCDEGHINPQSX')"><span class="pc-toggle">▶</span><span class="pc-id">P012_ABCDEGHINPQSX</span><div class="pc-badges"><span class="badge bd-holy">★ Holy Grail</span><span class="badge bd-cross">↕ Family-Crossing</span></div><div class="pc-canonical"><span class="s-chip">205</span><span class="s-chip">711v</span></div><div class="pc-right"><span class="pc-tablet-list">A · B · C · D · E · G · H · I · N · P · Q · S · X</span><span class="pc-score">1.00</span></div></div><div class="pc-detail" id="det-P012_ABCDEGHINPQSX" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 13 (A, B, C, D, E, G, H, I, N, P, Q, S, X)</span><span><b>Attestations:</b> 90</span><span><b>Pre-contact:</b> 2</span><span><b>Post-contact:</b> 80</span><span><b>Canonical length:</b> 2</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">711v</div></td></tr></thead><tbody><tr class="ag-pre-row"><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot pre"></span><span class="ag-tid" title="Échancrée D">D</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Mamari">B</span><span class="ag-nocc">×8</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Échancrée C">C</span><span class="ag-nocc">×8</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×10</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet I">I</span><span class="ag-nocc">×22</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet P">P</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet Q">Q</span><span class="ag-nocc">×8</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×10</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet N">N</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet X">X</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot exc"></span><span class="ag-tid" title="Keiti">A</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">205</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><div class="chg-wrap"><div class="chg-lbl">Diachronic changes (1)</div><div class="chg-item holy"><div class="chg-pos">pos 2<br><span style="font-size:8px">substitution</span></div><div class="chg-signs"><span class="chg-sign pre-s">678</span><span class="chg-arr">→</span><span class="chg-sign post-s">076</span></div><div class="chg-meta"><span><b>7</b> post-contact tablets consistent</span><div class="chg-flags"><span class="badge bd-holy">★ Holy Grail</span><span class="badge bd-cross">↕ Family-Crossing</span></div></div></div></div></div></div><div class="pc " id="pc-P011_GHPQS" data-pid="P011_GHPQS" data-score="0.75" data-tablets="5" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="070 300 005"><div class="pc-summary" onclick="togglePassage('P011_GHPQS')"><span class="pc-toggle">▶</span><span class="pc-id">P011_GHPQS</span><div class="pc-canonical"><span class="s-chip">070</span><span class="s-chip">300</span><span class="s-chip">005</span></div><div class="pc-right"><span class="pc-tablet-list">G · H · P · Q · S</span><span class="pc-score">0.75</span></div></div><div class="pc-detail" id="det-P011_GHPQS" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 5 (G, H, P, Q, S)</span><span><b>Attestations:</b> 17</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 17</span><span><b>Canonical length:</b> 3</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">300</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">005</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">040</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">005</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">300</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet P">P</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">300</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet Q">Q</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">300</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×10</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">300</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">005</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:40%"></div></div><div class="ag-cpct">40%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:20%"></div></div><div class="ag-cpct">20%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:40%"></div></div><div class="ag-cpct">40%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P013_GIST" data-pid="P013_GIST" data-score="0.6" data-tablets="4" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="091 076 070"><div class="pc-summary" onclick="togglePassage('P013_GIST')"><span class="pc-toggle">▶</span><span class="pc-id">P013_GIST</span><div class="pc-canonical"><span class="s-chip">091</span><span class="s-chip">076</span><span class="s-chip">070</span></div><div class="pc-right"><span class="pc-tablet-list">G · I · S · T</span><span class="pc-score">0.60</span></div></div><div class="pc-detail" id="det-P013_GIST" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 4 (G, I, S, T)</span><span><b>Attestations:</b> 54</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 50</span><span><b>Canonical length:</b> 3</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">091</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">070</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet I">I</span><span class="ag-nocc">×40</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">091</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">070</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet T">T</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">076</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">070</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:25%"></div></div><div class="ag-cpct">25%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:25%"></div></div><div class="ag-cpct">25%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:25%"></div></div><div class="ag-cpct">25%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P001_BHP" data-pid="P001_BHP" data-score="0.45" data-tablets="3" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="303s 079 001"><div class="pc-summary" onclick="togglePassage('P001_BHP')"><span class="pc-toggle">▶</span><span class="pc-id">P001_BHP</span><div class="pc-canonical"><span class="s-chip">303s</span><span class="s-chip">079</span><span class="s-chip">001</span></div><div class="pc-right"><span class="pc-tablet-list">B · H · P</span><span class="pc-score">0.45</span></div></div><div class="pc-detail" id="det-P001_BHP" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 3 (B, H, P)</span><span><b>Attestations:</b> 17</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 17</span><span><b>Canonical length:</b> 3</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">303s</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">079</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">001</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Mamari">B</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">303s</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">079</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet H">H</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">079</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet P">P</span><span class="ag-nocc">×6</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">079</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:33%"></div></div><div class="ag-cpct">33%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:33%"></div></div><div class="ag-cpct">33%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:33%"></div></div><div class="ag-cpct">33%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P004_CES" data-pid="P004_CES" data-score="0.45" data-tablets="3" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="073f? 001 005"><div class="pc-summary" onclick="togglePassage('P004_CES')"><span class="pc-toggle">▶</span><span class="pc-id">P004_CES</span><div class="pc-canonical"><span class="s-chip">073f?</span><span class="s-chip">001</span><span class="s-chip">005</span></div><div class="pc-right"><span class="pc-tablet-list">C · E · S</span><span class="pc-score">0.45</span></div></div><div class="pc-detail" id="det-P004_CES" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 3 (C, E, S)</span><span><b>Attestations:</b> 15</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 15</span><span><b>Canonical length:</b> 3</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">073f?</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">005</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Échancrée C">C</span><span class="ag-nocc">×9</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span><span class="ag-nocc">×4</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">005</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P006_CEN" data-pid="P006_CEN" data-score="0.45" data-tablets="3" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="001 072 077 027 711"><div class="pc-summary" onclick="togglePassage('P006_CEN')"><span class="pc-toggle">▶</span><span class="pc-id">P006_CEN</span><div class="pc-canonical"><span class="s-chip">001</span><span class="s-chip">072</span><span class="s-chip">077</span><span class="s-chip">027</span><span class="s-chip">711</span></div><div class="pc-right"><span class="pc-tablet-list">C · E · N</span><span class="pc-score">0.45</span></div></div><div class="pc-detail" id="det-P006_CEN" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 3 (C, E, N)</span><span><b>Attestations:</b> 11</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 6</span><span><b>Canonical length:</b> 5</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th><th class="ag-pos-h">5</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">072</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">077</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">027</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">711</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Échancrée C">C</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">072</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">077</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">027</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">711</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">071</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">077</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">027</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">711</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet N">N</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">072</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">077</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">027</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">711</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:67%"></div></div><div class="ag-cpct">67%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P002_RS" data-pid="P002_RS" data-score="0.3" data-tablets="2" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="190a 055b 022f 055b"><div class="pc-summary" onclick="togglePassage('P002_RS')"><span class="pc-toggle">▶</span><span class="pc-id">P002_RS</span><div class="pc-canonical"><span class="s-chip">190a</span><span class="s-chip">055b</span><span class="s-chip">022f</span><span class="s-chip">055b</span></div><div class="pc-right"><span class="pc-tablet-list">R · S</span><span class="pc-score">0.30</span></div></div><div class="pc-detail" id="det-P002_RS" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 2 (R, S)</span><span><b>Attestations:</b> 10</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 8</span><span><b>Canonical length:</b> 4</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">190a</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">055b</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">022f</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">055b</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet S">S</span><span class="ag-nocc">×8</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">055b</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">022f</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">055b</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot und"></span><span class="ag-tid" title="Tablet R">R</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">055b</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">022f</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">055b</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P003_BO" data-pid="P003_BO" data-score="0.3" data-tablets="2" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="739 003 739 670"><div class="pc-summary" onclick="togglePassage('P003_BO')"><span class="pc-toggle">▶</span><span class="pc-id">P003_BO</span><div class="pc-canonical"><span class="s-chip">739</span><span class="s-chip">003</span><span class="s-chip">739</span><span class="s-chip">670</span></div><div class="pc-right"><span class="pc-tablet-list">B · O</span><span class="pc-score">0.30</span></div></div><div class="pc-detail" id="det-P003_BO" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 2 (B, O)</span><span><b>Attestations:</b> 7</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 7</span><span><b>Canonical length:</b> 4</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">003</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">670</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Mamari">B</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">003</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">670</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet O">O</span><span class="ag-nocc">×2</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">003</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">739</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:50%"></div></div><div class="ag-cpct">50%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P005_EG" data-pid="P005_EG" data-score="0.3" data-tablets="2" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="088 001 047 001"><div class="pc-summary" onclick="togglePassage('P005_EG')"><span class="pc-toggle">▶</span><span class="pc-id">P005_EG</span><div class="pc-canonical"><span class="s-chip">088</span><span class="s-chip">001</span><span class="s-chip">047</span><span class="s-chip">001</span></div><div class="pc-right"><span class="pc-tablet-list">E · G</span><span class="pc-score">0.30</span></div></div><div class="pc-detail" id="det-P005_EG" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 2 (E, G)</span><span><b>Attestations:</b> 10</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 10</span><span><b>Canonical length:</b> 4</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">088</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">047</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">001</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">088</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">047</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet G">G</span><span class="ag-nocc">×5</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">088</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">047</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">001</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div><div class="pc " id="pc-P008_AE" data-pid="P008_AE" data-score="0.3" data-tablets="2" data-changes="0" data-holy="0" data-cross="0" data-diachronic="0" data-canonical="004 430 022 430y"><div class="pc-summary" onclick="togglePassage('P008_AE')"><span class="pc-toggle">▶</span><span class="pc-id">P008_AE</span><div class="pc-canonical"><span class="s-chip">004</span><span class="s-chip">430</span><span class="s-chip">022</span><span class="s-chip">430y</span></div><div class="pc-right"><span class="pc-tablet-list">A · E</span><span class="pc-score">0.30</span></div></div><div class="pc-detail" id="det-P008_AE" style="display:none"><div class="pc-meta-row"><span><b>Tablets:</b> 2 (A, E)</span><span><b>Attestations:</b> 32</span><span><b>Pre-contact:</b> 0</span><span><b>Post-contact:</b> 31</span><span><b>Canonical length:</b> 4</span></div><div class="section-label">Attestation alignment — one row per tablet (majority form; ×N = repeated occurrences on that tablet)</div><div class="ag-wrap"><table class="ag-table"><thead><tr><th class="ag-corner">Tablet</th><th class="ag-pos-h">1</th><th class="ag-pos-h">2</th><th class="ag-pos-h">3</th><th class="ag-pos-h">4</th></tr><tr><td class="ag-corner" style="font-style:italic">Canonical</td><td class="ag-cell ag-can"><div class="ag-cell-in">004</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">022</div></td><td class="ag-cell ag-can"><div class="ag-cell-in">430y</div></td></tr></thead><tbody><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot post"></span><span class="ag-tid" title="Tablet E">E</span><span class="ag-nocc">×31</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">004</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">022</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class=""><td class="ag-lbl"><div class="ag-lbl-in"><span class="ag-dot exc"></span><span class="ag-tid" title="Keiti">A</span></div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">004</div></td><td class="ag-cell ag-mat"><div class="ag-cell-in">430</div></td><td class="ag-cell ag-sub"><div class="ag-cell-in">430y</div></td><td class="ag-cell ag-gap"><div class="ag-cell-in">—</div></td></tr><tr class="ag-cons-row"><td class="ag-lbl" style="font-size:8px;font-style:italic;text-align:right;padding-right:10px">Consistency</td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:100%"></div></div><div class="ag-cpct">100%</div></td><td class="ag-cons-cell"><div class="ag-cbar-w"><div class="ag-cbar" style="width:0%"></div></div><div class="ag-cpct">0%</div></td></tr></tbody></table></div><p class="muted small" style="font-style:italic;margin-top:4px">No diachronic changes detected — passage may lack co-occurrence of pre- and post-contact attestations at a consistent position.</p></div></div>
+</div>
+
+<div class="report-footer">
+  <p class="mono" style="font-size:12px;line-height:2.0;color:var(--muted);max-width:900px">Repeated sequences in ciphertext indicate shared underlying plaintext encrypted under related key conditions (Kasiski 1863). Consistent sign substitutions across the contact boundary constitute key-consistency constraints: any valid phoneme assignment must produce coherent scores for both the pre-contact and post-contact versions of the same passage. Two such constraints have been confirmed. Permutation test p &lt; 0.001 across all 13 identified sequences.</p>
+  <p style="margin-top:10px" class="mono small">Pipeline: open-source at <a href="https://github.com/sperkswerks-ai/hackingrongo" target="_blank">github.com/sperkswerks-ai/hackingrongo</a></p>
+  <p style="margin-top:16px"><b>hackingrongo</b> · Parallel passage alignment report · MIT License &nbsp;·&nbsp; Alignment: majority-vote consensus per tablet; Levenshtein threshold = 1. &nbsp;·&nbsp; Pre-contact anchor: Tablet D (RC 1493–1509 CE, Ferrara et al. 2024). &nbsp;·&nbsp; Holy-Grail criterion: non-allographic substitution consistent in ≥ 2 post-contact tablets (Barthel 1958). &nbsp;·&nbsp; This is a computational hypothesis report; all candidates require expert epigraphic review.</p>
+  <p><b>SperksWerks LLC</b> ·
+  <a href="https://sperkswerks.ai" target="_blank">sperkswerks.ai</a></p>
+</div>
+
+</div>
+<script>
+(function(){
+  var _pcs = Array.from(document.querySelectorAll('.pc'));
+  var _filter = 'all', _sort = 'score', _search = '';
+
+  function _refresh() {
+    var shown = 0;
+    _pcs.forEach(function(pc) {
+      var s = pc.dataset, ok = true;
+      if (_search) ok = (s.pid||'').toLowerCase().indexOf(_search)>=0 ||
+                        (s.canonical||'').toLowerCase().indexOf(_search)>=0;
+      if (ok && _filter==='diachronic') ok = s.diachronic==='1';
+      else if (ok && _filter==='holygrail') ok = s.holy==='1';
+      else if (ok && _filter==='familycross') ok = s.cross==='1';
+      pc.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    var container = document.getElementById('passages');
+    if (container) {
+      var vis = _pcs.filter(function(pc){ return pc.style.display!=='none'; });
+      vis.sort(function(a,b){
+        if (_sort==='score')   return parseFloat(b.dataset.score||0)  - parseFloat(a.dataset.score||0);
+        if (_sort==='tablets') return parseInt(b.dataset.tablets||0)  - parseInt(a.dataset.tablets||0);
+        if (_sort==='changes') return parseInt(b.dataset.changes||0)  - parseInt(a.dataset.changes||0);
+        if (_sort==='pid')     return (a.dataset.pid||'').localeCompare(b.dataset.pid||'');
+        return 0;
+      });
+      vis.forEach(function(pc){ container.appendChild(pc); });
+    }
+    var el = document.getElementById('fb-count');
+    if (el) el.textContent = 'Showing '+shown+' of '+_pcs.length;
+  }
+
+  window.togglePassage = function(pid) {
+    var pc = document.getElementById('pc-'+pid);
+    var det = document.getElementById('det-'+pid);
+    if (!pc || !det) return;
+    if (pc.classList.contains('open')) {
+      det.style.display='none'; pc.classList.remove('open');
+    } else {
+      det.style.display='block'; pc.classList.add('open');
+    }
+  };
+  window.setFilter = function(f, el) {
+    _filter = f;
+    document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); });
+    if (el) el.classList.add('active');
+    _refresh();
+  };
+  window.setSort = function(v) { _sort=v; _refresh(); };
+  window.searchPassages = function(q) { _search=q.toLowerCase().trim(); _refresh(); };
+  window.expandAll = function() {
+    _pcs.forEach(function(pc){
+      if (pc.style.display==='none') return;
+      var det = document.getElementById('det-'+pc.dataset.pid);
+      if (det){ det.style.display='block'; pc.classList.add('open'); }
+    });
+  };
+  window.collapseAll = function() {
+    _pcs.forEach(function(pc){
+      var det = document.getElementById('det-'+pc.dataset.pid);
+      if (det){ det.style.display='none'; pc.classList.remove('open'); }
+    });
+  };
+  // Auto-expand holy-grail passages on load
+  _pcs.forEach(function(pc){
+    if (pc.dataset.holy!=='1') return;
+    var det = document.getElementById('det-'+pc.dataset.pid);
+    if (det){ det.style.display='block'; pc.classList.add('open'); }
+  });
+})();
+</script>
+<script>
+/* ── Dark mode init + toggle ── */
+(function(){
+  var saved;
+  try { saved = localStorage.getItem('rongo-theme'); } catch(e) {}
+  if (saved !== 'light') document.body.classList.add('dark');
+
+  var btn = document.createElement('button');
+  btn.className = 'dark-toggle';
+  btn.id = 'dark-toggle-btn';
+  btn.textContent = document.body.classList.contains('dark') ? '◐ Light' : '◐ Dark';
+  btn.onclick = function() {
+    var d = document.body.classList.toggle('dark');
+    btn.textContent = d ? '◐ Light' : '◐ Dark';
+    try { localStorage.setItem('rongo-theme', d ? 'dark' : 'light'); } catch(e) {}
+  };
+  document.body.appendChild(btn);
+})();
+
+/* ── Passage card enhancements: status badges, relevance, evidence bars ── */
+(function(){
+  var relevance = {
+    'P007_ADHS':
+      'Canonical source Tablet D (~1500 CE). Frigatebird sequence 007-600-007-010. Holy-grail substitution at position 4 across 12 post-contact attestations.',
+    'P012_ABCDEGHINPQSX':
+      'Strongest diachronic result. 80 post-contact attestations. Family-crossing substitution — replaced sign from different Barthel century block. Non-allographic by definition.',
+    'P009_ABCDEFGHIKNOPQRSUY':
+      'Highest attestation count (356 across 18 tablets). Sign 007 as sequential anchor. Pre-contact frequency elevated relative to post-contact corpus proportion.',
+    'P010_BGHINST':
+      'Largest post-contact-only passage. 132 attestations across 7 tablets. Formulaic liturgical structure candidate.'
+  };
+
+  var preCounts = {
+    'P007_ADHS':4, 'P009_ABCDEFGHIKNOPQRSUY':18, 'P012_ABCDEGHINPQSX':2,
+    'P010_BGHINST':0, 'P011_GHPQS':0, 'P013_GIST':0, 'P001_BHP':0,
+    'P004_CES':0, 'P006_CEN':0, 'P002_RS':0, 'P003_BO':0, 'P005_EG':0, 'P008_AE':0
+  };
+  var postCounts = {
+    'P007_ADHS':12, 'P009_ABCDEFGHIKNOPQRSUY':238, 'P012_ABCDEGHINPQSX':80,
+    'P010_BGHINST':121, 'P011_GHPQS':17, 'P013_GIST':50, 'P001_BHP':17,
+    'P004_CES':15, 'P006_CEN':6, 'P002_RS':8, 'P003_BO':7, 'P005_EG':10, 'P008_AE':31
+  };
+  var totalCounts = {
+    'P007_ADHS':18, 'P009_ABCDEFGHIKNOPQRSUY':356, 'P012_ABCDEGHINPQSX':90,
+    'P010_BGHINST':132, 'P011_GHPQS':17, 'P013_GIST':54, 'P001_BHP':17,
+    'P004_CES':15, 'P006_CEN':11, 'P002_RS':10, 'P003_BO':7, 'P005_EG':10, 'P008_AE':32
+  };
+
+  document.querySelectorAll('.pc').forEach(function(pc) {
+    var pid   = pc.dataset.pid;
+    var holy  = pc.dataset.holy === '1';
+    var dia   = pc.dataset.diachronic === '1';
+    var pre   = preCounts[pid]  || 0;
+    var post  = postCounts[pid] || 0;
+    var total = totalCounts[pid] || 1;
+    var unk   = Math.max(0, total - pre - post);
+
+    var summary = pc.querySelector('.pc-summary');
+    var pcRight = summary && summary.querySelector('.pc-right');
+    if (!summary) return;
+
+    /* ── A. Cryptanalytic status badge ── */
+    var badge = document.createElement('span');
+    badge.className = 'pc-status-badge';
+    if (holy) {
+      badge.classList.add('psb-key-change'); badge.textContent = 'KEY-CHANGE CONFIRMED';
+    } else if (dia) {
+      badge.classList.add('psb-boundary');   badge.textContent = 'BOUNDARY SIGNAL';
+    } else if (pre > 0) {
+      badge.classList.add('psb-anchor');     badge.textContent = 'PRE-CONTACT ANCHOR';
+    } else {
+      badge.classList.add('psb-single');     badge.textContent = 'SINGLE STRATUM';
+    }
+    if (pcRight) pcRight.insertBefore(badge, pcRight.firstChild);
+
+    /* ── B. Attack relevance line ── */
+    var relText = relevance[pid];
+    if (!relText) {
+      relText = post + ' post-contact attestation' + (post===1?'':'s') + ' across ' +
+        pc.dataset.tablets + ' tablet' + (pc.dataset.tablets==='1'?'':' s') +
+        '. No pre-contact anchor; key-consistency comparison pending.';
+    }
+    var relDiv = document.createElement('div');
+    relDiv.className = 'pc-relevance';
+    relDiv.textContent = relText;
+    summary.appendChild(relDiv);
+
+    /* ── C. Evidence bar ── */
+    var barWrap = document.createElement('div');
+    barWrap.className = 'evidence-bar-wrap';
+
+    var bar = document.createElement('div');
+    bar.className = 'evidence-bar';
+    function seg(cls, count) {
+      if (count <= 0) return;
+      var d = document.createElement('div');
+      d.className = cls;
+      d.style.width = Math.round(count / total * 100) + '%';
+      bar.appendChild(d);
+    }
+    seg('eb-pre', pre); seg('eb-post', post); seg('eb-unk', unk);
+
+    var lbls = document.createElement('div');
+    lbls.className = 'evidence-labels';
+    function lbl(cls, label, count) {
+      if (count <= 0) return;
+      var s = document.createElement('span');
+      s.className = cls; s.textContent = '▪ ' + label + ':' + count;
+      lbls.appendChild(s);
+    }
+    lbl('eb-lbl-pre', 'pre', pre); lbl('eb-lbl-post', 'post', post); lbl('eb-lbl-unk', 'unk', unk);
+
+    barWrap.appendChild(bar); barWrap.appendChild(lbls);
+    if (pcRight) pcRight.insertBefore(barWrap, badge.nextSibling);
+  });
+})();
+</script>
+</body>
+</html>
