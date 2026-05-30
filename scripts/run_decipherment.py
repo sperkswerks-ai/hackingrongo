@@ -104,25 +104,31 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Calendar anchors — known-plaintext evidence from Mamari calendar section
 # ---------------------------------------------------------------------------
-# Hard anchors: pinned in every chain's initial map.
-# Soft priors: phonemes upweighted in the random-reassignment proposal so the
-#   chain converges back quickly if a proposal moves a sign off its anchor.
+# Four high-confidence anchors from align_mamari_calendar.py output
+# (confidence ≥ 0.87, anchor code found in Ca6–Ca9 alignment).
+# Three soft priors from the same alignment at confidence 0.70.
 #
-# Evidence scores (calendar exclusivity from Mamari analysis):
-#   Sign 152 = omotohi (full moon)  — score 1.0, calendar-exclusive
-#   Sign 040 = kokore (night count) — score 0.62, calendar-dominant
+# HARD anchors are pinned as cribs in every MCMC chain — the sampler never
+# proposes a change away from them.  SOFT anchors boost the phoneme's weight
+# in the random-reassignment proposal so the chain converges back quickly if
+# another proposal moves the sign off its preferred value.
 #
-# P007 context: canonical [007, 600, 007, 010] = bird+moon+bird+moon on
-#   Tablet D (pre-contact). Sign 007 is a strong candidate for a lunar glyph;
-#   "hetu" is the leading phoneme candidate. Included as a soft-only prior
-#   (not a hard anchor — the identification is less certain than 152/040).
-#
-# Boost factors are calibrated to evidence scores: baseline = 1.0 (uniform).
-# A 4× boost means the proposal draws "omotohi" ~4× more often than chance.
-CALENDAR_ANCHORS: dict[str, str] = {
-    "152": "omotohi",   # hard anchor + strongest soft prior
-    "040": "kokore",    # hard anchor + moderate soft prior
+# Boost factors calibrated to alignment confidence scores (baseline = 1.0).
+CALENDAR_ANCHORS_HARD: dict[str, str] = {
+    "040": "kokore",    # confidence 0.985 — night-count marker, Ca7-Ca8 dominant
+    "152": "omotohi",   # confidence 1.000 — full moon (Rākaunui, night 15)
+    "143": "huna",      # confidence 1.000 — near-full moon (Huna, night 14)
+    "078": "maure",     # confidence 1.000 — waning gibbous / last-quarter (Māure)
 }
+
+CALENDAR_ANCHORS_SOFT: dict[str, tuple[str, float]] = {
+    "074": ("ohua", 0.7),    # first-quarter anchor (Ōhua context); moderate evidence
+    "280": ("honu", 0.7),    # dark-moon turtle metaphor; Metoro recitation
+    "010": ("oike", 0.7),    # lunar marker; late Ca9 dark-moon period
+}
+
+# Backward-compatible alias consumed by the mixed-model path below.
+CALENDAR_ANCHORS: dict[str, str] = dict(CALENDAR_ANCHORS_HARD)
 
 # Logographic taxograms (external evidence): pinned constraints in the mixed
 # model. These signs are excluded from LM scoring in that model and only
@@ -135,12 +141,38 @@ LOGOGRAPHIC_TAXOGRAMS: dict[str, str] = {
 }
 
 # Phoneme → proposal weight multiplier (above the uniform baseline of 1.0).
-# Applied globally across all signs; most meaningful for the anchored signs.
+# Hard-anchor phonemes get the strongest boost; soft-anchor phonemes moderate.
 _CALENDAR_SOFT_BOOST: dict[str, float] = {
-    "omotohi": 4.0,   # score 1.0 → strongest boost
-    "kokore":  2.5,   # score 0.62 → moderate boost
+    "omotohi": 4.0,   # confidence 1.0 → strongest boost
+    "huna":    4.0,   # confidence 1.0
+    "maure":   4.0,   # confidence 1.0
+    "kokore":  3.5,   # confidence 0.985
+    "ohua":    2.0,   # soft prior, confidence 0.70
+    "honu":    2.0,   # soft prior
+    "oike":    2.0,   # soft prior
     "hetu":    1.8,   # P007 lunar context (Tablet D) → weak boost
 }
+
+
+def _validate_anchors(
+    anchors: dict[str, str],
+    phoneme_inventory: list[str],
+    label: str = "anchors",
+) -> None:
+    """Raise ValueError if any anchor phoneme is absent from the inventory.
+
+    Silent failures here cost a full MCMC run (hours).  This check fires
+    at startup so misconfigured phoneme strings are caught immediately.
+    """
+    inv_set = set(phoneme_inventory)
+    missing = [(sign, ph) for sign, ph in anchors.items() if ph not in inv_set]
+    if missing:
+        raise ValueError(
+            f"Calendar {label} phonemes not in inventory: {missing}. "
+            f"Inventory has {len(phoneme_inventory)} entries. "
+            f"Check spelling against zone_c phoneme_inventory or add the "
+            f"missing phoneme to _anchor_extras."
+        )
 
 
 def _build_anchored_initial_map(
@@ -148,9 +180,9 @@ def _build_anchored_initial_map(
     phoneme_inventory: list[str],
     rng: Any,
 ) -> dict[str, str]:
-    """Random initial map with calendar anchors pinned to known phonemes."""
+    """Random initial map with hard calendar anchors pinned to known phonemes."""
     m = {sign: rng.choices(phoneme_inventory)[0] for sign in sign_ids}
-    for sign, phoneme in CALENDAR_ANCHORS.items():
+    for sign, phoneme in CALENDAR_ANCHORS_HARD.items():
         if sign in m and phoneme in phoneme_inventory:
             m[sign] = phoneme
     return m
@@ -535,21 +567,34 @@ def _run(
         "MCMC: %d chain(s) × %d iterations (burn-in %d, thin %d) …",
         mc.num_chains, mc.num_iterations, mc.burn_in, mc.thin,
     )
-    # ── Phoneme inventory: default CV syllables + calendar anchor words ──────
-    # omotohi (152) and kokore (040) are multi-syllable logograms that must be
-    # present in the inventory so that:
-    #   (a) the cribs init check in _random_initial_map resolves them, and
-    #   (b) _build_calendar_phoneme_priors finds them for soft-boost weights.
+    # ── Phoneme inventory: default CV syllables + all calendar anchor phonemes ─
+    # Multi-syllable calendar logograms (omotohi, kokore, huna, maure, …) must
+    # appear in the inventory so that:
+    #   (a) _validate_anchors can assert their presence before the run starts,
+    #   (b) cribs init in MCMCSampler resolves them on construction,
+    #   (c) _build_calendar_phoneme_priors finds them for soft-boost weights.
+    _all_anchor_phonemes = set(CALENDAR_ANCHORS_HARD.values()) | {
+        ph for ph, _ in CALENDAR_ANCHORS_SOFT.values()
+    }
     _anchor_extras = [
-        ph for ph in CALENDAR_ANCHORS.values() if ph not in _DEFAULT_PHONEME_INVENTORY
+        ph for ph in _all_anchor_phonemes if ph not in _DEFAULT_PHONEME_INVENTORY
     ]
     phoneme_inventory = list(_DEFAULT_PHONEME_INVENTORY) + _anchor_extras
+
+    # Loud failure at startup rather than silent no-op deep in the chain.
+    _validate_anchors(CALENDAR_ANCHORS_HARD, phoneme_inventory, label="hard anchors")
+    _validate_anchors(
+        {s: ph for s, (ph, _) in CALENDAR_ANCHORS_SOFT.items()},
+        phoneme_inventory,
+        label="soft anchors",
+    )
+
     calendar_priors = _build_calendar_phoneme_priors(phoneme_inventory)
 
     # ── MCMC: pass cribs directly so the sampler excludes them from proposals ─
-    # Anchored signs are added to _crib_signs → removed from _free_sign_ids →
+    # Hard-anchored signs are added to _crib_signs → removed from _free_sign_ids →
     # never touched by _propose() for the entire chain run.
-    active_anchors = {k: v for k, v in CALENDAR_ANCHORS.items() if k in sign_ids}
+    active_anchors = {k: v for k, v in CALENDAR_ANCHORS_HARD.items() if k in sign_ids}
     sampler = MCMCSampler(
         cfg=cfg,
         lm_scorer=lm_scorer,
@@ -872,7 +917,7 @@ def _run(
         float(np.mean(mcmc_result.acceptance_rates))
         if mcmc_result.acceptance_rates else None
     )
-    active_anchors = {k: v for k, v in CALENDAR_ANCHORS.items() if k in sign_ids}
+    active_anchors = {k: v for k, v in CALENDAR_ANCHORS_HARD.items() if k in sign_ids}
     mcmc_diag: dict[str, Any] = {
         "n_chains":           mcmc_result.n_chains,
         "n_samples_per_chain": mcmc_result.n_samples_per_chain,
