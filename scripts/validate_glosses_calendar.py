@@ -93,18 +93,22 @@ LUNAR_ENGLISH_KEYWORDS: frozenset[str] = frozenset({
 # Simple English gloss table for the calendar anchor signs.
 # Populated from Barthel (1958) and Fischer (1997) commentary.
 SIGN_GLOSSES: dict[str, tuple[str, str]] = {
+    # Anchor signs with known lunar/astronomical readings — classified as lunar.
     "040": ("kokore",  "night-count marker (Kokore)"),
     "152": ("omotohi", "full moon (Rākaunui)"),
     "143": ("huna",    "near-full moon (Huna, night 14)"),
     "078": ("maure",   "waning gibbous / last quarter (Māure)"),
     "074": ("ohua",    "first quarter (Ōhua)"),
+    "074f": ("ohua",   "first quarter (Ōhua) — variant form"),
     "280": ("honu",    "turtle / dark moon metaphor"),
     "010": ("mahina",  "moon (generic)"),
     "008": ("raa",     "sun / star (Raʻa)"),
-    "670": ("tangata manu", "Bird-Man (Tangata Manu)"),
-    "711": ("?",       "recurring calendar marker (unread)"),
-    "390": ("?",       "recurring calendar separator (unread)"),
-    "041": ("?",       "recurring calendar particle (unread)"),
+    # Signs with unknown readings — lunar domain determined by phoneme lookup.
+    # Listed here so they get TIER_HIGH in the table; lunar flag is computed below.
+    "670": ("?",  "Bird-Man (Tangata Manu) — ritual/iconographic, not lunar"),
+    "711": ("?",  "recurring calendar marker (unread)"),
+    "390": ("?",  "recurring calendar separator (unread)"),
+    "041": ("?",  "recurring calendar particle (unread)"),
 }
 
 
@@ -182,12 +186,26 @@ def gloss_sign(
     high_forms: set[str],
     all_forms: set[str],
 ) -> dict:
-    """Run single-sign lookup and domain flagging."""
-    # Use known anchor glosses first
+    """Run single-sign lookup and domain flagging.
+
+    For anchor signs with known readings (rapa_nui != "?"), the lunar flag is
+    set by _is_lunar_word on the known gloss — not by blanket True.  Signs
+    with unknown readings ("?") fall back to phoneme-based lexical lookup so
+    that the lunar classification is driven by evidence, not by sign-table
+    membership.  This prevents unread calendar-structural signs (670, 711,
+    390, 041) from being counted as lunar when their semantics are unknown.
+    """
     if barthel_code in SIGN_GLOSSES:
         rapa_nui, english = SIGN_GLOSSES[barthel_code]
         tier = TIER_HIGH
-        lunar = True
+        if rapa_nui != "?":
+            # Known gloss: classify by the gloss word itself.
+            lunar = _is_lunar_word(rapa_nui)
+        else:
+            # Unknown gloss: fall back to phoneme lookup for the lunar flag.
+            # Keep rapa_nui as "?" and english description intact for the table.
+            ph_gloss, _ = _lookup_window([phoneme], high_forms, all_forms)
+            lunar = _is_lunar_word(ph_gloss)
     else:
         rapa_nui, tier = _lookup_window([phoneme], high_forms, all_forms)
         english = ""
@@ -218,6 +236,17 @@ def run_validation(
     calendar_signs = _load_calendar_signs(alignment_path)
     full_corpus_signs = _load_full_corpus_signs(corpus_dir)
 
+    # Surface ranking provenance so the user knows which run produced these numbers.
+    ranking_data = json.loads(ranking_path.read_text(encoding="utf-8"))
+    h0001_meta = next(
+        (h for h in ranking_data.get("hypotheses", []) if h["hypothesis_id"] == "H0001"),
+        {},
+    )
+    ranking_created = h0001_meta.get("created_at", "unknown")
+    ranking_run_id  = h0001_meta.get("run_id", "unknown")
+    log.info(
+        "Ranking: run_id=%s  created_at=%s", ranking_run_id, ranking_created
+    )
     log.info(
         "Calendar signs: %d  |  Corpus signs: %d  |  Phoneme map: %d entries",
         len(calendar_signs), len(full_corpus_signs), len(phoneme_map),
@@ -309,6 +338,8 @@ def run_validation(
             nights[nn]["high_tier_hits"] += 1
 
     return {
+        "ranking_run_id": ranking_run_id,
+        "ranking_created_at": ranking_created,
         "h0001_phoneme_map_size": len(phoneme_map),
         "calendar_stats": cal_stats,
         "baseline_stats": base_stats,
