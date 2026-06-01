@@ -68,6 +68,7 @@ import html as _html
 import json
 import logging
 import math
+import os
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -759,6 +760,15 @@ def _parse_args() -> argparse.Namespace:
                    default=PROJECT_ROOT / "outputs" / "self_training")
     p.add_argument("--smoke-test", action="store_true",
                    help="Tablet D only, 1 chain × 200 iterations, 2 self-training rounds.")
+    p.add_argument("--chains", type=int, default=None,
+                   help="Override zone_c.mcmc.num_chains (default: from config.yaml).")
+    p.add_argument("--iterations", type=int, default=None,
+                   help="Override zone_c.mcmc.num_iterations (default: from config.yaml).")
+    p.add_argument("--beam-width", type=int, default=None,
+                   help="Override zone_c.beam_search.beam_width (default: from config.yaml).")
+    p.add_argument("--beam-depth", type=int, default=None,
+                   help="Override zone_c.beam_search.max_depth. "
+                        "Use 50-100 for full-corpus runs to avoid 30+ min beam search.")
     return p.parse_args()
 
 
@@ -795,12 +805,71 @@ def main() -> None:
         args.threshold_end   = 0.60
         args.min_evidence    = 3
 
+    # Apply explicit chain/iteration/beam overrides (for full-corpus runs at tractable scale)
+    mcmc_overrides: dict = {}
+    beam_overrides: dict = {}
+    if args.chains is not None:
+        mcmc_overrides["num_chains"] = args.chains
+    if args.iterations is not None:
+        mcmc_overrides["num_iterations"] = args.iterations
+        mcmc_overrides["burn_in"] = max(50, args.iterations // 10)
+        mcmc_overrides["thin"]    = max(1,  args.iterations // 500)
+    if args.beam_width is not None:
+        beam_overrides["beam_width"] = args.beam_width
+    if args.beam_depth is not None:
+        beam_overrides["max_depth"] = args.beam_depth
+    override_payload: dict = {}
+    if mcmc_overrides:
+        override_payload["mcmc"] = mcmc_overrides
+    if beam_overrides:
+        override_payload["beam_search"] = beam_overrides
+    if override_payload:
+        cfg = OmegaConf.merge(cfg, OmegaConf.create({"zone_c": override_payload}))
+        log.info(
+            "Config overrides: MCMC %s  beam %s",
+            {k: cfg.zone_c.mcmc[k] for k in mcmc_overrides},
+            {k: cfg.zone_c.beam_search[k] for k in beam_overrides},
+        )
+
     from hackingrongo.data.corpus import load_corpus, split_by_cluster
     from hackingrongo.results.schema import hash_config_file
     from hackingrongo.zone_c.beam_search import BeamSearchDecoder
     from hackingrongo.zone_c.lm_scoring import LMScorer
 
     config_hash = hash_config_file(cfg_path)
+
+    # ── MLflow setup ─────────────────────────────────────────────────────────
+    _mlflow_active = False
+    try:
+        import mlflow as _mlflow
+        _tracking_uri = os.environ.get(
+            "MLFLOW_TRACKING_URI",
+            f"file://{(PROJECT_ROOT / 'outputs' / 'mlruns').resolve()}",
+        )
+        _mlflow.set_tracking_uri(_tracking_uri)
+        _mlflow.set_experiment("rongorongo_decipherment")
+        _run_label = "self-training-smoke" if args.smoke_test else "self-training-full"
+        _ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M")
+        _mlflow.start_run(run_name=f"{_run_label}-{_ts}")
+        _mlflow.log_params({
+            "smoke_test":        args.smoke_test,
+            "max_iterations":    args.max_iterations,
+            "top_k":             args.top_k,
+            "min_consensus":     args.min_consensus,
+            "min_evidence":      args.min_evidence,
+            "threshold_start":   args.threshold_start,
+            "threshold_end":     args.threshold_end,
+            "mcmc.num_chains":   int(cfg.zone_c.mcmc.num_chains),
+            "mcmc.num_iterations": int(cfg.zone_c.mcmc.num_iterations),
+            "beam.width":        int(cfg.zone_c.beam_search.beam_width),
+            "beam.max_depth":    int(cfg.zone_c.beam_search.max_depth),
+            "n_hard_anchors":    len(CALENDAR_ANCHORS_HARD),
+            "config_hash":       config_hash[:16],
+        })
+        _mlflow_active = True
+        log.info("MLflow run started → %s", _tracking_uri)
+    except ImportError:
+        log.warning("mlflow not installed — tracking disabled.")
 
     # ── Corpus ───────────────────────────────────────────────────────────────
     log.info("Loading corpus …")
@@ -894,6 +963,21 @@ def main() -> None:
         state.history.append(result)
         _print_iteration_banner(iteration, result, state)
 
+        # ── MLflow: per-iteration time-series metrics ─────────────────────────
+        if _mlflow_active and math.isfinite(top_score):
+            _iter_metrics: dict[str, float] = {
+                "lm_score":         top_score,
+                "n_hard_cribs":     float(len(all_cribs)),
+                "n_soft_anchors":   float(len(state.soft_anchors)),
+                "new_hard_count":   float(len(new_hard)),
+                "new_soft_count":   float(len(new_soft)),
+                "mcmc_converged":   float(int(mcmc_result.converged)),
+                "mcmc_acceptance":  round(acc_mean, 4),
+            }
+            if mcmc_result.gelman_rubin_rhat is not None:
+                _iter_metrics["mcmc_rhat"] = mcmc_result.gelman_rubin_rhat
+            _mlflow.log_metrics(_iter_metrics, step=iteration)
+
         # Convergence checks
         if not new_soft and not new_hard:
             state.convergence = "no_new_promotions"
@@ -965,6 +1049,26 @@ def main() -> None:
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     log.info("Summary → %s", summary_path)
 
+    # Promote the final best hypothesis to outputs/decipherment/ranking.json
+    # so downstream scripts (validate_glosses_calendar, generate_final_report)
+    # automatically pick up the self-training result.
+    final_iter = len(state.history) - 1
+    final_ranking_src = args.output_dir / f"iter_{final_iter:02d}" / "ranking.json"
+    if final_ranking_src.exists():
+        import os, tempfile
+        decipherment_dir = PROJECT_ROOT / "outputs" / "decipherment"
+        decipherment_dir.mkdir(parents=True, exist_ok=True)
+        dest = decipherment_dir / "ranking.json"
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=decipherment_dir, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(final_ranking_src.read_text(encoding="utf-8"))
+            os.replace(tmp_name, dest)
+            log.info("Promoted final ranking → %s", dest)
+        except BaseException:
+            os.unlink(tmp_name)
+            raise
+
     args_meta = {
         "max_iterations": args.max_iterations,
         "top_k": args.top_k,
@@ -978,6 +1082,34 @@ def main() -> None:
     report_path = args.output_dir / "self_training_report.html"
     report_path.write_text(html, encoding="utf-8")
     log.info("HTML report → %s", report_path)
+
+    # ── MLflow: summary metrics + artifacts + end run ─────────────────────────
+    if _mlflow_active:
+        try:
+            score_traj = summary.get("score_trajectory", [])
+            if score_traj:
+                _mlflow.log_metric("final_lm_score", score_traj[-1])
+                if len(score_traj) >= 2:
+                    _mlflow.log_metric("lm_score_delta", score_traj[-1] - score_traj[0])
+            _mlflow.log_metric("n_st_hard_cribs_promoted", float(len(state.hard_cribs)))
+            _mlflow.log_metric("n_st_soft_anchors_final",  float(len(state.soft_anchors)))
+            _mlflow.log_param("convergence", state.convergence)
+
+            _st_artifacts = [
+                summary_path,
+                report_path,
+                PROJECT_ROOT / "outputs" / "decipherment" / "ranking.json",
+                PROJECT_ROOT / "outputs" / "analysis" / "calendar_gloss_validation.json",
+            ]
+            for p in _st_artifacts:
+                if Path(p).exists():
+                    folder = "analysis" if "analysis" in str(p) else "self_training"
+                    _mlflow.log_artifact(str(p), artifact_path=folder)
+
+            _mlflow.end_run()
+            log.info("MLflow run ended. Tracking URI: %s", _mlflow.get_tracking_uri())
+        except Exception as _e:
+            log.warning("MLflow finalization failed: %s", _e)
 
 
 if __name__ == "__main__":

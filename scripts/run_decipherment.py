@@ -24,11 +24,14 @@ cross-tablet alignment directly constrains sign→phoneme mapping.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
+import os
 import statistics
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -496,6 +499,126 @@ def _make_hypothesis(
 
 
 # ---------------------------------------------------------------------------
+# MLflow tracking helpers
+# ---------------------------------------------------------------------------
+
+def _mlflow_tracking_uri(project_root: Path) -> str:
+    """Resolve tracking URI: env var > default local path."""
+    return os.environ.get(
+        "MLFLOW_TRACKING_URI",
+        f"file://{(project_root / 'outputs' / 'mlruns').resolve()}",
+    )
+
+
+@contextlib.contextmanager
+def _mlflow_run(cfg: "DictConfig", project_root: Path, config_hash: str):
+    """Context manager that wraps a decipherment run in an MLflow run.
+
+    Logs all zone_c config parameters on entry, then yields.  After the
+    body completes, caller is expected to call _mlflow_log_results().
+    Gracefully no-ops if mlflow is unavailable.
+    """
+    try:
+        import mlflow
+    except ImportError:
+        yield None
+        return
+
+    mlflow.set_tracking_uri(_mlflow_tracking_uri(project_root))
+    mlflow.set_experiment("rongorongo_decipherment")
+
+    mc = cfg.zone_c.mcmc
+    bs = cfg.zone_c.beam_search
+    run_label = "smoke" if _SMOKE_TEST else "full"
+    if _FOCUS_PASSAGE:
+        run_label = f"passage-{_FOCUS_PASSAGE}"
+    ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d-%H%M")
+    run_name = f"decipherment-{run_label}-{ts}"
+
+    with mlflow.start_run(run_name=run_name) as run:
+        mlflow.log_params({
+            "smoke_test":              _SMOKE_TEST,
+            "focus_passage":           _FOCUS_PASSAGE or "",
+            "seed":                    int(cfg.seed),
+            "mcmc.num_chains":         int(mc.num_chains),
+            "mcmc.num_iterations":     int(mc.num_iterations),
+            "mcmc.burn_in":            int(mc.burn_in),
+            "mcmc.thin":               int(mc.thin),
+            "mcmc.occupancy_weight":   float(mc.occupancy_penalty_weight),
+            "mcmc.max_per_phoneme":    int(mc.max_signs_per_phoneme),
+            "mcmc.lm_guided_prob":     float(getattr(mc, "lm_guided_prob", 0.0)),
+            "beam.width":              int(bs.beam_width),
+            "beam.max_depth":          int(bs.max_depth),
+            "n_hard_anchors":          len(CALENDAR_ANCHORS_HARD),
+            "n_soft_anchors":          len(CALENDAR_ANCHORS_SOFT),
+            "config_hash":             config_hash[:16],
+        })
+        yield run
+
+
+def _mlflow_log_results(
+    out_dir: Path,
+    project_root: Path,
+    ranked: list,
+    mcmc_result: Any,
+    sign_ids: list,
+    active_anchors: dict,
+) -> None:
+    """Log metrics and output artifacts after _run() completes."""
+    try:
+        import mlflow
+    except ImportError:
+        return
+    if not mlflow.active_run():
+        return
+
+    # ── Metrics ──────────────────────────────────────────────────────────────
+    metrics: dict[str, float] = {
+        "n_hypotheses_ranked": float(len(ranked)),
+        "sign_inventory_size": float(len(sign_ids)),
+        "n_active_hard_anchors": float(len(active_anchors)),
+    }
+    if ranked:
+        top = ranked[0]
+        metrics.update({
+            "top_lm_score":           top.overall_lm_score,
+            "top_mcmc_log_posterior": top.mcmc_log_posterior,
+            "top_beam_score":         top.beam_score,
+        })
+    if mcmc_result is not None:
+        if mcmc_result.gelman_rubin_rhat is not None:
+            metrics["mcmc_rhat"] = mcmc_result.gelman_rubin_rhat
+        if mcmc_result.acceptance_rates:
+            metrics["mcmc_acceptance_mean"] = float(
+                statistics.mean(mcmc_result.acceptance_rates)
+            )
+        metrics["mcmc_converged"] = float(int(mcmc_result.converged))
+    mlflow.log_metrics({k: v for k, v in metrics.items() if math.isfinite(v)})
+
+    # ── Artifacts (JSON outputs + HTML report only — no LMs or image data) ───
+    _ARTIFACT_PATHS = [
+        out_dir / "ranking.json",
+        out_dir / "ranking.csv",
+        out_dir / "mcmc_diagnostics.json",
+        out_dir / "decipherment_report.html",
+        out_dir / "mixed_model" / "model_comparison.json",
+        project_root / "outputs" / "analysis" / "mamari_calendar_alignment.json",
+        project_root / "outputs" / "analysis" / "calendar_gloss_validation.json",
+        project_root / "outputs" / "analysis" / "anchor_conflict_diagnosis.json",
+    ]
+    for p in _ARTIFACT_PATHS:
+        if p.exists():
+            folder = "analysis" if "analysis" in str(p) else "decipherment"
+            mlflow.log_artifact(str(p), artifact_path=folder)
+
+    log.info(
+        "MLflow run %s: metrics and artifacts logged → %s",
+        mlflow.active_run().info.run_id[:8],
+        _mlflow_tracking_uri(project_root),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -512,7 +635,8 @@ def main(cfg: DictConfig) -> None:
     config_hash = hash_config_file(project_root / "conf" / "config.yaml")
     top_n: int = int(cfg.zone_c.validation.top_n_hypotheses)
 
-    _run(cfg, project_root, out_dir, config_hash, top_n)
+    with _mlflow_run(cfg, project_root, config_hash):
+        _run(cfg, project_root, out_dir, config_hash, top_n)
 
 
 def _run(
@@ -981,6 +1105,16 @@ def _run(
             ranked[0].overall_lm_score,
             mixed_ranked[0].overall_lm_score,
         )
+
+    # ── MLflow: log metrics + artifacts for this run ──────────────────────────
+    _mlflow_log_results(
+        out_dir=out_dir,
+        project_root=project_root,
+        ranked=ranked,
+        mcmc_result=mcmc_result,
+        sign_ids=sign_ids,
+        active_anchors={k: v for k, v in CALENDAR_ANCHORS_HARD.items() if k in sign_ids},
+    )
 
 
 

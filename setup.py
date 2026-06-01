@@ -31,6 +31,7 @@ setup(
         "scipy>=1.12,<2.0",
         "hydra-core>=1.3,<2.0",
         "omegaconf>=2.3,<3.0",
+        "mlflow>=2.12,<3.0",
         "Pillow>=10.3,<11.0",
         "click>=8.1,<9.0",
         "jinja2>=3.1,<4.0",
