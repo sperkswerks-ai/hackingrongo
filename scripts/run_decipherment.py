@@ -44,34 +44,38 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# --focus-passage: intercept before Hydra consumes argv
+# --focus-passage and --smoke-test: intercept before Hydra consumes argv.
+#
+# These blocks only run when this script is executed directly.  When the
+# module is imported (e.g. by run_self_training.py or diagnose_anchor_conflicts.py)
+# they are skipped so the importer's sys.argv is never contaminated with
+# Hydra-style override strings that argparse cannot understand.
 # ---------------------------------------------------------------------------
 
 _FOCUS_PASSAGE: str | None = None
-for _arg in list(sys.argv):
-    if _arg.startswith("--focus-passage="):
-        _FOCUS_PASSAGE = _arg.split("=", 1)[1].strip()
-        sys.argv.remove(_arg)
-        break
+_SMOKE_TEST: bool = False
 
-# ---------------------------------------------------------------------------
-# --smoke-test: intercept before Hydra consumes argv
-# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    for _arg in list(sys.argv):
+        if _arg.startswith("--focus-passage="):
+            _FOCUS_PASSAGE = _arg.split("=", 1)[1].strip()
+            sys.argv.remove(_arg)
+            break
 
-_SMOKE_TEST: bool = "--smoke-test" in sys.argv
-if _SMOKE_TEST:
-    sys.argv.remove("--smoke-test")
-    # Minimal overrides for a fast wiring check.
-    sys.argv += [
-        "zone_c.mcmc.num_chains=1",   # single chain avoids ProcessPoolExecutor fork hang in Colab
-        "zone_c.mcmc.num_iterations=500",
-        "zone_c.mcmc.burn_in=100",
-        "zone_c.mcmc.thin=5",
-        "zone_c.mcmc.top_k=5",
-        "zone_c.beam_search.beam_width=3",
-        "zone_c.beam_search.max_depth=15",  # keep beam cheap; MCMC seeds are already complete maps
-        "zone_c.validation.top_n_hypotheses=5",
-    ]
+    _SMOKE_TEST = "--smoke-test" in sys.argv
+    if _SMOKE_TEST:
+        sys.argv.remove("--smoke-test")
+        # Minimal overrides for a fast wiring check.
+        sys.argv += [
+            "zone_c.mcmc.num_chains=1",   # single chain; avoids ProcessPoolExecutor fork hang
+            "zone_c.mcmc.num_iterations=500",
+            "zone_c.mcmc.burn_in=100",
+            "zone_c.mcmc.thin=5",
+            "zone_c.mcmc.top_k=5",
+            "zone_c.beam_search.beam_width=3",
+            "zone_c.beam_search.max_depth=15",
+            "zone_c.validation.top_n_hypotheses=5",
+        ]
 
 import hydra  # noqa: E402
 import numpy as np  # noqa: E402
