@@ -71,6 +71,7 @@ import math
 import os
 import statistics
 import sys
+import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1055,7 +1056,6 @@ def main() -> None:
     final_iter = len(state.history) - 1
     final_ranking_src = args.output_dir / f"iter_{final_iter:02d}" / "ranking.json"
     if final_ranking_src.exists():
-        import os, tempfile
         decipherment_dir = PROJECT_ROOT / "outputs" / "decipherment"
         decipherment_dir.mkdir(parents=True, exist_ok=True)
         dest = decipherment_dir / "ranking.json"
