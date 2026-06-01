@@ -38,6 +38,7 @@ import argparse
 import json
 import logging
 import math
+import html as _html
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -107,7 +108,7 @@ def _lang_chips(languages: list[str]) -> str:
     if not languages:
         return '<span class="muted">—</span>'
     chips = "".join(
-        f'<span class="lang-chip">{lang}</span>'
+        f'<span class="lang-chip">{_html.escape(lang)}</span>'
         for lang in languages
     )
     return f'<span class="lang-row">{chips}</span>'
@@ -136,8 +137,8 @@ def _render_phoneme_table(assignments: list[PhonemeAssignment]) -> str:
         colour = _conf_colour(a.confidence)
         rows.append(
             f'<tr class="{conf_cls}">'
-            f'<td class="mono sign-code">{a.sign_code}</td>'
-            f'<td class="mono phoneme-val">{a.phoneme}</td>'
+            f'<td class="mono sign-code">{_html.escape(a.sign_code)}</td>'
+            f'<td class="mono phoneme-val">{_html.escape(a.phoneme)}</td>'
             f'<td class="conf-cell" style="color:{colour}">'
             f'  {a.confidence:.3f} {_conf_bar(a.confidence, 10)}{beam_tag}'
             f'</td>'
@@ -309,9 +310,9 @@ def _render_card(
     prov_html = f"""
 <table class="prov-table">
   <tr><td class="prov-key">Run ID</td>
-      <td class="prov-val mono" title="{hyp.run_id}">{run_abbrev}</td></tr>
+      <td class="prov-val mono" title="{_html.escape(hyp.run_id, quote=True)}">{_html.escape(run_abbrev)}</td></tr>
   <tr><td class="prov-key">Config hash</td>
-      <td class="prov-val mono" title="{hyp.config_hash}">{cfg_abbrev}</td></tr>
+      <td class="prov-val mono" title="{_html.escape(hyp.config_hash or '', quote=True)}">{_html.escape(cfg_abbrev)}</td></tr>
   <tr><td class="prov-key">MCMC log-post.</td>
       <td class="prov-val mono">{hyp.mcmc_log_posterior:.4f}</td></tr>
   <tr><td class="prov-key">Beam score</td>
@@ -331,13 +332,14 @@ def _render_card(
         if n_beam_only > 0 else ""
     )
 
+    _hyp_id_safe = _html.escape(hyp.hypothesis_id, quote=True)
     return f"""
-<div class="card" id="{hyp.hypothesis_id}">
+<div class="card" id="{_hyp_id_safe}">
 
   <div class="card-header">
     <div class="rank-badge">#{rank}</div>
     <div class="card-title">
-      <span class="hyp-id mono">{hyp.hypothesis_id}</span>
+      <span class="hyp-id mono">{_hyp_id_safe}</span>
       {_type_badge(hyp.hypothesis_type)}
     </div>
     <div class="overall-score">

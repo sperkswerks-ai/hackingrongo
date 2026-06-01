@@ -263,17 +263,9 @@ def compute_corpus_sign_stats(corpus_dir: Path) -> CorpusSignStats:
     }
 
     # ── Bigram MI as predictor ───────────────────────────────────────────────
-    # H(unigram) for normalisation
-    h_unigram = -sum(
-        (c / n_total) * math.log2(c / n_total)
-        for c in total_counts.values()
-        if c > 0
-    )
-
     n_bigrams = sum(bigrams.values())
-    # P(s): unigram prob of the first element of each bigram
+    # P(s) and P(t) in consistent bigram-normalised probability space.
     unigram_s = {code: cnt / n_total for code, cnt in total_counts.items()}
-    # P(t): unigram prob of second element
     unigram_t = {code: cnt / n_total for code, cnt in total_counts.items()}
 
     bigram_mi_raw: dict[str, float] = defaultdict(float)
@@ -282,14 +274,11 @@ def compute_corpus_sign_stats(corpus_dir: Path) -> CorpusSignStats:
             p_st = cnt / n_bigrams
             p_s  = unigram_s.get(s, 0.0)
             p_t  = unigram_t.get(t, 0.0)
+            # MI contribution: p(s,t) * log2[p(s,t) / (p(s)*p(t))]
             if p_s > 0 and p_t > 0:
-                # Conditional P(t|s) = P(s,t) / P(s)
-                # Use bigram-normalised p_s: fraction of bigrams starting with s
-                p_t_given_s = cnt / total_counts.get(s, 1)
-                if p_t_given_s > 0 and p_t > 0:
-                    bigram_mi_raw[s] += p_st * math.log2(p_t_given_s / p_t)
+                bigram_mi_raw[s] += p_st * math.log2(p_st / (p_s * p_t))
 
-    # Normalise by H(unigram); clip to [0, 1]
+    # Normalise by max MI across signs; clip to [0, 1]
     max_mi = max(bigram_mi_raw.values(), default=1.0)
     max_mi = max(max_mi, 1e-9)
     bigram_mi_scores = {
@@ -308,7 +297,7 @@ def compute_corpus_sign_stats(corpus_dir: Path) -> CorpusSignStats:
             cross_tablet[code] = 0.0  # appears on ≤1 tablet → unreliable
         else:
             mean_f = freqs[freqs > 0].mean()
-            std_f  = freqs[freqs > 0].std(ddof=1) if n_nonzero >= 2 else 0.0
+            std_f  = freqs[freqs > 0].std(ddof=1)
             cv = std_f / mean_f if mean_f > 0 else 0.0
             cross_tablet[code] = float(np.clip(1.0 - cv, 0.0, 1.0))
 

@@ -78,6 +78,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # make scripts/ importable
 
 logging.basicConfig(
     level=logging.INFO,
@@ -864,11 +865,16 @@ def main() -> None:
             iteration=iteration,
         )
 
-        # Filter: skip signs already promoted
+        # Filter: skip signs already pinned; ensure a sign graduating to hard
+        # this round is removed from new_soft to prevent double-recording.
+        graduating_signs = {p.sign for p in new_hard
+                            if p.sign not in state.hard_cribs
+                            and p.sign not in CALENDAR_ANCHORS_HARD}
         new_soft = [p for p in new_soft
                     if p.sign not in state.soft_anchors
                     and p.sign not in state.hard_cribs
-                    and p.sign not in all_cribs]
+                    and p.sign not in all_cribs
+                    and p.sign not in graduating_signs]
         new_hard = [p for p in new_hard
                     if p.sign not in state.hard_cribs
                     and p.sign not in CALENDAR_ANCHORS_HARD]

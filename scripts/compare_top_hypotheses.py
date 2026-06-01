@@ -437,7 +437,7 @@ def main() -> None:
         ],
     }
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(json.dumps(json_out, indent=2, ensure_ascii=False))
+    args.output_json.write_text(json.dumps(json_out, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("JSON → %s", args.output_json)
 
     print(

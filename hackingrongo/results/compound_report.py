@@ -41,6 +41,7 @@ import base64
 import json
 import logging
 import re
+import html as _html
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -263,7 +264,7 @@ def _provenance_html(
         name = TABLET_NAMES.get(tab, tab)
         locs = ", ".join(by_tablet[tab][:4])
         more = f" +{len(by_tablet[tab]) - 4} more" if len(by_tablet[tab]) > 4 else ""
-        parts.append(f"<b>{tab}</b> {name} — {locs}{more}")
+        parts.append(f"<b>{_html.escape(tab)}</b> {_html.escape(str(name))} — {_html.escape(locs)}{_html.escape(more)}")
     return "<br>".join(parts)
 
 
@@ -432,7 +433,7 @@ def _render_entry(
 
     comp_header = (
         "Proposed components: "
-        + "".join(f"<code>{c}</code> + " for c in components).rstrip(" + ")
+        + "".join(f"<code>{_html.escape(c)}</code> + " for c in components).rstrip(" + ")
         if components else "Components: not resolved"
     )
 
@@ -442,7 +443,7 @@ def _render_entry(
       <div class="entry-header">
         <div class="rank-badge">#{rank}</div>
         <div class="entry-title">
-          <span class="code-label">Barthel {code}</span>
+          <span class="code-label">Barthel {_html.escape(str(code))}</span>
           <span class="tier-tag"
                 style="background:{tier_colour}22;color:{tier_colour};
                        border:1px solid {tier_colour}55">{tier_label}</span>

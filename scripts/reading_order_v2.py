@@ -763,8 +763,8 @@ def main() -> None:
             from omegaconf import OmegaConf
             cfg = OmegaConf.load(PROJECT_ROOT / "conf" / "config.yaml")
             corpus_dir = PROJECT_ROOT / cfg.paths.corpus_dir
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Could not resolve corpus_dir from config: %s", exc)
     if corpus_dir is None or not corpus_dir.exists():
         log.error("Corpus not found. Pass --corpus <path>.")
         sys.exit(1)

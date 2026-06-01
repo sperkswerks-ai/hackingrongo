@@ -390,10 +390,9 @@ class SpectrumAnalyzer:
             p_st = cnt / n_bg
             p_s = unigrams[s] / n
             p_t = unigrams[t] / n
+            # MI contribution: p(s,t) * log2[p(s,t) / (p(s)*p(t))]
             if p_s > 0 and p_t > 0:
-                p_t_given_s = cnt / unigrams[s]
-                if p_t_given_s > 0:
-                    mi += p_st * math.log2(p_t_given_s / p_t)
+                mi += p_st * math.log2(p_st / (p_s * p_t))
         return max(0.0, mi)
 
     @staticmethod

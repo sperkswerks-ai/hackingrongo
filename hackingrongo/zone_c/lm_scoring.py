@@ -150,12 +150,12 @@ class LMScorer:
             for lang in self._languages
         }
 
+        max_order = max(self._orders)
         for lang in self._languages:
             self._lms[lang] = {}
             primary = primary_path_tmpl[lang]
 
             for order in self._orders:
-                max_order = max(self._orders)
                 if order == max_order:
                     lm_path = primary
                 else:
@@ -246,13 +246,15 @@ class LMScorer:
 
                 lp, n_ngrams, n_oov = self._score_lm(lm, expanded_sequence, order)
                 lang_scores[str(order)] = lp
-                total_ngrams += n_ngrams
-                total_oov += n_oov
 
                 # Track the highest-order LM that is actually loaded.
+                # Only accumulate n-grams/OOV counts for the best (highest) order
+                # so they are not double-counted across orders for the same language.
                 if best_found_order is None or order > best_found_order:
                     best_lp = lp
                     best_found_order = order
+                    best_n_ngrams = n_ngrams
+                    best_n_oov = n_oov
 
             result.per_language[lang] = lang_scores
 
@@ -260,6 +262,8 @@ class LMScorer:
                 weight = self._ensemble_weights.get(lang, 0.0)
                 ensemble_lp += weight * best_lp
                 total_weight += weight
+                total_ngrams += best_n_ngrams
+                total_oov += best_n_oov
 
         if total_weight > 0.0:
             result.ensemble_log_prob = ensemble_lp / total_weight

@@ -73,27 +73,18 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(_SCRIPTS_DIR))
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Constants — must stay in sync with run_decipherment.py
+# Constants — imported from run_decipherment to avoid divergence
 # ---------------------------------------------------------------------------
 
-CALENDAR_ANCHORS_HARD: dict[str, str] = {
-    "040": "kokore",
-    "152": "omotohi",
-    "143": "huna",
-    "078": "maure",
-}
-
-CALENDAR_ANCHORS_SOFT: dict[str, tuple[str, float]] = {
-    "074": ("ohua", 0.7),
-    "280": ("honu", 0.7),
-    "010": ("oike", 0.7),
-}
+from run_decipherment import CALENDAR_ANCHORS_HARD, CALENDAR_ANCHORS_SOFT  # noqa: E402
 
 TARGET_SIGN         = "600"
 DEFAULT_PIN_PHONEME = "manu"    # iconographic reading (Barthel / Metoro)
@@ -212,6 +203,17 @@ def test3_sign600_variance(hypotheses: list[dict[str, Any]]) -> dict[str, Any]:
 
     phoneme_counts = Counter(a["phoneme"] for a in assignments)
     n_hyps = len(assignments)
+
+    if n_hyps == 0:
+        return {
+            "target_sign": TARGET_SIGN,
+            "n_hypotheses": 0,
+            "phoneme_distribution": {},
+            "cross_hyp_entropy_bits": 0.0,
+            "normalised_entropy": 0.0,
+            "interpretation": "ABSENT — sign not found in any hypothesis",
+            "per_hypothesis": [],
+        }
 
     # Entropy of the cross-hypothesis distribution
     entropy = 0.0

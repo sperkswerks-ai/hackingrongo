@@ -46,6 +46,7 @@ import argparse
 import json
 import logging
 import re
+import html as _html
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -481,8 +482,8 @@ def _render_entry(entry: _ClusterEntry) -> str:
         <div class="glyph-card" style="border-top:3px solid {border_c}">
           <div class="role-label">{role}</div>
           <div class="glyph-svg" style="color:{border_c}">{g["svg"]}</div>
-          <div class="glyph-code">Barthel {g["barthel_code"]}</div>
-          <div class="glyph-range">{g["barthel_range"]}</div>
+          <div class="glyph-code">Barthel {_html.escape(str(g["barthel_code"]))}</div>
+          <div class="glyph-range">{_html.escape(str(g["barthel_range"]))}</div>
           {_badge_html(g["barthel_family"])}
           <div class="occurrence-count">{g["n_occurrences"]} occurrences</div>
         </div>"""
@@ -492,7 +493,7 @@ def _render_entry(entry: _ClusterEntry) -> str:
         for f in sorted(entry.family_breakdown, key=lambda x: -entry.family_breakdown[x])
     )
     codes_html = "  ".join(
-        f"<code>{c}</code>" for c in entry.all_codes[:14]
+        f"<code>{_html.escape(c)}</code>" for c in entry.all_codes[:14]
     )
     if len(entry.all_codes) > 14:
         codes_html += ' <span class="more">…</span>'
@@ -513,7 +514,7 @@ def _render_entry(entry: _ClusterEntry) -> str:
         <div class="glyphs-row">{glyph_cards}</div>
         <div class="reason-box">
           <div class="reason-label">⚙ Why mixed</div>
-          <p class="reason-text">{entry.divergence_reason}</p>
+          <p class="reason-text">{_html.escape(entry.divergence_reason)}</p>
           <div class="codes-list">
             <span class="codes-label">All Barthel codes in cluster: </span>
             {codes_html}
@@ -902,7 +903,7 @@ def _render_html(
     meta_lines = ""
     if run_metadata:
         for k, v in run_metadata.items():
-            meta_lines += f"<b>{k}:</b> {v} &nbsp;·&nbsp; "
+            meta_lines += f"<b>{_html.escape(str(k))}:</b> {_html.escape(str(v))} &nbsp;·&nbsp; "
     meta_lines += (
         f"<b>HDBSCAN clusters:</b> {stats['n_clusters']} &nbsp;·&nbsp; "
         f"<b>noise:</b> {stats['noise_count']} ({stats['noise_pct']}%) &nbsp;·&nbsp; "

@@ -197,6 +197,8 @@ def load_calendar_tokens(corpus_dir: Path) -> list[dict[str, Any]]:
         and g.get("barthel_code") not in (None, "")
     ]
     glyphs.sort(key=lambda g: int(g["position"]))
+    if not glyphs:
+        raise ValueError("No Ca6–Ca9 tokens found in Tablet C corpus — check corpus data.")
     log.info(
         "Loaded %d Ca6–Ca9 tokens from Tablet C (positions %d–%d).",
         len(glyphs),
@@ -427,7 +429,7 @@ def format_output(
     n_anchor_matches = sum(1 for a in alignments if a.anchor_codes_found)
     n_ambiguous = sum(1 for a in alignments if a.ambiguous)
     covered = sum(a.n_signs for a in alignments)
-    mean_score = sum(a.match_score for a in alignments) / len(alignments)
+    mean_score = sum(a.match_score for a in alignments) / len(alignments) if alignments else 0.0
 
     anchor_dict: dict[str, Any] = {}
     for a in alignments:

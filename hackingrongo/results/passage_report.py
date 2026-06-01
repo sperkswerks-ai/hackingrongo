@@ -39,6 +39,7 @@ import base64
 import json
 import logging
 import re
+import html as _html
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -742,7 +743,7 @@ def _render_alignment_grid(canonical_form: list[str], attestations: list[dict]) 
     )
     # Canonical row
     can_cells = "".join(
-        f'<td class="ag-cell ag-can"><div class="ag-cell-in">{code}</div></td>'
+        f'<td class="ag-cell ag-can"><div class="ag-cell-in">{_html.escape(str(code))}</div></td>'
         for code in canonical_form
     )
 
@@ -778,7 +779,7 @@ def _render_alignment_grid(canonical_form: list[str], attestations: list[dict]) 
             f'<td class="ag-lbl">'
             f'<div class="ag-lbl-in">'
             f'<span class="ag-dot {dot_cls}"></span>'
-            f'<span class="ag-tid" title="{name}">{tid}</span>'
+            f'<span class="ag-tid" title="{_html.escape(name, quote=True)}">{_html.escape(tid)}</span>'
             f'{occ_html}</div></td>'
         )
 
@@ -786,7 +787,7 @@ def _render_alignment_grid(canonical_form: list[str], attestations: list[dict]) 
         for i, canon_code in enumerate(canonical_form):
             if i < len(form):
                 css = "ag-mat" if form[i] == canon_code else "ag-sub"
-                content = form[i]
+                content = _html.escape(str(form[i]))
             else:
                 css = "ag-gap"
                 content = "—"
@@ -846,12 +847,12 @@ def _render_changes_inline(changes: list[dict]) -> str:
 
         items.append(
             f'<div class="chg-item {item_cls}">'
-            f'<div class="chg-pos">{pos_label}<br>'
-            f'<span style="font-size:8px">{ct}</span></div>'
+            f'<div class="chg-pos">{_html.escape(str(pos_label))}<br>'
+            f'<span style="font-size:8px">{_html.escape(str(ct))}</span></div>'
             f'<div class="chg-signs">'
-            f'<span class="chg-sign pre-s">{pre}</span>'
+            f'<span class="chg-sign pre-s">{_html.escape(str(pre))}</span>'
             f'<span class="chg-arr">→</span>'
-            f'<span class="chg-sign post-s">{post_sign}</span>'
+            f'<span class="chg-sign post-s">{_html.escape(str(post_sign))}</span>'
             f'</div>'
             f'<div class="chg-meta">'
             f'<span><b>{n_cons}</b> post-contact tablet{"s" if n_cons != 1 else ""} consistent</span>'
@@ -900,22 +901,24 @@ def _render_passage_card(passage: dict, idx: int) -> str:
     grid_html = _render_alignment_grid(canonical_form, attestations)
     changes_html = _render_changes_inline(changes)
 
+    pid_attr = _html.escape(pid, quote=True)
+    pid_js   = pid.replace("\\", "\\\\").replace("'", "\\'")
     return (
-        f'<div class="pc {card_cls}" id="pc-{pid}"'
-        f' data-pid="{pid}" data-score="{score}" data-tablets="{len(tablets)}"'
+        f'<div class="pc {card_cls}" id="pc-{pid_attr}"'
+        f' data-pid="{pid_attr}" data-score="{score}" data-tablets="{len(tablets)}"'
         f' data-changes="{len(changes)}" data-holy="{1 if n_holy else 0}"'
         f' data-cross="{1 if n_cross else 0}" data-diachronic="{1 if is_diachronic else 0}"'
-        f' data-canonical="{" ".join(str(c) for c in canonical_form)}">'
-        f'<div class="pc-summary" onclick="togglePassage(\'{pid}\')">'
+        f' data-canonical="{_html.escape(" ".join(str(c) for c in canonical_form), quote=True)}">'
+        f"<div class=\"pc-summary\" onclick=\"togglePassage('{pid_js}')\">"
         f'<span class="pc-toggle">▶</span>'
-        f'<span class="pc-id">{pid}</span>'
+        f'<span class="pc-id">{pid_attr}</span>'
         f'{badges_html}'
         f'<div class="pc-canonical">{chips}</div>'
         f'<div class="pc-right">'
         f'<span class="pc-tablet-list">{tablet_str}</span>'
         f'<span class="pc-score">{score:.2f}</span>'
         f'</div></div>'
-        f'<div class="pc-detail" id="det-{pid}" style="display:none">'
+        f'<div class="pc-detail" id="det-{pid_attr}" style="display:none">'
         f'<div class="pc-meta-row">'
         f'<span><b>Tablets:</b> {len(tablets)} ({", ".join(tablets)})</span>'
         f'<span><b>Attestations:</b> {len(attestations)}</span>'
@@ -1119,11 +1122,11 @@ def _render_attestation_table(attestations: list[dict], catalog: dict | None = N
         align_html = _alignment_html(align) if align else ""
 
         rows.append(f"""<tr>
-  <td><b>{tablet}</b> <span class="muted small">{tablet_name}</span></td>
+  <td><b>{_html.escape(str(tablet))}</b> <span class="muted small">{_html.escape(str(tablet_name))}</span></td>
   <td>{_stratum_badge(stratum)}</td>
-  <td class="muted small">{date_range}</td>
+  <td class="muted small">{_html.escape(str(date_range))}</td>
   <td>{glyph_row}{seq_text}<br>{align_html}</td>
-  <td class="attest-ed">{ed}</td>
+  <td class="attest-ed">{_html.escape(str(ed))}</td>
 </tr>""")
 
     return f"""<table class="attest-table">
@@ -1445,7 +1448,7 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any], catalog: di
     <b>With diachronic signal:</b> {n_diachronic} &nbsp;·&nbsp;
     <b>Holy-Grail candidates:</b> {n_holy} &nbsp;·&nbsp;
     <b>Tablets covered:</b> {len(all_tablets)} ({", ".join(all_tablets)}) &nbsp;·&nbsp;
-    <b>Source:</b> {source_file} &nbsp;·&nbsp;
+    <b>Source:</b> {_html.escape(str(source_file))} &nbsp;·&nbsp;
     <b>Generated:</b> {generated}
   </div>
   {abstract}

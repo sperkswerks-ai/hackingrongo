@@ -540,6 +540,7 @@ def _compute_positional_profile_stats(
     corpus_sequences: list[list[str]],
     min_corpus_count: int = 3,
     cap: int = 200,
+    corpus_freq: "Counter | None" = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute mean and std of positional feature vectors for *codes*.
 
@@ -551,9 +552,11 @@ def _compute_positional_profile_stats(
         ``(mean, std)`` each of shape ``(len(_POSITION_FEATURES),)``.
         Returns ``(zeros, ones)`` when fewer than 2 codes qualify.
     """
+    if corpus_freq is None:
+        corpus_freq = Counter(tok for seq in corpus_sequences for tok in seq)
     feat_vecs: list[list[float]] = []
     for code in codes[:cap]:
-        if sum(seq.count(code) for seq in corpus_sequences) < min_corpus_count:
+        if corpus_freq.get(code, 0) < min_corpus_count:
             continue
         feats = _build_positional_features(code, corpus_sequences)
         feat_vecs.append([feats[f] for f in _POSITION_FEATURES])
@@ -572,6 +575,7 @@ def _method_positional_profile(
     simple_mean: np.ndarray,
     simple_std: np.ndarray,
     min_corpus_count: int = 3,
+    corpus_freq: "Counter | None" = None,
 ) -> MethodEvidence | None:
     """Score a candidate by comparing its positional profile to both the
     compound and simple-sign distributions.
@@ -595,7 +599,9 @@ def _method_positional_profile(
     min_corpus_count : int
         Skip candidates with fewer than this many occurrences.
     """
-    total = sum(seq.count(candidate_code) for seq in corpus_sequences)
+    if corpus_freq is None:
+        corpus_freq = Counter(tok for seq in corpus_sequences for tok in seq)
+    total = corpus_freq.get(candidate_code, 0)
     if total < min_corpus_count:
         return None
 
@@ -758,9 +764,9 @@ class CompoundDetector:
         # compound distribution inside _method_positional_profile on every
         # candidate call (O(n_candidates × n_compounds × corpus)).
         logger.info("CompoundDetector: precomputing positional profiles…")
+        corpus_freq: Counter = Counter(tok for seq in corpus_sequences for tok in seq)
         all_corpus_codes = sorted({
-            tok for seq in corpus_sequences for tok in seq
-            if tok and tok != "?"
+            tok for tok in corpus_freq if tok and tok != "?"
         })
         simple_codes_for_profile = [
             c for c in all_corpus_codes
@@ -773,12 +779,14 @@ class CompoundDetector:
             corpus_sequences,
             min_corpus_count=3,
             cap=200,
+            corpus_freq=corpus_freq,
         )
         simple_pos_mean, simple_pos_std = _compute_positional_profile_stats(
             simple_codes_for_profile,
             corpus_sequences,
             min_corpus_count=3,
             cap=300,
+            corpus_freq=corpus_freq,
         )
         logger.info(
             "  Positional profile: %d compound codes, %d simple codes.",
@@ -838,6 +846,7 @@ class CompoundDetector:
                 code, corpus_sequences,
                 compound_pos_mean, compound_pos_std,
                 simple_pos_mean, simple_pos_std,
+                corpus_freq=corpus_freq,
             )
             if ev3 is not None and ev3.confidence >= self._min_confidence:
                 evidence.append(ev3)

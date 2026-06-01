@@ -66,6 +66,7 @@ import argparse
 import json
 import logging
 import math
+import html as _html
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -964,7 +965,7 @@ def _section_frequency_breakdown(corpus_dir: Path | None, svg_catalog_path: Path
         cards_html += f"""
 <div class="freq-card">
   {img_block}
-  <div class="freq-code">{code}</div>
+  <div class="freq-code">{_html.escape(str(code))}</div>
   <div class="freq-stat">{freq:,} <span class="freq-pct">({pct:.1f}%)</span></div>
   <div class="ic-bar-wrap" title="IC contribution: {ic_pct:.1f}%">
     <div class="ic-bar" style="width:{bar_w}%"></div>

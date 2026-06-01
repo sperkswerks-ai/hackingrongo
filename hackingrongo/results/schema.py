@@ -49,6 +49,8 @@ import csv
 import hashlib
 import io
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -274,7 +276,14 @@ class DecryptionHypothesis:
             Destination path.  Parent directories are created if needed.
         """
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_json(), encoding="utf-8")
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(self.to_json())
+            os.replace(tmp_name, path)
+        except BaseException:
+            os.unlink(tmp_name)
+            raise
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DecryptionHypothesis":
@@ -434,7 +443,14 @@ class HypothesisRanking:
             Destination path.  Parent directories are created if needed.
         """
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_json(), encoding="utf-8")
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(self.to_json())
+            os.replace(tmp_name, path)
+        except BaseException:
+            os.unlink(tmp_name)
+            raise
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HypothesisRanking":

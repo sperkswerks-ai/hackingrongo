@@ -148,7 +148,7 @@ def _load_damaged_glyphs(corpus_dir: Path) -> list[dict[str, Any]]:
 def _load_embeddings(embeddings_path: Path) -> dict[tuple[str, int], Any] | None:
     try:
         import torch
-        cache = torch.load(embeddings_path, map_location="cpu", weights_only=False)
+        cache = torch.load(embeddings_path, map_location="cpu", weights_only=True)
         if isinstance(cache, dict):
             log.info("Embeddings cache loaded: %d entries.", len(cache))
             return cache

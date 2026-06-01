@@ -115,16 +115,16 @@ log = logging.getLogger(__name__)
 #
 # Boost factors calibrated to alignment confidence scores (baseline = 1.0).
 CALENDAR_ANCHORS_HARD: dict[str, str] = {
-    "040": "kokore",    # confidence 0.985 — night-count marker, Ca7-Ca8 dominant
+    "040": "kokore",    # 129 occurrences — hard pin required at full scale
     "152": "omotohi",   # confidence 1.000 — full moon (Rākaunui, night 15)
     "143": "huna",      # confidence 1.000 — near-full moon (Huna, night 14)
-    "078": "maure",     # confidence 1.000 — waning gibbous / last-quarter (Māure)
+    "078": "maure",     # 20 occurrences — promoted from soft; corpus pressure too high
 }
 
 CALENDAR_ANCHORS_SOFT: dict[str, tuple[str, float]] = {
-    "074": ("ohua", 0.7),    # first-quarter anchor (Ōhua context); moderate evidence
-    "280": ("honu", 0.7),    # dark-moon turtle metaphor; Metoro recitation
-    "010": ("oike", 0.7),    # lunar marker; late Ca9 dark-moon period
+    "074": ("ohua", 0.85),   # first-quarter anchor (Ōhua context); weight increased
+    "280": ("honu", 0.85),   # dark-moon turtle metaphor; Metoro recitation
+    "010": ("oike", 0.85),   # lunar marker; late Ca9 dark-moon period
 }
 
 # Backward-compatible alias consumed by the mixed-model path below.
@@ -962,8 +962,10 @@ def _run(
             freq_path   = freq_path_auto   if freq_path_auto.exists()   else None,
             morph_path  = morph_path_auto  if morph_path_auto.exists()  else None,
         )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("Could not generate HTML report: %s", exc)
+    except ImportError:
+        raise  # missing dependency — not a graceful-degradation case
+    except Exception as exc:
+        log.warning("Could not generate HTML report: %s", exc, exc_info=True)
 
     log.info(
         "Written %d hypothesis file(s) + ranking.{json,csv,md} + decipherment_report.html → %s",

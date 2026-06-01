@@ -91,8 +91,10 @@ def _load_corpus_sequences(
         log.info("Corpus: %d tablets, %d total tokens.",
                  len(seqs), sum(len(s) for s in seqs))
         return seqs
+    except ImportError:
+        raise  # misconfigured environment — not a graceful-degradation case
     except Exception as exc:
-        log.warning("Could not load corpus via hackingrongo loader: %s", exc)
+        log.warning("Could not load corpus via hackingrongo loader: %s", exc, exc_info=True)
         return []
 
 
@@ -373,46 +375,48 @@ def _refine_hypothesis(
 # LMScorer re-scoring (honest KN comparison)
 # ---------------------------------------------------------------------------
 
+def _build_lm_scorer(project_root: Path, cfg_path: Path) -> "LMScorer | None":
+    """Build a KN-smoothed LMScorer once for reuse across all hypotheses."""
+    try:
+        from omegaconf import OmegaConf
+        from hackingrongo.zone_c.lm_scoring import LMScorer
+        cfg = OmegaConf.load(cfg_path)
+        return LMScorer(cfg, project_root)
+    except Exception as exc:
+        log.warning("Could not build LMScorer: %s", exc, exc_info=True)
+        return None
+
+
 def _rescore_with_lm(
     refined_hyp: dict[str, Any],
     corpus_seqs: list[list[str]],
-    project_root: Path,
-    cfg_path: Path,
+    scorer: "LMScorer | None",
 ) -> float | None:
     """Score the refined hard assignment with the KN-smoothed LMScorer.
 
     Returns mean ensemble log₂-prob across corpus tablets, or None on failure.
     """
+    if scorer is None:
+        return None
     try:
-        from omegaconf import OmegaConf
-        from hackingrongo.zone_c.lm_scoring import LMScorer
         import statistics
-
-        cfg = OmegaConf.load(cfg_path)
-        scorer = LMScorer(cfg, project_root)
-
         phoneme_map: dict[str, str] = {
             a["sign_code"]: a["phoneme"]
             for a in refined_hyp.get("refined_assignments", [])
         }
-
         log_probs: list[float] = []
         for seq in corpus_seqs:
-            phoneme_seq = [
-                phoneme_map.get(tok, "<UNK>") for tok in seq
-            ]
+            phoneme_seq = [phoneme_map.get(tok, "<UNK>") for tok in seq]
             if not phoneme_seq:
                 continue
             result = scorer.score(phoneme_seq)
             if math.isfinite(result.ensemble_log_prob):
                 log_probs.append(result.ensemble_log_prob)
-
         if not log_probs:
             return None
         return round(statistics.mean(log_probs), 6)
-
     except Exception as exc:
-        log.warning("LMScorer re-scoring failed: %s", exc)
+        log.warning("LMScorer re-scoring failed: %s", exc, exc_info=True)
         return None
 
 
@@ -534,6 +538,10 @@ def main(argv: list[str] | None = None) -> None:
     T_np = _build_transition_matrix(args.lm_dir, phoneme_inv, alpha=0.01)
     T = torch.from_numpy(T_np)
 
+    # Build LMScorer once — not per hypothesis (loading all LM files is expensive)
+    log.info("Building KN LMScorer for re-scoring…")
+    lm_scorer = _build_lm_scorer(args.project_root, cfg_path)
+
     # ── Refine each hypothesis ────────────────────────────────────────────────
     refined_hypotheses: list[dict] = []
 
@@ -557,7 +565,7 @@ def main(argv: list[str] | None = None) -> None:
 
         # Re-score with KN LMScorer for honest comparison
         log.info("  Re-scoring refined assignment with KN LMScorer…")
-        refined_lm = _rescore_with_lm(refined, corpus_seqs, args.project_root, cfg_path)
+        refined_lm = _rescore_with_lm(refined, corpus_seqs, lm_scorer)
         refined["refined_lm_score"] = refined_lm
 
         if orig_score is not None and refined_lm is not None:
@@ -573,9 +581,16 @@ def main(argv: list[str] | None = None) -> None:
     # ── Merge back and save ───────────────────────────────────────────────────
     ranking["hypotheses"][:top_k] = refined_hypotheses
 
+    import os, tempfile
     out_path = args.output or args.ranking
-    with open(out_path, "w") as fh:
-        json.dump(ranking, fh, indent=2)
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=out_path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(ranking, fh, indent=2)
+        os.replace(tmp_name, out_path)
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
 
     log.info("Wrote refined ranking to %s", out_path)
     log.info(

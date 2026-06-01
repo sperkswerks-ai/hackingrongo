@@ -212,7 +212,7 @@ class MCMCSampler:
         self._phoneme_inventory = (
             list(phoneme_inventory)
             if phoneme_inventory is not None
-            else _DEFAULT_PHONEME_INVENTORY
+            else list(_DEFAULT_PHONEME_INVENTORY)
         )
         if phoneme_priors is not None:
             if len(phoneme_priors) != len(self._phoneme_inventory):
@@ -400,7 +400,7 @@ class MCMCSampler:
                 _mp_context = None  # default fork/forkserver on non-Colab
 
         if self._num_chains > 1 and not _force_sequential and (_mp_context is not None or not _in_colab):
-            n_workers = min(self._num_chains, os.cpu_count() or self._num_chains)
+            n_workers = min(self._num_chains, os.cpu_count() or 4)
             # Per-chain timeout: 20 min per 1 000 iterations (generous).
             _timeout = max(1200, self._num_iterations * 1.2)
             _executor_kwargs: dict = {"max_workers": n_workers}
@@ -506,7 +506,7 @@ class MCMCSampler:
         if n_T == 1:
             temps: list[float] = [1.0]
         else:
-            temps = [t_max ** (i / (n_T - 1)) for i in range(n_T - 1, -1, -1)]
+            temps = [t_max ** (i / (n_T - 1)) for i in range(n_T)]
 
         rng = random.Random(self._seed)
         chain_maps = [
@@ -736,7 +736,13 @@ class MCMCSampler:
         return samples, post_rate
 
     def _occupancy_log_prior(self, phoneme_map: PhonemeMap) -> float:
-        """Structural log-prior discouraging many-to-one phoneme collapse."""
+        """Structural log-prior discouraging many-to-one phoneme collapse.
+
+        Penalty is normalised by n_free (number of non-crib signs) so the
+        scale is independent of corpus or sign-inventory size.  Without this,
+        the quadratic sum grows with inventory size and overwhelms the LM
+        signal at full-corpus scale.
+        """
         if self._occupancy_weight <= 0.0:
             return 0.0
 
@@ -745,7 +751,8 @@ class MCMCSampler:
         for n in counts.values():
             excess = max(0, n - self._occupancy_cap)
             penalty += float(excess * excess)
-        return -self._occupancy_weight * penalty
+        n_free = max(len(self._free_sign_ids), 1)
+        return -self._occupancy_weight * penalty / n_free
 
     def _occupancy_prior_delta(
         self,
