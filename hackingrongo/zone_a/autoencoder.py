@@ -115,6 +115,10 @@ def _encoder_spatial_size(cfg: DictConfig) -> int:
     int
         Spatial side length of the encoder's final feature map.
     """
+    # Top-level zone_a.backbone = "dinov2" shortcut — global CLS token, no spatial map.
+    top_backbone = str(cfg.zone_a.get("backbone", "custom")).lower()
+    if top_backbone == "dinov2":
+        return 1
     bb = cfg.zone_a.shared_backbone
     pretrained = str(bb.get("pretrained_backbone", "null")).lower()
     if pretrained not in ("", "null", "none"):
