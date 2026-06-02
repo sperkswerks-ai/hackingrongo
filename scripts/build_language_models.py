@@ -17,6 +17,34 @@ one Kneser-Ney smoothed :class:`~hackingrongo.data.rapa_nui_corpus.NGramLM`
 per pair, and serialises each to a JSON file under
 ``data/language_models/``.
 
+N-gram order
+------------
+Default configuration builds orders 3, 4, and 5 (see
+``conf/config.yaml → zone_c.lm_scoring.ngram_orders``).  Order-5 models
+for ``pre_contact`` and ``post_contact`` have the Hawaiian ``smoothing``
+LM attached as a cross-lingual KN backoff for unseen 4/5-gram contexts
+(α = 0.15).  This implements modified Kneser-Ney with backoff to the
+Hawaiian smoothing LM as described in the long-range dependency
+hypothesis.
+
+Self-training comparison (3-gram vs 5-gram)
+-------------------------------------------
+After building, run self-training twice to compare score trajectories::
+
+    # 3-gram baseline (order-3 LM already on disk)
+    python scripts/run_self_training.py \\
+        zone_c.lm_scoring.primary_order=3 \\
+        mlflow.run_name=self_training_3gram
+
+    # 5-gram with Hawaiian backoff
+    python scripts/run_self_training.py \\
+        zone_c.lm_scoring.primary_order=5 \\
+        mlflow.run_name=self_training_5gram_hawaiian_backoff
+
+Compare the ``top_lm_score`` trajectories in MLflow.  A larger
+self-training delta for the 5-gram run supports the long-range dependency
+hypothesis.
+
 For languages without text corpora (Hawaiian, Māori, Tahitian), the script
 logs a warning and skips — those LMs can be added once the corpora are
 obtained from POLLEX or Max Planck's CLICS.
@@ -31,6 +59,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from pathlib import Path
 
 import hydra
@@ -50,19 +79,56 @@ def main(cfg: DictConfig) -> None:
     from hackingrongo.data.rapa_nui_corpus import build_all_lms
 
     project_root = Path(hydra.utils.get_original_cwd())
+    orders = list(cfg.zone_c.lm_scoring.ngram_orders)
+    eras = list(cfg.zone_c.lm_scoring.lms)
+    max_order = max(int(o) for o in orders)
 
     logger.info(
         "Building language models. Era LMs: %s  Orders: %s",
-        list(cfg.zone_c.lm_scoring.lms),
-        list(cfg.zone_c.lm_scoring.ngram_orders),
+        eras,
+        orders,
     )
 
     out_dir = project_root / "data" / "language_models"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    t0 = time.time()
     build_all_lms(cfg, project_root)
+    elapsed = time.time() - t0
 
-    logger.info("Language model build complete.  Files written to: %s", out_dir)
+    logger.info(
+        "Language model build complete (%.1fs).  Files written to: %s", elapsed, out_dir
+    )
+
+    # ----------------------------------------------------------------
+    # Log build metadata to MLflow so the 3-gram vs 5-gram comparison
+    # can be tracked by run name in the same experiment.
+    # ----------------------------------------------------------------
+    try:
+        import mlflow
+
+        mlflow_dir = project_root / "outputs" / "mlruns"
+        mlflow.set_tracking_uri(mlflow_dir.as_uri())
+        mlflow.set_experiment("rongorongo_lm_build")
+
+        with mlflow.start_run(run_name=f"lm_build_maxorder{max_order}"):
+            mlflow.log_param("eras", ",".join(str(e) for e in eras))
+            mlflow.log_param("ngram_orders", ",".join(str(o) for o in orders))
+            mlflow.log_param("max_order", max_order)
+            mlflow.log_param(
+                "hawaiian_backoff",
+                "yes" if max_order >= 4 else "no",
+            )
+            mlflow.log_param("backoff_alpha", 0.15)
+            mlflow.log_param("backoff_from_order", 4)
+            mlflow.log_metric("build_time_seconds", elapsed)
+            logger.info(
+                "MLflow run logged to experiment 'rongorongo_lm_build' "
+                "(run: lm_build_maxorder%d).",
+                max_order,
+            )
+    except Exception as exc:
+        logger.debug("MLflow logging skipped: %s", exc)
 
 
 if __name__ == "__main__":

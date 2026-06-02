@@ -111,6 +111,12 @@ class SignClassification:
         Shannon entropy (bits) of this sign's positional distribution
         across its tablet occurrences.  Low entropy → restricted
         positional range → logogram candidate.
+    sequential_entropy : float
+        Shannon entropy (nats) of the distribution over right-context
+        neighbours of this sign: H(X_{i+1} | X_i = S).  High entropy
+        → sign appears in many different contexts → phonemic candidate.
+        Zero for signs that never appear before another sign in the corpus.
+        Defaults to 0.0 when not supplied (backward compatible).
     """
 
     code: str
@@ -119,6 +125,7 @@ class SignClassification:
     frequency_percentile: float
     omission_rate: float
     positional_entropy: float
+    sequential_entropy: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +231,7 @@ class SignInventory:
                 "frequency_percentile": rec.frequency_percentile,
                 "omission_rate": rec.omission_rate,
                 "positional_entropy": rec.positional_entropy,
+                "sequential_entropy": rec.sequential_entropy,
             }
             for code, rec in self.classifications.items()
         }
@@ -254,6 +262,7 @@ def classify_inventory(
     omission_rates: dict[str, float],
     positional_entropy: dict[str, float],
     cfg: DictConfig,
+    sequential_entropy: dict[str, float] | None = None,
 ) -> SignInventory:
     """Classify all signs in the corpus into functional categories.
 
@@ -276,6 +285,14 @@ def classify_inventory(
         * ``cfg.zone_b.sign_classifier.taxogram_omission_rate_threshold``
         * ``cfg.zone_b.sign_classifier.logogram_positional_entropy_threshold``
         * ``cfg.zone_b.contact_analysis.min_glyph_frequency``
+        * ``cfg.zone_b.sign_classifier.sequential_entropy_phonetic_threshold``
+          (optional; default 0.5 nats)
+
+    sequential_entropy : dict[str, float] or None, optional
+        Maps Barthel code → H(X_{i+1} | X_i = S) in nats (output of
+        ``scripts/train_sequential_embeddings.py``).  When provided, high
+        sequential entropy boosts the PHONETIC confidence score.
+        Pass ``None`` (default) to run without this feature.
 
     Returns
     -------
@@ -302,6 +319,12 @@ def classify_inventory(
         sc_cfg.logogram_positional_entropy_threshold
     )
     min_freq: float = float(cfg.zone_b.contact_analysis.min_glyph_frequency)
+    # Sequential entropy threshold: above this value, a PHONETIC sign's
+    # confidence is boosted proportionally.  Read from config with fallback.
+    try:
+        seq_ent_thresh: float = float(sc_cfg.sequential_entropy_phonetic_threshold)
+    except Exception:
+        seq_ent_thresh = 0.5  # nats; reasonable default
 
     all_codes = sorted(
         set(frequency_stats) | set(omission_rates) | set(positional_entropy)
@@ -329,6 +352,7 @@ def classify_inventory(
         freq = frequency_stats.get(code, 0.0)
         omission = omission_rates.get(code, 0.0)
         entropy = positional_entropy.get(code, 0.0)
+        seq_ent = sequential_entropy.get(code, 0.0) if sequential_entropy else 0.0
         freq_pct = float(freq_percentiles[i])
 
         # Insufficient evidence: absolute frequency below corpus minimum.
@@ -365,6 +389,12 @@ def classify_inventory(
                 (dist_from_taxogram + dist_from_logogram) / 2.0,
             )
             confidence = max(0.0, confidence)
+            # Sequential entropy boost: high H(context) → more certain PHONETIC.
+            # Additive blend capped at 1.0; weight = 0.3 so the boost cannot
+            # exceed 0.3 and the positional-entropy signal retains priority.
+            if sequential_entropy is not None and seq_ent > seq_ent_thresh:
+                seq_boost = 0.3 * min(1.0, (seq_ent - seq_ent_thresh) / (seq_ent_thresh + 1e-9))
+                confidence = min(1.0, confidence + seq_boost)
 
         classifications[code] = SignClassification(
             code=code,
@@ -373,6 +403,7 @@ def classify_inventory(
             frequency_percentile=freq_pct,
             omission_rate=omission,
             positional_entropy=entropy,
+            sequential_entropy=seq_ent,
         )
 
     inventory = SignInventory(classifications=classifications)

@@ -254,6 +254,14 @@ class NGramLM:
         # appear in generated sequences accumulate, which is much smaller.
         self._lp_cache: dict[tuple[str, ...], float] = {}
 
+        # Optional cross-lingual backoff for unseen high-order contexts.
+        # Set via set_backoff_lm(); used in _kn_prob for orders >= _backoff_from_order.
+        # The path is persisted in save() so load() can restore the reference.
+        self._backoff_lm: "NGramLM | None" = None
+        self._backoff_from_order: int = 4
+        self._backoff_alpha: float = 0.15
+        self._backoff_lm_path: "str | None" = None
+
     # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
@@ -468,6 +476,53 @@ class NGramLM:
             for word in self._vocab
         }
 
+    def set_backoff_lm(
+        self,
+        lm: "NGramLM",
+        lm_path: "str | Path | None" = None,
+        from_order: int = 4,
+        alpha: float = 0.15,
+    ) -> None:
+        """Attach a cross-lingual backoff LM for unseen high-order contexts.
+
+        When ``_kn_prob`` encounters an unseen context at order k ≥
+        ``from_order``, it interpolates the lower-order probability with
+        the backoff LM's probability at weight ``alpha``:
+
+            P_final = (1 - alpha) * P_primary + alpha * P_backoff
+
+        The typical use-case is attaching the Hawaiian smoothing LM to a
+        5-gram Rapa Nui model so that unseen 4/5-gram contexts fall back
+        to well-estimated Hawaiian probabilities rather than pure lower-
+        order KN.
+
+        The ``_lp_cache`` is cleared so previously cached values computed
+        without backoff are invalidated.
+
+        Parameters
+        ----------
+        lm : NGramLM
+            Finalised backoff model.
+        lm_path : str or Path, optional
+            Path to the backoff model's JSON file.  Stored in save() so
+            load() can restore the reference automatically.
+        from_order : int
+            Minimum order at which to apply backoff.  Default 4.
+        alpha : float
+            Interpolation weight for the backoff LM (0 < alpha < 1).
+        """
+        if not lm._finalised:
+            raise RuntimeError("Backoff LM must be finalised before attaching.")
+        self._backoff_lm = lm
+        self._backoff_from_order = from_order
+        self._backoff_alpha = alpha
+        self._backoff_lm_path = str(lm_path) if lm_path is not None else None
+        self._lp_cache.clear()  # invalidate cached values computed without backoff
+        logger.info(
+            "NGramLM[%s, order=%d]: backoff LM attached (language=%s, from_order=%d, alpha=%.2f).",
+            self.language, self.order, lm.language, from_order, alpha,
+        )
+
     # ------------------------------------------------------------------
     # Inference
     # ------------------------------------------------------------------
@@ -548,7 +603,18 @@ class NGramLM:
             ctx = context[-(k - 1):]
             ctx_stat = self._ctx_stats.get(k, {}).get(ctx)
             if ctx_stat is None:
-                # Unseen context at this order: equivalent to backing off.
+                # Unseen context: back off to lower-order probability.
+                # For high orders (>= _backoff_from_order) also blend in the
+                # cross-lingual backoff LM if one has been attached.
+                if (
+                    self._backoff_lm is not None
+                    and k >= self._backoff_from_order
+                    and self._backoff_lm._finalised
+                ):
+                    # Truncate context to what the backoff LM can handle.
+                    bo_ctx = ctx[-(self._backoff_lm.order - 1):]
+                    bo_prob = self._backoff_lm._kn_prob(word, bo_ctx)
+                    prob = (1.0 - self._backoff_alpha) * prob + self._backoff_alpha * bo_prob
                 continue
             ctx_total, n1_types, n2_types, n3plus_types = ctx_stat
             d1, d2, d3 = self._discounts[k]
@@ -589,6 +655,9 @@ class NGramLM:
             "unigram_log_prob": self._unigram_log_prob,
             "discounts": {str(k): list(v) for k, v in self._discounts.items()},
             "counts": {str(n): _table_to_json(t) for n, t in self._counts.items()},
+            "backoff_lm_path": self._backoff_lm_path,
+            "backoff_from_order": self._backoff_from_order,
+            "backoff_alpha": self._backoff_alpha,
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -633,6 +702,32 @@ class NGramLM:
         # counts were removed; see NGramLM class docstring.
         model._precompute_ctx_stats()
         model._precompute_unigram_cache()
+
+        # Restore optional cross-lingual backoff reference.
+        backoff_path_str: str | None = payload.get("backoff_lm_path")
+        if backoff_path_str is not None:
+            model._backoff_lm_path = backoff_path_str
+            model._backoff_from_order = int(payload.get("backoff_from_order", 4))
+            model._backoff_alpha = float(payload.get("backoff_alpha", 0.15))
+            bo_path = Path(backoff_path_str)
+            if bo_path.exists():
+                try:
+                    model._backoff_lm = cls.load(bo_path)
+                    logger.info(
+                        "NGramLM[%s, order=%d]: backoff LM auto-loaded from %s.",
+                        model.language, model.order, bo_path,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "NGramLM[%s, order=%d]: failed to load backoff LM from %s: %s",
+                        model.language, model.order, bo_path, exc,
+                    )
+            else:
+                logger.warning(
+                    "NGramLM[%s, order=%d]: backoff_lm_path %s not found — backoff disabled.",
+                    model.language, model.order, bo_path,
+                )
+
         logger.info(
             "NGramLM[%s, order=%d] loaded from %s.",
             model.language, model.order, path,
@@ -1000,3 +1095,55 @@ def build_all_lms(cfg: DictConfig, project_root: Path) -> None:
                     primary_path.stem + f"_order{order}" + primary_path.suffix
                 )
             model.save(out_path)
+
+    # -----------------------------------------------------------------------
+    # Attach Hawaiian smoothing LM as backoff for unseen 4/5-gram contexts
+    # in the primary (pre_contact / post_contact) models.
+    # -----------------------------------------------------------------------
+    smoothing_era = "smoothing"
+    if smoothing_era in lm_cfg.lms and smoothing_era in lm_cfg.lm_files:
+        smoothing_primary_path = project_root / str(lm_cfg.lm_files[smoothing_era])
+        backoff_orders = [o for o in orders if o >= 4]
+        primary_eras = [e for e in lm_cfg.lms if e != smoothing_era]
+        if backoff_orders and primary_eras:
+            for era in primary_eras:
+                for order in backoff_orders:
+                    primary_path = project_root / str(lm_cfg.lm_files[era])
+                    if order == max_order:
+                        model_path = primary_path
+                    else:
+                        model_path = primary_path.parent / (
+                            primary_path.stem + f"_order{order}" + primary_path.suffix
+                        )
+                    # Determine backoff LM path (use order-3 smoothing if available).
+                    bo_order = min(3, max(orders))
+                    if bo_order == max_order:
+                        bo_path = smoothing_primary_path
+                    else:
+                        bo_path = smoothing_primary_path.parent / (
+                            smoothing_primary_path.stem
+                            + f"_order{bo_order}"
+                            + smoothing_primary_path.suffix
+                        )
+                    if not model_path.exists() or not bo_path.exists():
+                        logger.debug(
+                            "Backoff attachment skipped: model=%s bo=%s (one or both missing).",
+                            model_path, bo_path,
+                        )
+                        continue
+                    try:
+                        primary_model = NGramLM.load(model_path)
+                        bo_model = NGramLM.load(bo_path)
+                        primary_model.set_backoff_lm(
+                            bo_model, lm_path=bo_path, from_order=4, alpha=0.15
+                        )
+                        primary_model.save(model_path)  # re-save with backoff_lm_path
+                        logger.info(
+                            "Attached Hawaiian backoff (order=%d) to NGramLM[%s, order=%d].",
+                            bo_order, era, order,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Could not attach backoff LM to NGramLM[%s, order=%d]: %s",
+                            era, order, exc,
+                        )

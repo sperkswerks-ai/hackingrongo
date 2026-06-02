@@ -412,6 +412,11 @@ zone_b:
     # Shannon entropy of the sign's positional distribution.
     # Signs with entropy ≤ this threshold are classified as LOGOGRAM candidates.
     logogram_positional_entropy_threshold: 0.40
+    # Sequential entropy threshold for PHONETIC confidence boost (nats).
+    # Signs with H(next_sign | this_sign) above this value receive up to
+    # +0.3 confidence boost when classified as PHONETIC.  Set to a large
+    # value (e.g. 999) to disable the boost.
+    sequential_entropy_phonetic_threshold: 0.5
     # Signs with absolute frequency below this value are classified UNKNOWN.
     # Reuses contact_analysis.min_glyph_frequency; override here if needed.
     min_glyph_frequency: 3
