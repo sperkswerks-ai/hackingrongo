@@ -425,7 +425,7 @@ class GlyphImageDataset(Dataset):
         ``"tablet_id"`` : str
             Source tablet identifier.
         ``"position"`` : int
-        pp_cfg = cfg.get("zone_a", {}).get("preprocessing", {}) if cfg.get("zone_a") else {}
+            Absolute glyph position within the tablet.
         ``"stratum"`` : str
             Temporal stratum label.
         """

@@ -263,18 +263,26 @@ def positional_mutual_information(
     tokens_by_pos: list[tuple[str, float]] = []
     for path in sorted(corpus_dir.glob("[A-Z].json")):
         data = json.loads(path.read_text(encoding="utf-8"))
+        # Group glyphs by (side, line) so relative position is computed
+        # within each line, not across the whole tablet.
+        # Corpus JSON uses "position" (absolute), "line", and "side" fields;
+        # there are no pre-computed "position_in_line" or "line_length" fields.
+        line_groups: dict[tuple, list[tuple[int, str]]] = defaultdict(list)
         for g in data.get("glyphs", []):
             hc = g.get("horley_code")
             if not hc:
                 continue
-            # relative_position: pos / (line_len - 1), clamped to [0, 1]
-            pos = g.get("position_in_line")
-            line_len = g.get("line_length")
-            if pos is not None and line_len and line_len > 1:
-                rel = min(1.0, max(0.0, pos / (line_len - 1)))
-            else:
-                rel = 0.5  # unknown position → put in middle bin
-            tokens_by_pos.append((hc, rel))
+            side = g.get("side", "")
+            line = g.get("line", 0)
+            pos = int(g.get("position", 0))
+            line_groups[(side, line)].append((pos, hc))
+        for _line_key, group in line_groups.items():
+            group.sort(key=lambda x: x[0])  # sort by absolute position
+            n_in_line = len(group)
+            for rank, (_pos, hc) in enumerate(group):
+                # relative_position: rank / (n_in_line - 1), clamped to [0, 1]
+                rel = rank / (n_in_line - 1) if n_in_line > 1 else 0.5
+                tokens_by_pos.append((hc, rel))
 
     if not tokens_by_pos:
         return {
