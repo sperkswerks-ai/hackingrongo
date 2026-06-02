@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Task 1: MLflow stability analysis.
-Computes phoneme-assignment variance across the last 4 available runs
-(3 self-training iterations + 1 MLflow finalisation run).
+Stability analysis: phoneme-assignment variance across self-training iterations.
+Compares the top-ranked hypothesis across iter_00 through iter_03.
 """
 import json
 from collections import defaultdict
@@ -12,17 +11,23 @@ RUN_PATHS = [
     ("iter_00", f"{BASE}/outputs/self_training/iter_00/ranking.json"),
     ("iter_01", f"{BASE}/outputs/self_training/iter_01/ranking.json"),
     ("iter_02", f"{BASE}/outputs/self_training/iter_02/ranking.json"),
-    ("mlflow",  f"{BASE}/outputs/mlruns/378634354643297160/"
-                "4eb86c6f3af9437881d19a2132fbb04e/artifacts/decipherment/ranking.json"),
+    ("iter_03", f"{BASE}/outputs/self_training/iter_03/ranking.json"),
 ]
 
 run_assignments = {}
+run_scores = {}
 for run_name, path in RUN_PATHS:
     d = json.load(open(path))
     hyp = d["hypotheses"][0]           # top-ranked hypothesis
     run_assignments[run_name] = {
         asn["sign_code"]: asn for asn in hyp["assignments"]
     }
+    run_scores[run_name] = hyp.get("overall_lm_score", float("nan"))
+
+print("LM scores by iteration:")
+for rn, score in run_scores.items():
+    print(f"  {rn}  lm_score={score:.4f}")
+print()
 
 run_names = [r for r, _ in RUN_PATHS]
 
@@ -72,6 +77,7 @@ for sc, pm in partial:
 
 # Save results
 out = {
+    "lm_scores": run_scores,
     "stable":   [{"sign_code": sc, "phoneme": ph, "confidence": conf} for sc, ph, conf in stable],
     "unstable": [{"sign_code": sc, "phonemes_by_run": ph_map} for sc, ph_map in unstable],
     "partial":  [{"sign_code": sc, "present_in": pm} for sc, pm in partial],

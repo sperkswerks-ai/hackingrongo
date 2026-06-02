@@ -764,6 +764,23 @@ def _run(
             sorted(skipped_anchors),
         )
 
+    # Sequential entropy as sign proposal weights: high-entropy signs appear
+    # in many different contexts and are more likely phonemic, so the MCMC
+    # should explore them more aggressively.  Falls back to uniform if the
+    # file doesn't exist (e.g. first run before train_sequential_embeddings.py).
+    _seq_entropy_path = project_root / "outputs" / "sequential_entropy.json"
+    _sign_ic_weights: dict[str, float] | None = None
+    if _seq_entropy_path.exists():
+        _raw_entropy: dict[str, float] = json.loads(_seq_entropy_path.read_text(encoding="utf-8"))
+        # Shift by +1 so zero-entropy signs still get a small (non-zero) weight.
+        _sign_ic_weights = {s: _raw_entropy.get(s, 0.0) + 1.0 for s in sign_ids}
+        log.info(
+            "Sequential entropy proposal weights loaded from %s (%d signs).",
+            _seq_entropy_path, len(_raw_entropy),
+        )
+    else:
+        log.info("sequential_entropy.json not found — uniform MCMC proposal weights.")
+
     sampler = MCMCSampler(
         cfg=cfg,
         lm_scorer=lm_scorer,
@@ -773,6 +790,7 @@ def _run(
         phoneme_priors=calendar_priors,
         cribs=active_anchors,
         seed=int(cfg.seed),
+        sign_ic_weights=_sign_ic_weights,
     )
     active_boosts = {ph: w for ph, w in _CALENDAR_SOFT_BOOST.items() if ph in phoneme_inventory}
     log.info("Calendar soft boosts: %s", active_boosts)
@@ -921,6 +939,10 @@ def _run(
         if not mixed_sequences:
             log.warning("Mixed model skipped: all sequences emptied by taxogram filtering.")
         else:
+            _mixed_ic_weights = (
+                {s: _sign_ic_weights[s] for s in sign_ids if s in _sign_ic_weights}
+                if _sign_ic_weights else None
+            )
             mixed_sampler = MCMCSampler(
                 cfg=cfg,
                 lm_scorer=lm_scorer,
@@ -930,6 +952,7 @@ def _run(
                 phoneme_priors=mixed_priors,
                 cribs=mixed_cribs,
                 seed=int(cfg.seed),
+                sign_ic_weights=_mixed_ic_weights,
             )
             mixed_mcmc_result: MCMCResult = mixed_sampler.run()
             log.info(

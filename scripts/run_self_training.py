@@ -175,14 +175,24 @@ def _build_ic_weights(
     sign_ids: list[str],
     soft_anchors: dict[str, tuple[str, float]],
     hard_cribs: dict[str, str],
+    sequential_entropy: dict[str, float] | None = None,
 ) -> dict[str, float]:
-    """Low IC weight for soft-anchored signs — keep them sticky without pinning."""
+    """Proposal weights per free sign.
+
+    Soft-anchored signs are damped (kept sticky without pinning).
+    When sequential_entropy is provided, free signs are additionally
+    weighted by (H + 1) so high-entropy (phonemic) signs are explored
+    more aggressively.
+    """
     weights: dict[str, float] = {}
     for sign in sign_ids:
         if sign in hard_cribs:
-            continue  # cribs are excluded from proposals anyway
-        if sign in soft_anchors:
-            weights[sign] = SOFT_IC_DAMP
+            continue
+        base = SOFT_IC_DAMP if sign in soft_anchors else 1.0
+        ent_factor = (sequential_entropy.get(sign, 0.0) + 1.0) if sequential_entropy else 1.0
+        w = base * ent_factor
+        if w != 1.0:  # skip default-weight signs to keep the dict sparse
+            weights[sign] = w
     return weights
 
 
@@ -280,6 +290,7 @@ def _run_iteration(
     config_hash:       str,
     smoke_test:        bool,
     iteration:         int,
+    sequential_entropy: dict[str, float] | None = None,
 ) -> tuple[list[Any], Any, Any]:
     """Run one MCMC + beam iteration. Returns (ranked_hypotheses, mcmc_result, beam_result)."""
     from hackingrongo.zone_c.mcmc import MCMCSampler
@@ -301,7 +312,10 @@ def _run_iteration(
     _validate_anchors(all_cribs, phoneme_inventory, label=f"iter {iteration} cribs")
 
     phoneme_priors = _build_priors(phoneme_inventory, state.soft_anchors)
-    ic_weights     = _build_ic_weights(sign_ids, state.soft_anchors, all_cribs)
+    ic_weights     = _build_ic_weights(
+        sign_ids, state.soft_anchors, all_cribs,
+        sequential_entropy=sequential_entropy,
+    )
 
     active_cribs = {k: v for k, v in all_cribs.items() if k in sign_ids}
 
@@ -877,6 +891,18 @@ def main() -> None:
     all_tablets = load_corpus(cfg, PROJECT_ROOT)
     corpus_sequences, sign_ids = _build_corpus_sequences(all_tablets, args.smoke_test)
 
+    # ── Sequential entropy proposal weights ──────────────────────────────────
+    _seq_entropy_path = PROJECT_ROOT / "outputs" / "sequential_entropy.json"
+    _sequential_entropy: dict[str, float] = {}
+    if _seq_entropy_path.exists():
+        _sequential_entropy = json.loads(_seq_entropy_path.read_text(encoding="utf-8"))
+        log.info(
+            "Sequential entropy loaded (%d signs) — will bias MCMC proposals.",
+            len(_sequential_entropy),
+        )
+    else:
+        log.info("sequential_entropy.json not found — MCMC proposal weights stay IC-only.")
+
     # ── Models ───────────────────────────────────────────────────────────────
     log.info("Loading language models …")
     lm_scorer = LMScorer(cfg, PROJECT_ROOT)
@@ -911,6 +937,7 @@ def main() -> None:
             config_hash=config_hash,
             smoke_test=args.smoke_test,
             iteration=iteration,
+            sequential_entropy=_sequential_entropy if _sequential_entropy else None,
         )
 
         if not ranked:
