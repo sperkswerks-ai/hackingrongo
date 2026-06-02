@@ -594,6 +594,7 @@ class ConvDecoder(nn.Module):
 
         self._last_enc_channels = last_enc_channels
         self._spatial_size = spatial_size
+        self._image_size: int = int(cfg.glyph.image_size)
 
         flat_dim = last_enc_channels * spatial_size * spatial_size
         intermediate_dim: int = int(ae.get("encoder_intermediate_dim", 0))
@@ -714,6 +715,14 @@ class ConvDecoder(nn.Module):
         )
         for block in self.blocks:
             h = block(h)
+        # Final resize: ensures output always matches the input image resolution,
+        # even when spatial_size=1 (DINOv2 CLS token) or when
+        # spatial_size * pool_k^n_blocks != image_size (e.g. image_size=98).
+        if h.shape[-1] != self._image_size:
+            h = torch.nn.functional.interpolate(
+                h, size=(self._image_size, self._image_size),
+                mode="bilinear", align_corners=False,
+            )
         return h
 
 
