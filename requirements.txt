@@ -7,6 +7,9 @@
 # ── Core ML framework ────────────────────────────────────────────────────────
 torch>=2.2,<3.0
 torchvision>=0.17,<1.0          # image transforms and pretrained model utilities
+# facebookresearch/dinov2 — loaded via torch.hub (no pip install needed).
+# torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", pretrained=True)
+# requires an internet connection on first run; weights are cached in ~/.cache/torch/hub/.
 
 # ── Scientific computing ─────────────────────────────────────────────────────
 numpy>=1.26

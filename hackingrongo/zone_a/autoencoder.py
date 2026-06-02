@@ -347,18 +347,102 @@ class PretrainedBackbone(nn.Module):
         return out.unsqueeze(-1).unsqueeze(-1)  # (B, target_ch, 1, 1)
 
 
+class DINOv2GlyphEncoder(nn.Module):
+    """Frozen DINOv2 ViT-S/14 backbone for glyph embedding.
+
+    Config-free standalone class for scripts that do not use the full
+    Hydra config tree (e.g. ``cross_script_similarity.py``).  Backbone
+    weights are frozen by default; only the lightweight projection head
+    is trainable.  For use inside the main training pipeline see
+    :class:`PretrainedBackbone` and the ``zone_a.backbone`` config key.
+
+    Parameters
+    ----------
+    latent_dim : int
+        Output embedding dimension (after projection).
+    dinov2_model : str
+        Torch-hub model identifier: ``"dinov2_vits14"`` (384-d, default)
+        or ``"dinov2_vitb14"`` (768-d).
+    freeze_backbone : bool
+        If True, backbone parameters receive no gradients.
+    """
+
+    _FEAT_DIMS: dict[str, int] = {
+        "dinov2_vits14": 384,
+        "dinov2_vitb14": 768,
+    }
+
+    def __init__(
+        self,
+        latent_dim: int = 128,
+        dinov2_model: str = "dinov2_vits14",
+        freeze_backbone: bool = True,
+    ) -> None:
+        super().__init__()
+        self.backbone = torch.hub.load(
+            "facebookresearch/dinov2",
+            dinov2_model,
+            pretrained=True,
+            verbose=False,
+        )
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad_(False)
+
+        feat_dim = self._FEAT_DIMS.get(dinov2_model, 384)
+        self.projection = nn.Sequential(
+            nn.Linear(feat_dim, 256),
+            nn.GELU(),
+            nn.Linear(256, latent_dim),
+        )
+        self.latent_dim = latent_dim
+
+        logger.info(
+            "DINOv2GlyphEncoder: %s  feat_dim=%d → latent_dim=%d  frozen=%s",
+            dinov2_model, feat_dim, latent_dim, freeze_backbone,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Embed a batch of glyph images.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Shape ``(B, 1, H, W)`` (grayscale) or ``(B, 3, H, W)`` (RGB).
+            Any spatial size; resized to 224 × 224 if needed.
+
+        Returns
+        -------
+        torch.Tensor
+            Shape ``(B, latent_dim)``.
+        """
+        if x.shape[1] == 1:
+            x = x.expand(-1, 3, -1, -1)
+        if x.shape[-1] != 224:
+            x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
+        features = self.backbone.forward_features(x)["x_norm_clstoken"]
+        return self.projection(features)
+
+    def embed(self, x: torch.Tensor) -> torch.Tensor:
+        """Return L2-normalised embeddings suitable for cosine similarity."""
+        return F.normalize(self.forward(x), dim=1)
+
+
 def build_backbone(
     cfg: DictConfig,
     image_channels: int,
 ) -> "SharedConvBackbone | PretrainedBackbone":
     """Factory: return a :class:`SharedConvBackbone` or :class:`PretrainedBackbone`.
 
-    The choice is determined by
-    ``cfg.zone_a.shared_backbone.pretrained_backbone``:
+    Resolution order:
 
-    * ``null`` / ``none`` / ``""`` → :class:`SharedConvBackbone` (default)
-    * ``"dinov2_small"`` / ``"dinov2_base"`` / ``"efficientnet_b0"``
-      → :class:`PretrainedBackbone`
+    1. ``cfg.zone_a.backbone`` — new top-level shortcut:
+       * ``"dinov2"`` → :class:`PretrainedBackbone` with DINOv2 ViT-S/14.
+         Uses ``cfg.zone_a.dinov2_model`` and ``cfg.zone_a.freeze_backbone``.
+       * ``"custom"`` or absent → fall through to (2).
+    2. ``cfg.zone_a.shared_backbone.pretrained_backbone`` — legacy path:
+       * non-null → :class:`PretrainedBackbone`.
+       * null / none / "" → :class:`SharedConvBackbone`.
 
     Parameters
     ----------
@@ -371,6 +455,32 @@ def build_backbone(
     -------
     SharedConvBackbone or PretrainedBackbone
     """
+    from omegaconf import OmegaConf
+
+    # ── 1. Top-level zone_a.backbone shortcut ────────────────────────────────
+    top_backbone = str(cfg.zone_a.get("backbone", "custom")).lower()
+    if top_backbone == "dinov2":
+        dinov2_model = str(cfg.zone_a.get("dinov2_model", "dinov2_vits14")).lower()
+        freeze = bool(cfg.zone_a.get("freeze_backbone", True))
+        # Map user-facing model name to the key PretrainedBackbone._CONFIGS expects
+        _MODEL_MAP = {
+            "dinov2_vits14": "dinov2_small",
+            "dinov2_vitb14": "dinov2_base",
+        }
+        pretrained_key = _MODEL_MAP.get(dinov2_model, "dinov2_small")
+        logger.info(
+            "build_backbone: zone_a.backbone='dinov2' → '%s'  freeze=%s",
+            pretrained_key, freeze,
+        )
+        cfg2 = OmegaConf.merge(cfg, OmegaConf.create({
+            "zone_a": {"shared_backbone": {
+                "pretrained_backbone": pretrained_key,
+                "freeze_pretrained_backbone": freeze,
+            }}
+        }))
+        return PretrainedBackbone(cfg2, image_channels)
+
+    # ── 2. Legacy shared_backbone.pretrained_backbone path ───────────────────
     bb = cfg.zone_a.shared_backbone
     pretrained = str(bb.get("pretrained_backbone", "null")).lower()
     if pretrained not in ("", "null", "none"):

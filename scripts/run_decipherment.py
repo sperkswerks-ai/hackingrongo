@@ -137,6 +137,30 @@ CALENDAR_ANCHORS_SOFT: dict[str, tuple[str, float]] = {
 # Backward-compatible alias consumed by the mixed-model path below.
 CALENDAR_ANCHORS: dict[str, str] = dict(CALENDAR_ANCHORS_HARD)
 
+# ---------------------------------------------------------------------------
+# Cross-script candidate anchors — Hevesy (1932) + Parpola (1994)
+# ---------------------------------------------------------------------------
+# Weight 0.3 = low confidence. These are hypotheses to test, not facts.
+# Populated after cross_script_similarity.py identifies top pairs and
+# Parpola phonetic proposals are looked up for the matching Indus signs.
+# Set ENABLE_CROSS_SCRIPT_PRIORS = True only after the similarity analysis
+# has run and top pairs have been manually reviewed against Parpola (1994).
+ENABLE_CROSS_SCRIPT_PRIORS: bool = False  # disabled by default until validated
+
+CROSS_SCRIPT_SOFT_PRIORS: dict[str, tuple[str, float, str]] = {
+    # Format: "barthel_code": ("candidate_phoneme", weight, "source")
+    # Example (DO NOT activate until cross-script analysis confirms):
+    # "670": ("ma", 0.3, "Hevesy1932+Parpola1994"),
+}
+
+if ENABLE_CROSS_SCRIPT_PRIORS and CROSS_SCRIPT_SOFT_PRIORS:
+    _cs_logger = logging.getLogger(__name__)
+    for _cs_code, (_cs_phoneme, _cs_weight, _cs_source) in CROSS_SCRIPT_SOFT_PRIORS.items():
+        _cs_logger.info(
+            "Cross-script soft prior: sign %s -> %s (weight=%.1f, source=%s)",
+            _cs_code, _cs_phoneme, _cs_weight, _cs_source,
+        )
+
 # Logographic taxograms (external evidence): pinned constraints in the mixed
 # model. These signs are excluded from LM scoring in that model and only
 # constrain surrounding phonemic context.
@@ -723,6 +747,23 @@ def _run(
     # Hard-anchored signs are added to _crib_signs → removed from _free_sign_ids →
     # never touched by _propose() for the entire chain run.
     active_anchors = {k: v for k, v in CALENDAR_ANCHORS_HARD.items() if k in sign_ids}
+    skipped_anchors = {k: v for k, v in CALENDAR_ANCHORS_HARD.items() if k not in sign_ids}
+
+    log.info(
+        "ANCHOR AUDIT — hard cribs: %d active, %d skipped (absent from corpus)",
+        len(active_anchors), len(skipped_anchors),
+    )
+    for sign, phoneme in active_anchors.items():
+        log.info("  [ACTIVE]  %s → %s", sign, phoneme)
+    for sign, phoneme in skipped_anchors.items():
+        log.info("  [SKIPPED] %s → %s  (not in sign_ids — corpus may be Tablet D only)", sign, phoneme)
+    if skipped_anchors:
+        log.warning(
+            "Anchors %s not applied — sign(s) absent from this run's corpus. "
+            "Run without --smoke-test for full anchor activation.",
+            sorted(skipped_anchors),
+        )
+
     sampler = MCMCSampler(
         cfg=cfg,
         lm_scorer=lm_scorer,
@@ -734,7 +775,6 @@ def _run(
         seed=int(cfg.seed),
     )
     active_boosts = {ph: w for ph, w in _CALENDAR_SOFT_BOOST.items() if ph in phoneme_inventory}
-    log.info("Calendar hard anchors (cribs): %s", active_anchors)
     log.info("Calendar soft boosts: %s", active_boosts)
     mcmc_result: MCMCResult = sampler.run()
 

@@ -134,6 +134,14 @@ glyph:
 
 # ─── Zone A — Learned Visual Layers ─────────────────────────────────────────
 zone_a:
+  # ---  Backbone selection  ---
+  # "custom"  → SharedConvBackbone trained from scratch (original architecture)
+  # "dinov2"  → frozen DINOv2 ViT-S/14 backbone; only projection head is trained
+  backbone: "dinov2"
+  dinov2_model: "dinov2_vits14"   # dinov2_vits14 (384-d) | dinov2_vitb14 (768-d)
+  freeze_backbone: true
+  latent_dim: 128                  # projection head output dim (matches autoencoder.bottleneck_dim)
+
   # ---  Preprocessing (applied before any network sees pixel data)  ---
   preprocessing:
     boustrophedon_normalize: true    # rotate alternating lines 180° (reverse boustrophedon)
