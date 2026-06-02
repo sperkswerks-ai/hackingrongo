@@ -116,7 +116,9 @@ data:
 # ─── Glyph Image Format ──────────────────────────────────────────────────────
 glyph:
   # All glyph PNGs are resized to image_size × image_size before entering Zone A
-  image_size: 64
+  # Must be divisible by 14 when using DINOv2 backbone (patch_size=14).
+  # Valid sizes: 56, 70, 84, 98, 112, 126, ...  Custom CNN: any size works.
+  image_size: 98                     # 7×14 — smallest DINOv2-compatible size > 64
   image_channels: 1                  # 1 = grayscale, 3 = RGB
 
   # Expected PNG filename convention under data/glyphs/
