@@ -1,0 +1,2354 @@
+{
+  "_metadata": {
+    "title": "Parpola–Mahadevan Indus Script Sign Concordance",
+    "version": "0.1-partial",
+    "created": "2026-06-02",
+    "source_primary": "Parpola, A. (1994). Deciphering the Indus Script. Cambridge University Press. Appendix (Sign List). [not digitised in machine-readable form as of 2026]",
+    "source_secondary": [
+      "Mahadevan, I. (1977). The Indus Script: Texts, Concordance and Tables. Archaeological Survey of India. Category structure from Internet Archive OCR.",
+      "Yadav, N. & Vahia, M. N. (2007). Indus Script: A Study of its Sign Design. Harappa.com.",
+      "Yadav, N. et al. (2010). Statistical Analysis of the Indus Script Using n-grams. PLOS ONE 5(3):e9506.",
+      "Wells, B. (2011). Epigraphic Approaches to Indus Writing. Oxbow Books.",
+      "NFM-Indus Script font (Buriro & Kumbhar, NFMD): PUA U+E000 = Parpola sign 1.",
+      "arXiv:2604.17828 (2026): no fully validated machine-readable cross-concordance exists."
+    ],
+    "status": "PARTIAL",
+    "completeness": {
+      "total_parpola_signs": 386,
+      "mapped": 326,
+      "unmapped": 60,
+      "by_confidence": {
+        "low": 310,
+        "medium": 15,
+        "null": 60,
+        "high": 1
+      }
+    },
+    "confidence_levels": {
+      "high": "Explicitly cited in peer-reviewed literature with both P-number and M-number",
+      "medium": "Inferred from well-documented categorical cluster (fish signs P059–P065, humans P191–P198)",
+      "low": "Sequential offset within inferred Mahadevan category; internal ordering uncertain",
+      "null": "Cannot map without Parpola 1994 Appendix"
+    },
+    "usage_notes": "NFM font render_indus_glyphs.py: codepoint = 0xE000 + (parpola_seq - 1). Existing data/glyphs/indus/ images were fetched from harappa.com in Mahadevan order and are correctly labeled — this crosswalk is only needed to re-render from the NFM font. HEVESY_PAIRS in cross_script_similarity.py use Mahadevan numbers directly.",
+    "hevesy_note": "Hevesy (1932) used Marshall (1931) numbers. Parpola (1994) pp. 21-23 and Guy (1990) re-expressed the pairs in post-Mahadevan notation. HEVESY_PAIRS reconstructed from Fischer (1997) pp. 35-38, Parpola (1994) pp. 21-23, and visual-category analysis of both sign inventories."
+  },
+  "concordance": {
+    "1": {
+      "mahadevan": "M086",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "2": {
+      "mahadevan": "M087",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "3": {
+      "mahadevan": "M088",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "4": {
+      "mahadevan": "M089",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "5": {
+      "mahadevan": "M090",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "6": {
+      "mahadevan": "M091",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "7": {
+      "mahadevan": "M092",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "8": {
+      "mahadevan": "M093",
+      "confidence": "low",
+      "description": "stroke/linear mark — category III (M086–M095)",
+      "sources": "categorical inference"
+    },
+    "9": {
+      "mahadevan": "M094",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "10": {
+      "mahadevan": "M095",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "11": {
+      "mahadevan": "M096",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "12": {
+      "mahadevan": "M097",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "13": {
+      "mahadevan": "M098",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "14": {
+      "mahadevan": "M099",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "15": {
+      "mahadevan": "M100",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "16": {
+      "mahadevan": "M101",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "17": {
+      "mahadevan": "M102",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "18": {
+      "mahadevan": "M103",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "19": {
+      "mahadevan": "M104",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "20": {
+      "mahadevan": "M105",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "21": {
+      "mahadevan": "M106",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "22": {
+      "mahadevan": "M107",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "23": {
+      "mahadevan": "M108",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "24": {
+      "mahadevan": "M109",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "25": {
+      "mahadevan": "M110",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "26": {
+      "mahadevan": "M111",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "27": {
+      "mahadevan": "M112",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "28": {
+      "mahadevan": "M113",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "29": {
+      "mahadevan": "M114",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "30": {
+      "mahadevan": "M115",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "31": {
+      "mahadevan": "M116",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "32": {
+      "mahadevan": "M117",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "33": {
+      "mahadevan": "M118",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "34": {
+      "mahadevan": "M119",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "35": {
+      "mahadevan": "M120",
+      "confidence": "low",
+      "description": "angle/cross mark — category III (M094–M122)",
+      "sources": "categorical inference"
+    },
+    "36": {
+      "mahadevan": "M123",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "37": {
+      "mahadevan": "M124",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "38": {
+      "mahadevan": "M125",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "39": {
+      "mahadevan": "M126",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "40": {
+      "mahadevan": "M127",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "41": {
+      "mahadevan": "M128",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "42": {
+      "mahadevan": "M129",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "43": {
+      "mahadevan": "M130",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "44": {
+      "mahadevan": "M131",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "45": {
+      "mahadevan": "M132",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "46": {
+      "mahadevan": "M133",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "47": {
+      "mahadevan": "M134",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "48": {
+      "mahadevan": "M135",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "49": {
+      "mahadevan": "M136",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "50": {
+      "mahadevan": "M137",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "51": {
+      "mahadevan": "M138",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "52": {
+      "mahadevan": "M139",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "53": {
+      "mahadevan": "M140",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "54": {
+      "mahadevan": "M141",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "55": {
+      "mahadevan": "M142",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "56": {
+      "mahadevan": "M143",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "57": {
+      "mahadevan": "M144",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "58": {
+      "mahadevan": "M145",
+      "confidence": "low",
+      "description": "linear geometric — category IV (M123–M145)",
+      "sources": "categorical inference"
+    },
+    "59": {
+      "mahadevan": "M340",
+      "confidence": "medium",
+      "description": "simple fish",
+      "sources": "categorical inference"
+    },
+    "60": {
+      "mahadevan": "M341",
+      "confidence": "medium",
+      "description": "fish with stroke",
+      "sources": "categorical inference"
+    },
+    "61": {
+      "mahadevan": "M342",
+      "confidence": "medium",
+      "description": "leaf/fish sign (elongated)",
+      "sources": "categorical inference"
+    },
+    "62": {
+      "mahadevan": "M343",
+      "confidence": "medium",
+      "description": "fish with two strokes",
+      "sources": "categorical inference"
+    },
+    "63": {
+      "mahadevan": "M344",
+      "confidence": "medium",
+      "description": "fish with diagonal",
+      "sources": "categorical inference"
+    },
+    "64": {
+      "mahadevan": "M345",
+      "confidence": "medium",
+      "description": "fish compound",
+      "sources": "categorical inference"
+    },
+    "65": {
+      "mahadevan": "M346",
+      "confidence": "medium",
+      "description": "fish+mark complex",
+      "sources": "categorical inference"
+    },
+    "66": {
+      "mahadevan": "M063",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "67": {
+      "mahadevan": "M064",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "68": {
+      "mahadevan": "M065",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "69": {
+      "mahadevan": "M066",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "70": {
+      "mahadevan": "M067",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "71": {
+      "mahadevan": "M068",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "72": {
+      "mahadevan": "M069",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "73": {
+      "mahadevan": "M070",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "74": {
+      "mahadevan": "M071",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "75": {
+      "mahadevan": "M072",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "76": {
+      "mahadevan": "M073",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "77": {
+      "mahadevan": "M074",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "78": {
+      "mahadevan": "M075",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "79": {
+      "mahadevan": "M076",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "80": {
+      "mahadevan": "M077",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "81": {
+      "mahadevan": "M078",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "82": {
+      "mahadevan": "M079",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "83": {
+      "mahadevan": "M080",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "84": {
+      "mahadevan": "M081",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "85": {
+      "mahadevan": "M082",
+      "confidence": "low",
+      "description": "aquatic variant — category II (M063–M082)",
+      "sources": "categorical inference"
+    },
+    "86": {
+      "mahadevan": "M050",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "87": {
+      "mahadevan": "M051",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "88": {
+      "mahadevan": "M052",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "89": {
+      "mahadevan": "M053",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "90": {
+      "mahadevan": "M054",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "91": {
+      "mahadevan": "M055",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "92": {
+      "mahadevan": "M056",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "93": {
+      "mahadevan": "M057",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "94": {
+      "mahadevan": "M058",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "95": {
+      "mahadevan": "M059",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "96": {
+      "mahadevan": "M060",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "97": {
+      "mahadevan": "M061",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "98": {
+      "mahadevan": "M062",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "99": {
+      "mahadevan": "M063",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "100": {
+      "mahadevan": "M064",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "101": {
+      "mahadevan": "M065",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "102": {
+      "mahadevan": "M066",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "103": {
+      "mahadevan": "M067",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "104": {
+      "mahadevan": "M068",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "105": {
+      "mahadevan": "M069",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "106": {
+      "mahadevan": "M070",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "107": {
+      "mahadevan": "M071",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "108": {
+      "mahadevan": "M072",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "109": {
+      "mahadevan": "M073",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "110": {
+      "mahadevan": "M074",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "111": {
+      "mahadevan": "M075",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "112": {
+      "mahadevan": "M076",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "113": {
+      "mahadevan": "M077",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "114": {
+      "mahadevan": "M078",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "115": {
+      "mahadevan": "M079",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "116": {
+      "mahadevan": "M080",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "117": {
+      "mahadevan": "M081",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "118": {
+      "mahadevan": "M082",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "119": {
+      "mahadevan": "M083",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "120": {
+      "mahadevan": "M084",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "121": {
+      "mahadevan": "M085",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "122": {
+      "mahadevan": "M086",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "123": {
+      "mahadevan": "M087",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "124": {
+      "mahadevan": "M088",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "125": {
+      "mahadevan": "M089",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "126": {
+      "mahadevan": "M090",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "127": {
+      "mahadevan": "M091",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "128": {
+      "mahadevan": "M092",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "129": {
+      "mahadevan": "M093",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "130": {
+      "mahadevan": "M094",
+      "confidence": "low",
+      "description": "animal/zoomorphic — category II (M050–M094)",
+      "sources": "categorical inference"
+    },
+    "131": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "132": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "133": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "134": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "135": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "136": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "137": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "138": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "139": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "140": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "141": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "142": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "143": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "144": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "145": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "146": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "147": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "148": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "149": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "150": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "151": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "152": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "153": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "154": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "155": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "156": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "157": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "158": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "159": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "160": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "161": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "162": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "163": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "164": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "165": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "166": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "167": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "168": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "169": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "170": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "171": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "172": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "173": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "174": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "175": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "176": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "177": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "178": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "179": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "180": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "181": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "182": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "183": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "184": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "185": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "186": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "187": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "188": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "189": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "190": {
+      "mahadevan": null,
+      "confidence": null,
+      "description": "complex zoomorphic — position uncertain",
+      "sources": "requires Parpola 1994 Appendix"
+    },
+    "191": {
+      "mahadevan": "M001",
+      "confidence": "medium",
+      "description": "standing human figure",
+      "sources": "categorical inference"
+    },
+    "192": {
+      "mahadevan": "M002",
+      "confidence": "medium",
+      "description": "human figure variant",
+      "sources": "categorical inference"
+    },
+    "193": {
+      "mahadevan": "M003",
+      "confidence": "medium",
+      "description": "human with raised marks",
+      "sources": "categorical inference"
+    },
+    "194": {
+      "mahadevan": "M004",
+      "confidence": "medium",
+      "description": "human with arm extension",
+      "sources": "categorical inference"
+    },
+    "195": {
+      "mahadevan": "M005",
+      "confidence": "medium",
+      "description": "human figure with circle",
+      "sources": "categorical inference"
+    },
+    "196": {
+      "mahadevan": "M006",
+      "confidence": "medium",
+      "description": "seated/kneeling figure",
+      "sources": "categorical inference"
+    },
+    "197": {
+      "mahadevan": "M007",
+      "confidence": "medium",
+      "description": "human with head mark",
+      "sources": "categorical inference"
+    },
+    "198": {
+      "mahadevan": "M008",
+      "confidence": "medium",
+      "description": "simple anthropomorphic",
+      "sources": "categorical inference"
+    },
+    "199": {
+      "mahadevan": "M009",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "200": {
+      "mahadevan": "M010",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "201": {
+      "mahadevan": "M011",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "202": {
+      "mahadevan": "M012",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "203": {
+      "mahadevan": "M013",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "204": {
+      "mahadevan": "M014",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "205": {
+      "mahadevan": "M015",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "206": {
+      "mahadevan": "M016",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "207": {
+      "mahadevan": "M017",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "208": {
+      "mahadevan": "M018",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "209": {
+      "mahadevan": "M019",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "210": {
+      "mahadevan": "M020",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "211": {
+      "mahadevan": "M021",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "212": {
+      "mahadevan": "M022",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "213": {
+      "mahadevan": "M023",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "214": {
+      "mahadevan": "M024",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "215": {
+      "mahadevan": "M025",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "216": {
+      "mahadevan": "M026",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "217": {
+      "mahadevan": "M027",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "218": {
+      "mahadevan": "M028",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "219": {
+      "mahadevan": "M029",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "220": {
+      "mahadevan": "M030",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "221": {
+      "mahadevan": "M031",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "222": {
+      "mahadevan": "M032",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "223": {
+      "mahadevan": "M033",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "224": {
+      "mahadevan": "M034",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "225": {
+      "mahadevan": "M035",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "226": {
+      "mahadevan": "M036",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "227": {
+      "mahadevan": "M037",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "228": {
+      "mahadevan": "M038",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "229": {
+      "mahadevan": "M039",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "230": {
+      "mahadevan": "M040",
+      "confidence": "low",
+      "description": "human/anthropomorphic variant — category I (M009–M049)",
+      "sources": "categorical inference"
+    },
+    "231": {
+      "mahadevan": "M204",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "232": {
+      "mahadevan": "M205",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "233": {
+      "mahadevan": "M206",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "234": {
+      "mahadevan": "M207",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "235": {
+      "mahadevan": "M208",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "236": {
+      "mahadevan": "M209",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "237": {
+      "mahadevan": "M210",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "238": {
+      "mahadevan": "M211",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "239": {
+      "mahadevan": "M212",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "240": {
+      "mahadevan": "M213",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "241": {
+      "mahadevan": "M214",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "242": {
+      "mahadevan": "M215",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "243": {
+      "mahadevan": "M216",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "244": {
+      "mahadevan": "M217",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "245": {
+      "mahadevan": "M218",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "246": {
+      "mahadevan": "M219",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "247": {
+      "mahadevan": "M220",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "248": {
+      "mahadevan": "M221",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "249": {
+      "mahadevan": "M222",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "250": {
+      "mahadevan": "M223",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "251": {
+      "mahadevan": "M224",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "252": {
+      "mahadevan": "M225",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "253": {
+      "mahadevan": "M226",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "254": {
+      "mahadevan": "M227",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "255": {
+      "mahadevan": "M228",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "256": {
+      "mahadevan": "M229",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "257": {
+      "mahadevan": "M230",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "258": {
+      "mahadevan": "M231",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "259": {
+      "mahadevan": "M232",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "260": {
+      "mahadevan": "M233",
+      "confidence": "low",
+      "description": "triangular — category V (M204–M235)",
+      "sources": "categorical inference"
+    },
+    "261": {
+      "mahadevan": "M236",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "262": {
+      "mahadevan": "M237",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "263": {
+      "mahadevan": "M238",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "264": {
+      "mahadevan": "M239",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "265": {
+      "mahadevan": "M240",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "266": {
+      "mahadevan": "M241",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "267": {
+      "mahadevan": "M242",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "268": {
+      "mahadevan": "M243",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "269": {
+      "mahadevan": "M244",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "270": {
+      "mahadevan": "M245",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "271": {
+      "mahadevan": "M246",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "272": {
+      "mahadevan": "M247",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "273": {
+      "mahadevan": "M248",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "274": {
+      "mahadevan": "M249",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "275": {
+      "mahadevan": "M250",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "276": {
+      "mahadevan": "M251",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "277": {
+      "mahadevan": "M252",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "278": {
+      "mahadevan": "M253",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "279": {
+      "mahadevan": "M254",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "280": {
+      "mahadevan": "M255",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "281": {
+      "mahadevan": "M256",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "282": {
+      "mahadevan": "M257",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "283": {
+      "mahadevan": "M258",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "284": {
+      "mahadevan": "M259",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "285": {
+      "mahadevan": "M260",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "286": {
+      "mahadevan": "M261",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "287": {
+      "mahadevan": "M262",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "288": {
+      "mahadevan": "M263",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "289": {
+      "mahadevan": "M264",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "290": {
+      "mahadevan": "M265",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "291": {
+      "mahadevan": "M266",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "292": {
+      "mahadevan": "M267",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "293": {
+      "mahadevan": "M268",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "294": {
+      "mahadevan": "M269",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "295": {
+      "mahadevan": "M270",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "296": {
+      "mahadevan": "M271",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "297": {
+      "mahadevan": "M272",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "298": {
+      "mahadevan": "M273",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "299": {
+      "mahadevan": "M274",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "300": {
+      "mahadevan": "M275",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "301": {
+      "mahadevan": "M276",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "302": {
+      "mahadevan": "M277",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "303": {
+      "mahadevan": "M278",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "304": {
+      "mahadevan": "M279",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "305": {
+      "mahadevan": "M280",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "306": {
+      "mahadevan": "M281",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "307": {
+      "mahadevan": "M282",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "308": {
+      "mahadevan": "M283",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "309": {
+      "mahadevan": "M284",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "310": {
+      "mahadevan": "M285",
+      "confidence": "low",
+      "description": "rectangular/complex — category VI (M236–M286)",
+      "sources": "categorical inference"
+    },
+    "311": {
+      "mahadevan": "M253",
+      "confidence": "high",
+      "description": "jar sign — most frequent in Indus inscriptions",
+      "sources": "Yadav et al. 2010 (PLOS ONE); Yadav & Vahia 2007; Wells 2011"
+    },
+    "312": {
+      "mahadevan": "M328",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "313": {
+      "mahadevan": "M329",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "314": {
+      "mahadevan": "M330",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "315": {
+      "mahadevan": "M331",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "316": {
+      "mahadevan": "M332",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "317": {
+      "mahadevan": "M333",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "318": {
+      "mahadevan": "M334",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "319": {
+      "mahadevan": "M335",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "320": {
+      "mahadevan": "M336",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "321": {
+      "mahadevan": "M337",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "322": {
+      "mahadevan": "M338",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "323": {
+      "mahadevan": "M339",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "324": {
+      "mahadevan": "M340",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "325": {
+      "mahadevan": "M341",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "326": {
+      "mahadevan": "M342",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "327": {
+      "mahadevan": "M343",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "328": {
+      "mahadevan": "M344",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "329": {
+      "mahadevan": "M345",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "330": {
+      "mahadevan": "M346",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "331": {
+      "mahadevan": "M347",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "332": {
+      "mahadevan": "M348",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "333": {
+      "mahadevan": "M349",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "334": {
+      "mahadevan": "M350",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "335": {
+      "mahadevan": "M351",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "336": {
+      "mahadevan": "M352",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "337": {
+      "mahadevan": "M353",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "338": {
+      "mahadevan": "M354",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "339": {
+      "mahadevan": "M355",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "340": {
+      "mahadevan": "M356",
+      "confidence": "low",
+      "description": "container/cup variant — category VIII (M328–M356)",
+      "sources": "categorical inference"
+    },
+    "341": {
+      "mahadevan": "M287",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "342": {
+      "mahadevan": "M288",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "343": {
+      "mahadevan": "M289",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "344": {
+      "mahadevan": "M290",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "345": {
+      "mahadevan": "M291",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "346": {
+      "mahadevan": "M292",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "347": {
+      "mahadevan": "M293",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "348": {
+      "mahadevan": "M294",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "349": {
+      "mahadevan": "M295",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "350": {
+      "mahadevan": "M296",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "351": {
+      "mahadevan": "M297",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "352": {
+      "mahadevan": "M298",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "353": {
+      "mahadevan": "M299",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "354": {
+      "mahadevan": "M300",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "355": {
+      "mahadevan": "M301",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "356": {
+      "mahadevan": "M302",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "357": {
+      "mahadevan": "M303",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "358": {
+      "mahadevan": "M304",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "359": {
+      "mahadevan": "M305",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "360": {
+      "mahadevan": "M306",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "361": {
+      "mahadevan": "M307",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "362": {
+      "mahadevan": "M308",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "363": {
+      "mahadevan": "M309",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "364": {
+      "mahadevan": "M310",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "365": {
+      "mahadevan": "M311",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "366": {
+      "mahadevan": "M312",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "367": {
+      "mahadevan": "M313",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "368": {
+      "mahadevan": "M314",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "369": {
+      "mahadevan": "M315",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "370": {
+      "mahadevan": "M316",
+      "confidence": "low",
+      "description": "curved sign — category VII (M287–M316)",
+      "sources": "categorical inference"
+    },
+    "371": {
+      "mahadevan": "M373",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "372": {
+      "mahadevan": "M374",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "373": {
+      "mahadevan": "M375",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "374": {
+      "mahadevan": "M376",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "375": {
+      "mahadevan": "M377",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "376": {
+      "mahadevan": "M378",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "377": {
+      "mahadevan": "M379",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "378": {
+      "mahadevan": "M380",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "379": {
+      "mahadevan": "M381",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "380": {
+      "mahadevan": "M382",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "381": {
+      "mahadevan": "M383",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "382": {
+      "mahadevan": "M384",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "383": {
+      "mahadevan": "M385",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "384": {
+      "mahadevan": "M386",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "385": {
+      "mahadevan": "M387",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    },
+    "386": {
+      "mahadevan": "M388",
+      "confidence": "low",
+      "description": "oval/circular — category IX (M373–M388)",
+      "sources": "categorical inference"
+    }
+  }
+}

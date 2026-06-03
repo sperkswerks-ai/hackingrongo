@@ -1,6 +1,14 @@
 # Data — tracked separately (use zip for Colab, DVC or similar for versioning)
 data/*
 !data/README.md
+# Small reference image sets committed directly so Kaggle git clone has them
+# without needing network fetches (fetch_indus_glyphs.py, render_linearb_glyphs.py).
+!data/glyphs/
+data/glyphs/*
+!data/glyphs/indus/
+!data/glyphs/indus/**
+!data/glyphs/linear_b/
+!data/glyphs/linear_b/**
 
 # Training outputs and model checkpoints
 outputs/
