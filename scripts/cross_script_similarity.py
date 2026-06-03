@@ -120,6 +120,81 @@ PARPOLA_PHONEMES: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# Rongo reference glyph rendering (auto-generates data/barthel_ref/ from SVGs)
+# ---------------------------------------------------------------------------
+
+
+def _render_rongo_ref(rongo_dir: Path, svg_base: Path) -> None:
+    """Render one 128×128 PNG per unique Barthel code from the SVG catalog.
+
+    Called automatically when rongo_dir is absent or empty.  Requires
+    cairosvg (installed in Setup Cell 2) and the SVG catalog produced by
+    scrape_glyphs.py (always present in the data zip).
+
+    The kohaumotu.org SVGs carry no explicit fill attribute, so we inject
+    ``fill:#000000`` before rendering to get visible black strokes on white.
+    """
+    catalog_path = svg_base / "catalog.json"
+    if not catalog_path.exists():
+        raise FileNotFoundError(
+            f"SVG catalog not found at {catalog_path}. "
+            "Run Setup Cell 3 to extract corpus data first."
+        )
+
+    try:
+        import cairosvg  # type: ignore
+        import io as _io
+        from PIL import Image as _Image
+    except ImportError as exc:
+        raise ImportError(
+            "cairosvg and Pillow are required to render rongo reference glyphs. "
+            "Run Setup Cell 2 first."
+        ) from exc
+
+    import json as _json
+
+    records = _json.loads(catalog_path.read_text(encoding="utf-8")).get("records", [])
+
+    # One representative SVG per Barthel code (first occurrence wins).
+    seen: dict[str, Path] = {}
+    for rec in records:
+        code = rec.get("barthel_code")
+        svg_rel = rec.get("svg_path", "")
+        if code and svg_rel and code not in seen:
+            full = svg_base / svg_rel.replace("svg/", "")
+            if full.exists():
+                seen[code] = full
+
+    rongo_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for code, svg_path in seen.items():
+        try:
+            svg_text = svg_path.read_text(encoding="utf-8")
+            svg_text = svg_text.replace("<path ", '<path style="fill:#000000;" ')
+            png_bytes = cairosvg.svg2png(
+                bytestring=svg_text.encode(),
+                output_width=128,
+                output_height=128,
+                background_color="white",
+            )
+            img = _Image.open(_io.BytesIO(png_bytes)).convert("L")
+            safe = "".join(c if c.isalnum() or c in ".-_!?:" else "_" for c in code)
+            img.save(rongo_dir / f"{safe}.png")
+            written += 1
+        except Exception:
+            pass  # skip malformed SVGs silently
+
+    log.info(
+        "_render_rongo_ref: wrote %d PNGs to %s  (%d codes in catalog, %d had SVGs)",
+        written, rongo_dir, len(records), len(seen),
+    )
+    if written == 0:
+        raise RuntimeError(
+            f"Rendered 0 PNGs — all SVGs failed. Check {svg_base} for content."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Image loading
 # ---------------------------------------------------------------------------
 
@@ -524,6 +599,16 @@ def main(argv: list[str] | None = None) -> None:
     from hackingrongo.zone_a.autoencoder import DINOv2GlyphEncoder
     log.info("Loading DINOv2 ViT-S/14 …")
     encoder = DINOv2GlyphEncoder(latent_dim=args.latent_dim, freeze_backbone=True).to(device)
+
+    # ── Ensure rongo reference PNGs exist (render from SVGs if absent) ───────
+    if not args.rongo_dir.exists() or not any(args.rongo_dir.glob("*.png")):
+        log.info(
+            "data/barthel_ref/ missing or empty — rendering from SVG catalog …"
+        )
+        _render_rongo_ref(
+            rongo_dir=args.rongo_dir,
+            svg_base=args.rongo_dir.parent / "glyphs" / "svg",
+        )
 
     # ── Load images ──────────────────────────────────────────────────────────
     log.info("Loading rongorongo glyphs from %s …", args.rongo_dir)
