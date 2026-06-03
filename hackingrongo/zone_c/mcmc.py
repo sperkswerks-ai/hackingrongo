@@ -723,6 +723,8 @@ class MCMCSampler:
                 recent_accepted = 0
 
             # Periodic progress report every 10 000 iterations.
+            # Also write to a sidecar file so spawn-context workers are visible
+            # in Kaggle/Colab where child-process stdout is not streamed.
             _progress_every = 10_000
             if it > 0 and it % _progress_every == 0:
                 logger.info(
@@ -731,6 +733,18 @@ class MCMCSampler:
                     100.0 * it / self._num_iterations,
                     current_lp,
                 )
+                try:
+                    import pathlib, datetime
+                    _prog_path = pathlib.Path("outputs") / "_mcmc_progress.log"
+                    _prog_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(_prog_path, "a") as _pf:
+                        _pf.write(
+                            f"{datetime.datetime.now().strftime('%H:%M:%S')}  "
+                            f"chain {chain_id}  {it}/{self._num_iterations}  "
+                            f"({100.0*it/self._num_iterations:.0f}%)  lp={current_lp:.3f}\n"
+                        )
+                except Exception:
+                    pass
 
         post_rate = accepted_post_burn / max(post_burn_steps, 1)
         return samples, post_rate
