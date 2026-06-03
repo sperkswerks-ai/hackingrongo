@@ -194,6 +194,42 @@ def _render_rongo_ref(rongo_dir: Path, svg_base: Path) -> None:
         )
 
 
+def _fetch_indus(indus_dir: Path) -> None:
+    """Run fetch_indus_glyphs.py to populate indus_dir, with visible output.
+
+    Called automatically when --indus-dir is missing or empty so Cell B
+    never silently swallows a failed download.
+    """
+    import subprocess as _sub
+
+    fetch_script = Path(__file__).parent / "fetch_indus_glyphs.py"
+    if not fetch_script.exists():
+        raise FileNotFoundError(
+            f"fetch_indus_glyphs.py not found at {fetch_script}. "
+            "Cannot auto-populate Indus Valley sign images."
+        )
+
+    log.info("Fetching Indus Valley glyphs from archive (this may take ~2 min) …")
+    result = _sub.run(
+        [sys.executable, str(fetch_script), "--out-dir", str(indus_dir)],
+        capture_output=False,   # let stdout/stderr stream to the notebook
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"fetch_indus_glyphs.py exited {result.returncode}. "
+            "Check network access or add Indus PNGs to data/glyphs/indus/ manually."
+        )
+
+    n = len(list(indus_dir.glob("*.png")))
+    log.info("_fetch_indus: %d PNGs written to %s", n, indus_dir)
+    if n == 0:
+        raise RuntimeError(
+            "fetch_indus_glyphs.py completed but wrote 0 PNGs. "
+            "The archive URL may be blocked. "
+            "Re-run Setup Cell 1 to pull data/glyphs/indus/ from git."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Image loading
 # ---------------------------------------------------------------------------
@@ -614,6 +650,11 @@ def main(argv: list[str] | None = None) -> None:
     log.info("Loading rongorongo glyphs from %s …", args.rongo_dir)
     rongo_names, rongo_images = _load_dir(args.rongo_dir, device)
     rongo_paths = sorted(args.rongo_dir.glob("*.png"))
+
+    # ── Ensure Indus Valley PNGs exist (fetch from sources.yaml if absent) ────
+    if not args.indus_dir.exists() or not any(args.indus_dir.glob("*.png")):
+        log.info("data/glyphs/indus/ missing or empty — running fetch_indus_glyphs.py …")
+        _fetch_indus(args.indus_dir)
 
     log.info("Loading Indus Valley signs from %s …", args.indus_dir)
     indus_names, indus_images = _load_dir(args.indus_dir, device)
