@@ -695,6 +695,19 @@ def main(argv: list[str] | None = None) -> None:
         ks_result_b.statistic, ks_result_b.pvalue,
     )
 
+    # Sanity check: the Indus-vs-Linear-B comparison tests whether Indus is
+    # more similar to rongorongo than another structured ancient script is.
+    # Indus-vs-Shuffled tests against shuffled Indus embeddings (same gallery,
+    # different pairing order), which should produce p ≈ 1.0 because nearest-
+    # neighbour distances are invariant to gallery permutation.  Therefore
+    # p(Indus vs LinearB) should always be <= p(Indus vs Shuffled).
+    # A failure here means the ks_result_a / ks_result_b variables are swapped.
+    assert ks_result_a.pvalue <= ks_result_b.pvalue, (
+        f"KS results appear swapped: "
+        f"p(Indus vs LinearB)={ks_result_a.pvalue:.4f} should be "
+        f"<= p(Indus vs Shuffled)={ks_result_b.pvalue:.4f}"
+    )
+
     # ── Top-k pairs ──────────────────────────────────────────────────────────
     log.info("Finding top-%d most similar cross-script pairs …", args.top_k)
     top_pairs = _top_k_pairs(

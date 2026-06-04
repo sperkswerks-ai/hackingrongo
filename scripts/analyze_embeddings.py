@@ -566,6 +566,39 @@ def run_analysis(cfg: DictConfig) -> None:
             "barthel_families": dict(breakdown_families),
         }
 
+    # Sanity check: flag if fewer than 40% of non-noise clusters are single-family pure.
+    # A drop below this threshold indicates corrupted embeddings or a mis-configured
+    # min_cluster_size that is merging unrelated sign families.
+    real_clusters = {
+        lbl: info for lbl, info in cluster_breakdown.items() if lbl != "noise"
+    }
+    if real_clusters:
+        pure_count = sum(
+            1 for info in real_clusters.values()
+            if len(info["barthel_families"]) == 1
+        )
+        purity_rate = pure_count / len(real_clusters)
+        if purity_rate < 0.40:
+            log.warning(
+                "Zone A sanity check FAILED: only %.1f%% of clusters are single-family pure "
+                "(%d/%d). Check DINOv2 preprocessing pipeline — embeddings may be corrupted. "
+                "Also verify hdbscan.min_cluster_size in config.yaml matches previous runs.",
+                purity_rate * 100, pure_count, len(real_clusters),
+            )
+        else:
+            log.info(
+                "Zone A sanity check OK: %.1f%% single-family pure clusters (%d/%d).",
+                purity_rate * 100, pure_count, len(real_clusters),
+            )
+        # Negative ARI combined with a low purity rate is a strong signal that
+        # the embedding space has collapsed or been corrupted.
+        if ari is not None and ari < 0 and purity_rate < 0.40:
+            log.warning(
+                "Zone A double-failure: ARI=%.4f (negative) AND purity=%.1f%% (<40%%). "
+                "Do NOT proceed to Zone B/C — results will be meaningless.",
+                ari, purity_rate * 100,
+            )
+
     comparison_result = {
         "n_embeddings": len(embeddings),
         "n_clusters": n_clusters,

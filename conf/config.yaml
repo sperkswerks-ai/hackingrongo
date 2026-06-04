@@ -450,8 +450,9 @@ zone_c:
     # State space: all bijective mappings from the rongorongo sign inventory
     # to candidate CV syllables in the target language.
     num_chains: 4                    # parallel chains for Gelman-Rubin diagnostics
-    num_iterations: 50000            # total MH iterations per chain
-    burn_in: 5000                    # discard first N samples as burn-in
+    num_iterations: 5000             # total MH iterations per chain — never raise without profiling
+    burn_in: 500                     # discard first N samples as burn-in
+    max_wall_time_seconds: 3600      # hard stop per chain; 0 = disabled
     thin: 10                         # retain every Nth post-burn-in sample
 
     # Proposal distribution
@@ -471,7 +472,7 @@ zone_c:
     # With probability lm_guided_prob, instead of a random proposal the sampler
     # tests lm_guided_n_candidates signs × top-k phonemes and proposes the
     # highest-scoring change.  0.0 disables; ~0.1-0.2 is a good starting point.
-    lm_guided_prob: 0.15             # fraction of steps using LM-guided proposal
+    lm_guided_prob: 0.25             # fraction of steps using LM-guided proposal
     lm_guided_n_candidates: 3        # number of randomly chosen signs to evaluate
     lm_guided_top_k: 5               # top-k phonemes (by unigram LM score) tried per sign
 

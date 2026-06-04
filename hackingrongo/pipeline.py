@@ -62,6 +62,32 @@ from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
+# Per-step timeout (set once by main(), read by every _run() call)
+# ---------------------------------------------------------------------------
+
+_STEP_TIMEOUT: float | None = None  # seconds; None = no limit
+
+
+# ---------------------------------------------------------------------------
+# Stage checkpointing
+# ---------------------------------------------------------------------------
+
+_STAGE_CHECKPOINT_DIR = Path(__file__).resolve().parent.parent / "outputs" / "checkpoints" / "pipeline_stages"
+
+
+def mark_stage_complete(stage_name: str) -> None:
+    """Write a .done sentinel for *stage_name* so the next run can skip it."""
+    _STAGE_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    (_STAGE_CHECKPOINT_DIR / f"{stage_name}.done").write_text(
+        datetime.now(tz=timezone.utc).isoformat(), encoding="utf-8"
+    )
+
+
+def stage_completed(stage_name: str) -> bool:
+    """Return True if *stage_name* has a .done sentinel from a previous run."""
+    return (_STAGE_CHECKPOINT_DIR / f"{stage_name}.done").exists()
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
@@ -105,12 +131,19 @@ def _run(
     *,
     dry_run: bool = False,
     env: dict | None = None,
+    timeout: float | None = None,
 ) -> tuple[int, float]:
-    """Run a subprocess, stream its output, return (returncode, elapsed_s)."""
+    """Run a subprocess, stream its output, return (returncode, elapsed_s).
+
+    If *timeout* seconds elapse before the process exits, it is killed and
+    returncode -1 is returned so the pipeline can mark the step as failed
+    rather than hanging indefinitely.
+    """
     log.info("%s  %s", _dim("$"), _dim(" ".join(str(c) for c in cmd)))
     if dry_run:
         return 0, 0.0
 
+    effective_timeout = timeout if timeout is not None else _STEP_TIMEOUT
     t0 = time.monotonic()
     proc = subprocess.Popen(
         cmd,
@@ -120,7 +153,17 @@ def _run(
         env=env,
         shell=False,
     )
-    proc.wait()
+    try:
+        proc.wait(timeout=effective_timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        elapsed = time.monotonic() - t0
+        log.error(
+            "Step '%s' timed out after %.0fs — process killed.",
+            label, elapsed,
+        )
+        return -1, elapsed
     elapsed = time.monotonic() - t0
     return proc.returncode, elapsed
 
@@ -495,7 +538,7 @@ def step4i_pgood_analysis(dry_run: bool = False) -> tuple[int, float]:
             sys.executable, "scripts/measure_pgood.py",
             "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
             "--lm-dir",     str(PROJECT_ROOT / "data" / "language_models"),
-            "--n-samples",  "10000",
+            "--n-samples",  "2000",
             "--output",     str(PROJECT_ROOT / "outputs" / "zone_b" /
                                 "pgood_analysis.json"),
         ],
@@ -680,6 +723,22 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Continue to subsequent steps even when a step fails.",
     )
+    p.add_argument(
+        "--step-timeout",
+        type=float,
+        default=3600.0,
+        metavar="SECONDS",
+        help=(
+            "Hard wall-time limit per step in seconds (default: 3600 = 1 hour).  "
+            "The step is killed and marked failed if it exceeds this limit.  "
+            "Set to 0 to disable."
+        ),
+    )
+    p.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignore stage checkpoints and re-run every step.",
+    )
     return p.parse_args()
 
 
@@ -711,9 +770,14 @@ def _parse_steps(steps_str: str | None) -> set[str]:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    global _STEP_TIMEOUT  # noqa: PLW0603
     args = _parse_args()
     enabled = _parse_steps(args.steps)
     dry_run = args.dry_run
+
+    _STEP_TIMEOUT = args.step_timeout if args.step_timeout > 0 else None
+    if _STEP_TIMEOUT:
+        log.info("Step timeout: %.0fs per step", _STEP_TIMEOUT)
 
     if dry_run:
         log.info("%s", _yellow("DRY RUN — no commands will be executed"))
@@ -765,6 +829,15 @@ def main() -> None:
             results.append({"step": sid, "label": label, "status": "skipped"})
             continue
 
+        # Skip steps already completed in a previous run (unless --no-cache).
+        if not args.no_cache and stage_completed(sid):
+            log.info(
+                "%s  %s", _dim(f"[{sid}]"),
+                _dim(f"ALREADY DONE (checkpoint)  {label}"),
+            )
+            results.append({"step": sid, "label": label, "status": "cached"})
+            continue
+
         banner = f"{'─' * 60}\n  Step {sid}  {label}\n{'─' * 60}"
         print()
         print(_bold(_cyan(banner)))
@@ -775,6 +848,7 @@ def main() -> None:
         duration_str = f"{duration:.1f}s"
 
         if rc == 0:
+            mark_stage_complete(sid)
             print(_bold(_green(f"  ✓  Step {sid} complete  ({duration_str})")))
             results.append({
                 "step": sid, "label": label,

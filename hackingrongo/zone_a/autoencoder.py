@@ -39,6 +39,7 @@ module.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import numpy as np
@@ -1647,12 +1648,15 @@ def extract_embeddings(
     model.eval()
     model.to(device)
 
+    _n_workers = min(os.cpu_count() or 4, 4)
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False,
         drop_last=False,
-        num_workers=0,
+        num_workers=_n_workers,
+        pin_memory=(device.type == "cuda"),
+        persistent_workers=(_n_workers > 0),
     )
 
     embeddings: dict[tuple[str, int], np.ndarray] = {}

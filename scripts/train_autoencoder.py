@@ -28,6 +28,7 @@ command line using Hydra syntax (``key=value``).
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -89,12 +90,15 @@ def main(cfg: DictConfig) -> None:
     log.info("Corpus: %d tablets, %d tokens", len(tablets), len(all_tokens))
 
     dataset = GlyphImageDataset(all_tokens, glyphs_dir, cfg, training=True)
+    _n_workers = min(os.cpu_count() or 4, 4)
     loader = DataLoader(
         dataset,
         batch_size=int(ae_cfg.batch_size),
         shuffle=True,
         drop_last=False,
-        num_workers=0,
+        num_workers=_n_workers,
+        pin_memory=(device.type == "cuda"),
+        persistent_workers=(_n_workers > 0),
     )
 
     # ── Model ────────────────────────────────────────────────────────────────

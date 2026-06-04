@@ -48,6 +48,7 @@ import logging
 import math
 import os
 import random
+import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
@@ -296,6 +297,7 @@ class MCMCSampler:
         self._lm_guided_prob: float = float(getattr(mc, "lm_guided_prob", 0.0))
         self._lm_guided_n_candidates: int = int(getattr(mc, "lm_guided_n_candidates", 3))
         self._lm_guided_top_k: int = int(getattr(mc, "lm_guided_top_k", 5))
+        self._max_wall_time: float = float(getattr(mc, "max_wall_time_seconds", 0))
 
         # Parallel tempering config (replica exchange MCMC).
         from omegaconf import OmegaConf  # local import to avoid circular at module level
@@ -661,8 +663,17 @@ class MCMCSampler:
         samples: list[MCMCSample] = []
         reassign_prob = self._reassign_prob_init
         recent_accepted = 0
+        _chain_t0 = time.monotonic()
+        _wall_limit = self._max_wall_time if self._max_wall_time > 0 else float("inf")
 
         for it in range(self._num_iterations):
+            if it > 0 and it % 500 == 0:
+                if time.monotonic() - _chain_t0 > _wall_limit:
+                    logger.warning(
+                        "Chain %d: wall-time limit %.0fs reached at iteration %d — stopping early.",
+                        chain_id, _wall_limit, it,
+                    )
+                    break
             if self._lm_guided_prob > 0.0 and rng.random() < self._lm_guided_prob:
                 proposal, changes = self._greedy_proposal(
                     current_map, current_phoneme_seqs, rng
