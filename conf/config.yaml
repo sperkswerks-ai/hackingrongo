@@ -137,9 +137,11 @@ glyph:
 # ─── Zone A — Learned Visual Layers ─────────────────────────────────────────
 zone_a:
   # ---  Backbone selection  ---
-  # "custom"  → SharedConvBackbone trained from scratch (original architecture)
-  # "dinov2"  → frozen DINOv2 ViT-S/14 backbone; only projection head is trained
-  backbone: "dinov2"
+  # "custom" → SharedConvBackbone trained from scratch (stable; better Zone A ARI 0.009)
+  # "dinov2" → frozen DINOv2 ViT-S/14, projection head only (experimental; better Zone C LM +96 bits)
+  # For AI Village submission: use "custom"
+  # For cross-script similarity analysis: use "dinov2"
+  backbone: "custom"
   dinov2_model: "dinov2_vits14"   # dinov2_vits14 (384-d) | dinov2_vitb14 (768-d)
   freeze_backbone: true
   latent_dim: 128                  # projection head output dim (matches autoencoder.bottleneck_dim)
@@ -319,6 +321,14 @@ analysis:
     min_samples: 4          # controls how conservative cluster boundaries are; raised to reduce micro-clusters
     metric: euclidean       # applied to the 2D UMAP output
     cluster_selection_method: eom   # eom | leaf
+
+  # DINOv2 embeddings are more diffuse on out-of-domain glyph images;
+  # larger min_cluster_size prevents noise points from fragmenting ARI.
+  hdbscan_dinov2:
+    min_cluster_size: 8
+    min_samples: 5
+    metric: euclidean
+    cluster_selection_method: eom
 
   # Comparison against Barthel sign families.
   # The publishable question: do data-driven clusters agree with Barthel's taxonomy?

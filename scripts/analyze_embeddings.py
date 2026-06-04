@@ -432,7 +432,8 @@ def run_analysis(cfg: DictConfig) -> None:
     log.info("  UMAP done. Shape: %s", embedding_2d.shape)
 
     # --- HDBSCAN clustering ---------------------------------------------
-    hcfg = cfg.analysis.hdbscan
+    _backbone = str(cfg.zone_a.get("backbone", "custom")).lower()
+    hcfg = cfg.analysis.hdbscan_dinov2 if _backbone == "dinov2" else cfg.analysis.hdbscan
     log.info("Clustering with HDBSCAN (min_cluster_size=%d, min_samples=%d) …",
              hcfg.min_cluster_size, hcfg.min_samples)
     clusterer = HDBSCAN(

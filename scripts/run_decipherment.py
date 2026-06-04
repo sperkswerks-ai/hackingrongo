@@ -206,6 +206,31 @@ def _validate_anchors(
         )
 
 
+def _check_anchors_in_corpus(
+    anchors: dict[str, str],
+    sign_ids: list[str],
+    label: str,
+) -> None:
+    """Warn if any hard anchor sign is absent from the corpus sign_ids.
+
+    A sign absent from sign_ids never enters MCMC and will be silently
+    dropped even if it appears in CALENDAR_ANCHORS_HARD.  Low corpus
+    frequency is the usual cause; lowering min_glyph_frequency or
+    explicitly injecting the sign into sign_ids fixes it.
+    """
+    missing = [(s, p) for s, p in anchors.items() if s not in sign_ids]
+    if missing:
+        log.warning(
+            "%s: %d anchor sign(s) NOT in corpus sign_ids and will be silently ignored: %s",
+            label, len(missing), missing,
+        )
+        log.warning(
+            "These signs have too few corpus occurrences to enter MCMC. "
+            "Consider lowering zone_b.sign_classifier.min_glyph_frequency or "
+            "explicitly adding them to sign_ids."
+        )
+
+
 def _build_anchored_initial_map(
     sign_ids: list[str],
     phoneme_inventory: list[str],
@@ -740,6 +765,7 @@ def _run(
         phoneme_inventory,
         label="soft anchors",
     )
+    _check_anchors_in_corpus(CALENDAR_ANCHORS_HARD, sign_ids, "CALENDAR_ANCHORS_HARD")
 
     calendar_priors = _build_calendar_phoneme_priors(phoneme_inventory)
 
