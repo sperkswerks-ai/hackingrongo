@@ -290,18 +290,21 @@ def run_statevector(qc: "QuantumCircuit", shots: int) -> dict[str, int]:
 def run_fake_brisbane(qc: "QuantumCircuit", shots: int) -> dict[str, int]:
     from qiskit_ibm_runtime import SamplerV2
     from qiskit_ibm_runtime.fake_provider import FakeBrisbane
-    sampler = SamplerV2(backend=FakeBrisbane())
+    sampler = SamplerV2(mode=FakeBrisbane())
     result = sampler.run([qc], shots=shots).result()
     return result[0].data.meas.get_counts()
 
 
 def run_ibmq(qc: "QuantumCircuit", shots: int, channel: str = "ibm_quantum") -> dict[str, int]:
-    from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2, Session
-    service = QiskitRuntimeService(channel=channel)
+    import os
+    from qiskit.compiler import transpile
+    from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
+    instance = os.environ.get("IBMQ_INSTANCE")
+    service = QiskitRuntimeService(channel="ibm_quantum_platform", instance=instance)
     backend = service.least_busy(operational=True, simulator=False, min_num_qubits=8)
     log.info("IBMQ backend: %s", backend.name)
-    with Session(backend=backend) as session:
-        result = SamplerV2(session=session).run([qc], shots=shots).result()
+    isa_qc = transpile(qc, backend=backend, optimization_level=2)
+    result = SamplerV2(mode=backend).run([isa_qc], shots=shots).result()
     return result[0].data.meas.get_counts()
 
 

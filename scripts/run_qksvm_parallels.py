@@ -507,7 +507,7 @@ def _rdms_from_sampler(
     """
     from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
     from qiskit.compiler import transpile
-    from qiskit_ibm_runtime import SamplerV2, Session
+    from qiskit_ibm_runtime import SamplerV2
 
     n_q = feature_map.num_qubits
     params = sorted(feature_map.parameters, key=lambda p: p.name)
@@ -530,10 +530,9 @@ def _rdms_from_sampler(
                     getattr(qc, gate_name)(target)
                 qc.measure(q, 0)
                 t_qc = transpile(qc, backend=backend, optimization_level=1)
-                with Session(backend=backend) as session:
-                    sampler = SamplerV2(mode=session)
-                    job = sampler.run([t_qc], shots=shots)
-                    counts = job.result()[0].data.c.get_counts()
+                sampler = SamplerV2(mode=backend)
+                job = sampler.run([t_qc], shots=shots)
+                counts = job.result()[0].data.c.get_counts()
                 n_0 = counts.get("0", 0)
                 n_1 = counts.get("1", 0)
                 exp_z = (n_0 - n_1) / shots
@@ -562,7 +561,7 @@ def pqk_matrix(
     feature_map,
     backend: str = "simulator",
     ibmq_token: str | None = None,
-    ibmq_instance: str = "ibm-q/open/main",
+    ibmq_instance: str | None = None,
 ) -> tuple[np.ndarray, int]:
     """Compute the projected quantum kernel matrix K[i,j] = Σ_q Tr[ρ_q(x_a_i) ρ_q(x_b_j)].
 
@@ -581,11 +580,13 @@ def pqk_matrix(
         rdms_b = _rdms_from_sampler(X_b, feature_map, bknd)
         n_circuits = 3 * n_q * (len(X_a) + len(X_b))
     elif backend == "ibmq":
+        import os
         from qiskit_ibm_runtime import QiskitRuntimeService
+        _instance = ibmq_instance or os.environ.get("IBMQ_INSTANCE")
         service = QiskitRuntimeService(
-            channel="ibm_quantum",
+            channel="ibm_quantum_platform",
             token=ibmq_token,
-            instance=ibmq_instance,
+            instance=_instance,
         )
         bknd = service.least_busy(
             operational=True, simulator=False, min_num_qubits=n_q,
@@ -645,7 +646,7 @@ def cross_validate_qksvm(
     feature_map,
     backend: str = "simulator",
     ibmq_token: str | None = None,
-    ibmq_instance: str = "ibm-q/open/main",
+    ibmq_instance: str | None = None,
 ) -> tuple[dict[str, Any], "object"]:
     """5-fold stratified CV; returns (cv_results, fitted_svm_on_full_data)."""
     from sklearn.model_selection import StratifiedKFold
@@ -1026,7 +1027,7 @@ def main(
     score_threshold:   float = SCORE_THRESHOLD,
     inject_as_cribs:   bool = False,
     ibmq_token:        str | None = None,
-    ibmq_instance:     str = "ibm-q/open/main",
+    ibmq_instance:     str | None = None,
     ibmq_backend_name: str | None = None,
     n_negatives:       int = N_NEGATIVES,
     return_result:     bool = False,
@@ -1208,7 +1209,8 @@ def _parse_args() -> argparse.Namespace:
                    choices=["simulator", "fake_brisbane", "ibmq"],
                    default="simulator")
     p.add_argument("--ibmq-token",    default=None)
-    p.add_argument("--ibmq-instance", default="ibm-q/open/main")
+    p.add_argument("--ibmq-instance", default=None,
+                   help="IBM Quantum instance CRN (default: read from IBMQ_INSTANCE env var)")
     p.add_argument("--ibmq-backend",  default=None)
     p.add_argument("--score-threshold", type=float, default=SCORE_THRESHOLD)
     p.add_argument("--n-negatives",   type=int, default=N_NEGATIVES)

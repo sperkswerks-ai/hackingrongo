@@ -556,7 +556,7 @@ def step4i_simon_decipherment(dry_run: bool = False) -> tuple[int, float]:
         [
             sys.executable, "scripts/run_simon_decipherment.py",
             "--variants-file", str(variants),
-            "--output", str(PROJECT_ROOT / "outputs" / "quantum" / "simon_result.json"),
+            "--output", str(PROJECT_ROOT / "outputs" / "quantum" / "simon_all_results.json"),
         ],
         dry_run=dry_run,
     )
@@ -607,6 +607,32 @@ def step4j_qubo_decipherment(dry_run: bool = False) -> tuple[int, float]:
     if ranking.exists():
         cmd += ["--init-from", str(ranking)]
     return _run("qubo_decipherment", cmd, dry_run=dry_run)
+
+
+def step4q_qaoa_decipherment(dry_run: bool = False) -> tuple[int, float]:
+    """QAOA hybrid decipherment: quantum-approximate optimization over top signs."""
+    ranking = PROJECT_ROOT / "outputs" / "decipherment" / "ranking.json"
+    cmd = [
+        sys.executable, "scripts/run_qaoa_decipherment.py",
+        "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
+        "--lm-dir",     str(PROJECT_ROOT / "data" / "language_models"),
+        "--backend",    "fake_brisbane",
+        "--output",     str(PROJECT_ROOT / "outputs" / "decipherment" /
+                            "qaoa_result.json"),
+    ]
+    if ranking.exists():
+        cmd += ["--init-from", str(ranking)]
+    return _run("qaoa_decipherment", cmd, dry_run=dry_run)
+
+
+def step4r_network_centrality(dry_run: bool = False) -> tuple[int, float]:
+    """Bigram PMI network centrality: betweenness, PageRank, HITS, diachronic shift."""
+    cmd = [
+        sys.executable, "scripts/run_network_centrality.py",
+        "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
+        "--output-dir", str(PROJECT_ROOT / "outputs" / "network"),
+    ]
+    return _run("network_centrality", cmd, dry_run=dry_run)
 
 
 def step4l_freq_match(dry_run: bool = False) -> tuple[int, float]:
@@ -1168,6 +1194,8 @@ def main() -> None:
         ("4i_bv",   "BV algorithm on IC distribution",         lambda: step4i_bv_ic_analysis(dry_run)),
         ("4p", "QK-SVM soft parallel detection",            lambda: step4p_qksvm_parallels(dry_run)),
         ("4j", "QUBO quantum annealing key search",   lambda: step4j_qubo_decipherment(dry_run)),
+        ("4q", "QAOA hybrid decipherment",            lambda: step4q_qaoa_decipherment(dry_run)),
+        ("4r", "Network centrality (PMI bigram graph)", lambda: step4r_network_centrality(dry_run)),
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
         ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run)),
         ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run)),

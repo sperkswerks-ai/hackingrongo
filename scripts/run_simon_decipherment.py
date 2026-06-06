@@ -29,7 +29,7 @@ Usage
     python scripts/run_simon_decipherment.py --passage P007_ADHS
     python scripts/run_simon_decipherment.py --shots 32 --draw
     python scripts/run_simon_decipherment.py --backend ibmq \\
-        --ibmq-token <TOKEN> [--ibmq-instance ibm-q/open/main]
+        --ibmq-token <TOKEN> [--ibmq-instance $IBMQ_INSTANCE]
 """
 
 from __future__ import annotations
@@ -50,8 +50,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
 
-_VARIANTS_PATH = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
-_OUTPUT_PATH   = PROJECT_ROOT / "outputs" / "quantum" / "simon_result.json"
+_VARIANTS_PATH   = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
+_OUTPUT_DIR      = PROJECT_ROOT / "outputs" / "quantum"
+_ALL_RESULTS_PATH = _OUTPUT_DIR / "simon_all_results.json"
 
 
 # ── Data types ────────────────────────────────────────────────────────────────
@@ -354,16 +355,18 @@ def run_ibmq(
     n: int,
     shots: int,
     token: str,
-    instance: str = "ibm-q/open/main",
+    instance: str | None = None,
     backend_name: str | None = None,
 ) -> tuple[dict[str, int], float]:
     """Run circuit on IBM Quantum hardware via QiskitRuntimeService / SamplerV2."""
-    from qiskit_ibm_runtime import QiskitRuntimeService, Session, SamplerV2
+    import os
+    from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
     from qiskit.compiler import transpile
 
+    instance = instance or os.environ.get("IBMQ_INSTANCE")
     t0 = time.monotonic()
     service = QiskitRuntimeService(
-        channel="ibm_quantum",
+        channel="ibm_quantum_platform",
         token=token,
         instance=instance,
     )
@@ -380,13 +383,10 @@ def run_ibmq(
     t_qc = transpile(qc, backend=backend, optimization_level=2)
     log.info("Transpiled: %d qubits, depth %d", t_qc.num_qubits, t_qc.depth())
 
-    with Session(service=service, backend=backend) as session:
-        sampler = SamplerV2(mode=session)
-        job = sampler.run([t_qc], shots=shots)
-        log.info("Job submitted: %s", job.job_id())
-        result = job.result()[0]
-
-    counts = result.data.meas.get_counts()
+    sampler = SamplerV2(mode=backend)
+    job = sampler.run([t_qc], shots=shots)
+    log.info("Job submitted: %s", job.job_id())
+    counts = job.result()[0].data.meas.get_counts()
     return dict(counts), time.monotonic() - t0
 
 
@@ -560,8 +560,12 @@ def _parse_args() -> argparse.Namespace:
         help="Number of shots.  Defaults to ceil(n+10) per passage.",
     )
     p.add_argument(
-        "--output", type=Path, default=_OUTPUT_PATH, metavar="JSON",
-        help=f"Output path (default: {_OUTPUT_PATH}).",
+        "--output", type=Path, default=_ALL_RESULTS_PATH, metavar="JSON",
+        help=(
+            f"Path for the cumulative all-passages JSON (default: {_ALL_RESULTS_PATH}). "
+            "Per-passage files are always written to the same directory as "
+            "simon_<passage_id>_<tablets>.json regardless of this flag."
+        ),
     )
     p.add_argument(
         "--backend", choices=["statevector", "ibmq"], default="statevector",
@@ -572,8 +576,8 @@ def _parse_args() -> argparse.Namespace:
         help="IBM Quantum API token (or set IBMQ_TOKEN env var).",
     )
     p.add_argument(
-        "--ibmq-instance", default="ibm-q/open/main", metavar="INSTANCE",
-        help="IBM Quantum instance (default: ibm-q/open/main).",
+        "--ibmq-instance", default=None, metavar="INSTANCE",
+        help="IBM Quantum instance CRN (default: read from IBMQ_INSTANCE env var).",
     )
     p.add_argument(
         "--ibmq-backend", default=None, metavar="NAME",
@@ -632,12 +636,38 @@ def main() -> dict:
     _print_summary(all_results)
 
     # ── Save ──────────────────────────────────────────────────────────────────
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = args.output.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Per-passage files: never overwritten, named by passage + tablet set.
+    passage_map = {p.passage_id: p for p in passages}
+    for pid, result in all_results.items():
+        passage = passage_map[pid]
+        tablets_str = "".join(sorted(passage.tablet_vectors.keys()))
+        per_path = out_dir / f"simon_{pid}_{tablets_str}.json"
+        per_path.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        log.info("Passage result written to %s", per_path)
+
+    # Cumulative file: load existing, merge, write back.
+    cumulative: dict[str, Any] = {}
+    if args.output.exists():
+        try:
+            cumulative = json.loads(
+                args.output.read_text(encoding="utf-8")
+            ).get("passages", {})
+        except Exception as exc:
+            log.warning("Could not load existing %s (%s) — starting fresh.", args.output, exc)
+    cumulative.update(all_results)
     args.output.write_text(
-        json.dumps({"passages": all_results}, indent=2, ensure_ascii=False),
+        json.dumps({"passages": cumulative}, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    log.info("Results written to %s", args.output)
+    log.info(
+        "Cumulative results written to %s (%d passage(s) total)",
+        args.output, len(cumulative),
+    )
     return all_results
 
 

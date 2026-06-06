@@ -368,14 +368,16 @@ def run_ibmq(
     n_bits: int,
     shots: int,
     token: str,
-    instance: str = "ibm-q/open/main",
+    instance: str | None = None,
     backend_name: str | None = None,
 ) -> tuple[dict[str, int], float]:
-    from qiskit_ibm_runtime import QiskitRuntimeService, Session, SamplerV2
+    import os
+    from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
     from qiskit.compiler import transpile
 
+    instance = instance or os.environ.get("IBMQ_INSTANCE")
     t0 = time.monotonic()
-    service = QiskitRuntimeService(channel="ibm_quantum", token=token, instance=instance)
+    service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token, instance=instance)
     backend = (
         service.backend(backend_name) if backend_name
         else service.least_busy(operational=True, simulator=False, min_num_qubits=n_bits + 1)
@@ -383,11 +385,10 @@ def run_ibmq(
     log.info("IBM Quantum backend: %s (%d qubits)", backend.name, backend.num_qubits)
 
     t_qc = transpile(qc, backend=backend, optimization_level=2)
-    with Session(service=service, backend=backend) as session:
-        sampler = SamplerV2(mode=session)
-        job = sampler.run([t_qc], shots=shots)
-        log.info("Job submitted: %s", job.job_id())
-        counts = dict(job.result()[0].data.meas.get_counts())
+    sampler = SamplerV2(mode=backend)
+    job = sampler.run([t_qc], shots=shots)
+    log.info("Job submitted: %s", job.job_id())
+    counts = dict(job.result()[0].data.meas.get_counts())
     return counts, time.monotonic() - t0
 
 
@@ -762,7 +763,8 @@ def _parse_args() -> argparse.Namespace:
                    help="Min linearity fraction to run BV (default: 0.9)")
     p.add_argument("--backend",     choices=["statevector", "ibmq"], default="statevector")
     p.add_argument("--ibmq-token",  default=None,                    metavar="TOKEN")
-    p.add_argument("--ibmq-instance", default="ibm-q/open/main",     metavar="INST")
+    p.add_argument("--ibmq-instance", default=None,                   metavar="INST",
+                   help="IBM Quantum instance CRN (default: read from IBMQ_INSTANCE env var)")
     p.add_argument("--ibmq-backend",  default=None,                  metavar="NAME")
     p.add_argument("--draw", action="store_true",
                    help="Save BV circuit PNG to outputs/quantum/")
