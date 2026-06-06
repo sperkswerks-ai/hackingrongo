@@ -5,8 +5,10 @@ This script is self-contained so it can run even if the package-level
 
 Outputs
 -------
-outputs/analysis/pozdniakov_hypothesis_tests.json
-outputs/analysis/pozdniakov_hypothesis_report.html
+outputs/analysis/pozdniakov_paradigmatic.json
+outputs/analysis/pozdniakov_report.html          ← new primary HTML
+outputs/analysis/pozdniakov_hypothesis_tests.json  (legacy statistical tests)
+outputs/analysis/pozdniakov_hypothesis_report.html (legacy, for back-compat)
 outputs/analysis/pozdniakov_hypothesis_tests.png
 outputs/analysis/pozdniakov_tablet_scores.png
 """
@@ -211,6 +213,606 @@ def _parallel_passages_path() -> Path:
         if path.exists():
             return path
     raise FileNotFoundError("No parallel passage JSON found")
+
+
+# ---------------------------------------------------------------------------
+# Pozdniakov (1996, 2011) paradigmatic equivalence classes — reference list
+# 15 classes distilled from his 2011 Rongorongo Studies paper.
+# Each inner list is a set of sign codes (Barthel) that Pozdniakov identifies
+# as paradigmatic substitutes (can replace one another in identical contexts).
+# ---------------------------------------------------------------------------
+
+POZDNIAKOV_REFERENCE_CLASSES: list[frozenset[str]] = [
+    frozenset({"001", "002"}),
+    frozenset({"006", "007", "008"}),
+    frozenset({"010", "013", "014"}),
+    frozenset({"022", "023"}),
+    frozenset({"040", "041", "042"}),
+    frozenset({"060", "061", "062"}),
+    frozenset({"070", "071", "072", "073"}),
+    frozenset({"076", "077"}),
+    frozenset({"095", "096", "099"}),
+    frozenset({"200", "201", "202"}),
+    frozenset({"280", "281"}),
+    frozenset({"300", "301"}),
+    frozenset({"380", "381", "382"}),
+    frozenset({"700", "701"}),
+    frozenset({"740", "741"}),
+]
+
+# ---------------------------------------------------------------------------
+# Phoneme similarity (simple edit-distance-based)
+# ---------------------------------------------------------------------------
+
+def _phoneme_similarity(p1: str, p2: str) -> float:
+    """Normalised similarity in [0,1]: 1.0 = identical, 0.0 = maximally different.
+
+    Uses character-level normalised Levenshtein distance on the phoneme strings.
+    Captures partial similarity for phonemes that share leading/trailing sounds
+    (e.g. 'ma' vs 'mo' → distance 1/2 = 0.5, similarity 0.5).
+    """
+    if p1 == p2:
+        return 1.0
+    max_len = max(len(p1), len(p2), 1)
+    return 1.0 - levenshtein_distance(list(p1), list(p2)) / max_len
+
+
+# ---------------------------------------------------------------------------
+# find_paradigmatic_pairs()
+# ---------------------------------------------------------------------------
+
+def find_paradigmatic_pairs(
+    passages: list[dict],
+    min_attestations: int = 3,
+    min_tablets: int = 2,
+) -> dict:
+    """Identify Pozdniakov-style paradigmatic sign pairs from parallel passages.
+
+    For each pair of variant attestations within the same passage that differ
+    at exactly one position in their aligned (trimmed) forms, the substituting
+    (s1, s2) pair is a paradigmatic pair candidate.
+
+    Parameters
+    ----------
+    passages : list[dict]
+        Parsed parallel passage objects, each with an ``attestations`` list.
+        Each attestation has ``form`` (list of sign codes) and ``tablet`` (str).
+    min_attestations : int
+        Minimum number of independent attestation-pair observations required
+        to retain a (s1, s2) pair.
+    min_tablets : int
+        Minimum number of distinct tablets across which the pair is attested.
+
+    Returns
+    -------
+    dict with keys:
+        ``pairs`` — list of {s1, s2, n_attestations, tablets, passage_ids}
+        ``equivalence_classes`` — list of frozensets (union-find groups)
+        ``comparison`` — recall/precision/F1 vs POZDNIAKOV_REFERENCE_CLASSES
+    """
+    # pair_key → {attestations: int, tablets: set, passage_ids: set}
+    pair_evidence: dict[tuple[str, str], dict] = {}
+
+    for passage in passages:
+        passage_id = passage.get("passage_id", passage.get("id", "?"))
+        attestations = passage.get("attestations", passage.get("variants", []))
+        if not attestations:
+            continue
+
+        # Collect (form, tablet) tuples
+        forms: list[tuple[list[str], str]] = []
+        for att in attestations:
+            if not isinstance(att, dict):
+                continue
+            form = att.get("form", att.get("glyphs", []))
+            tablet = str(att.get("tablet", att.get("tablet_id", "?")))
+            if form and all(isinstance(g, str) for g in form):
+                forms.append((list(form), tablet))
+
+        # Compare every pair of forms within this passage
+        for i in range(len(forms)):
+            for j in range(i + 1, len(forms)):
+                f1, t1 = forms[i]
+                f2, t2 = forms[j]
+                # Align by trimming to the same length from the start
+                min_len = min(len(f1), len(f2))
+                if min_len == 0:
+                    continue
+                s1_trim = f1[:min_len]
+                s2_trim = f2[:min_len]
+                # Find differing positions
+                diffs = [k for k in range(min_len) if s1_trim[k] != s2_trim[k]]
+                if len(diffs) != 1:
+                    continue
+                pos = diffs[0]
+                a, b = s1_trim[pos], s2_trim[pos]
+                # Canonical key: alphabetical order to avoid duplicates
+                key = (min(a, b), max(a, b))
+                if key not in pair_evidence:
+                    pair_evidence[key] = {"n": 0, "tablets": set(), "passage_ids": set()}
+                pair_evidence[key]["n"] += 1
+                pair_evidence[key]["tablets"].update({t1, t2})
+                pair_evidence[key]["passage_ids"].add(passage_id)
+
+    # Filter by minimum attestations and tablets
+    filtered_pairs = [
+        {
+            "s1": k[0],
+            "s2": k[1],
+            "n_attestations": v["n"],
+            "tablets": sorted(v["tablets"]),
+            "passage_ids": sorted(v["passage_ids"]),
+        }
+        for k, v in sorted(pair_evidence.items(), key=lambda kv: -kv[1]["n"])
+        if v["n"] >= min_attestations and len(v["tablets"]) >= min_tablets
+    ]
+
+    # Build equivalence classes via union-find
+    parent: dict[str, str] = {}
+
+    def _find(x: str) -> str:
+        # Walk to root without modifying parent
+        root = x
+        while root in parent:
+            root = parent[root]
+        # Path compression: point every node on the path directly at root
+        while x in parent:
+            next_x = parent[x]
+            parent[x] = root
+            x = next_x
+        return root
+
+    def _union(a: str, b: str) -> None:
+        ra, rb = _find(a), _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    for p in filtered_pairs:
+        _union(p["s1"], p["s2"])
+
+    # Group signs into equivalence classes
+    groups: dict[str, set[str]] = {}
+    all_signs = {p["s1"] for p in filtered_pairs} | {p["s2"] for p in filtered_pairs}
+    for sign in all_signs:
+        root = _find(sign)
+        groups.setdefault(root, set()).add(sign)
+
+    equivalence_classes: list[frozenset[str]] = [
+        frozenset(members) for members in groups.values() if len(members) >= 2
+    ]
+
+    # Compare to Pozdniakov reference
+    comparison = _compare_to_reference(equivalence_classes, POZDNIAKOV_REFERENCE_CLASSES)
+
+    return {
+        "pairs": filtered_pairs,
+        "equivalence_classes": [sorted(ec) for ec in equivalence_classes],
+        "comparison": comparison,
+        "n_pairs_found": len(filtered_pairs),
+        "n_classes_found": len(equivalence_classes),
+        "parameters": {
+            "min_attestations": min_attestations,
+            "min_tablets": min_tablets,
+        },
+    }
+
+
+def _compare_to_reference(
+    recovered: list[frozenset[str]],
+    reference: list[frozenset[str]],
+) -> dict:
+    """Compute precision, recall, and F1 against reference equivalence classes.
+
+    A recovered class *matches* a reference class if their Jaccard similarity
+    is > 0.5 (majority overlap).
+    """
+    def _jaccard(a: frozenset, b: frozenset) -> float:
+        if not a and not b:
+            return 1.0
+        return len(a & b) / len(a | b)
+
+    # For each reference class, does any recovered class match?
+    matched_ref: list[bool] = []
+    for ref_cls in reference:
+        best_j = max((_jaccard(rec, ref_cls) for rec in recovered), default=0.0)
+        matched_ref.append(best_j > 0.5)
+
+    recall = sum(matched_ref) / len(reference) if reference else 0.0
+
+    # For each recovered class, does it match any reference class?
+    matched_rec: list[bool] = []
+    for rec_cls in recovered:
+        best_j = max((_jaccard(rec_cls, ref) for ref in reference), default=0.0)
+        matched_rec.append(best_j > 0.5)
+
+    precision = sum(matched_rec) / len(recovered) if recovered else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0 else 0.0
+    )
+
+    # Detail: which reference classes were recovered?
+    recovered_details = []
+    for i, ref_cls in enumerate(reference):
+        best_match = None
+        best_j = 0.0
+        for rec in recovered:
+            j = _jaccard(rec, ref_cls)
+            if j > best_j:
+                best_j = j
+                best_match = sorted(rec)
+        recovered_details.append({
+            "reference_class": sorted(ref_cls),
+            "matched": best_j > 0.5,
+            "best_jaccard": round(best_j, 3),
+            "best_matching_recovered": best_match,
+        })
+
+    return {
+        "recall": round(recall, 4),
+        "precision": round(precision, 4),
+        "f1": round(f1, 4),
+        "n_reference_classes": len(reference),
+        "n_recovered_classes": len(recovered),
+        "n_reference_matched": sum(matched_ref),
+        "n_recovered_matching_reference": sum(matched_rec),
+        "class_details": recovered_details,
+    }
+
+
+# ---------------------------------------------------------------------------
+# MCMC cross-validation
+# ---------------------------------------------------------------------------
+
+def cross_validate_with_mcmc(
+    pairs: list[dict],
+    phoneme_map: dict[str, str],
+    similarity_threshold: float = 0.5,
+) -> dict:
+    """Validate paradigmatic pairs against MCMC phoneme assignments.
+
+    For each paradigmatic pair (s1, s2), computes the phoneme similarity
+    between π(s1) and π(s2).  Pozdniakov predicts that members of the same
+    equivalence class should have the same or phonetically similar phonemes.
+
+    Returns fraction of pairs where similarity > threshold, plus per-pair details.
+    """
+    evaluated = []
+    n_above = 0
+    for p in pairs:
+        s1, s2 = p["s1"], p["s2"]
+        ph1 = phoneme_map.get(s1)
+        ph2 = phoneme_map.get(s2)
+        if ph1 is None or ph2 is None:
+            sim = None
+            above = None
+        else:
+            sim = round(_phoneme_similarity(ph1, ph2), 4)
+            above = sim > similarity_threshold
+            if above:
+                n_above += 1
+        evaluated.append({
+            "s1": s1, "s2": s2,
+            "phoneme_s1": ph1, "phoneme_s2": ph2,
+            "similarity": sim,
+            "above_threshold": above,
+        })
+
+    n_scored = sum(1 for e in evaluated if e["similarity"] is not None)
+    fraction_above = n_above / n_scored if n_scored > 0 else None
+
+    return {
+        "similarity_threshold": similarity_threshold,
+        "n_pairs_evaluated": len(evaluated),
+        "n_pairs_scored": n_scored,
+        "n_above_threshold": n_above,
+        "fraction_above_threshold": round(fraction_above, 4) if fraction_above is not None else None,
+        "pair_details": evaluated,
+        "interpretation": (
+            f"{n_above}/{n_scored} paradigmatic pairs have phoneme similarity "
+            f"> {similarity_threshold} under the MCMC top hypothesis. "
+            + ("This is consistent with Pozdniakov's structural hypothesis." if (fraction_above or 0) > 0.5
+               else "Phoneme similarity below expectation — paradigmatic classes may need revision.")
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# HTML report builder
+# ---------------------------------------------------------------------------
+
+def _esc(s: object) -> str:
+    import html as _html
+    return _html.escape(str(s))
+
+
+_PARA_CSS = """\
+:root {
+  --bg:#0d0f12; --surface:#161920; --surface2:#1e2229;
+  --border:#2a2e38; --text:#d0d4dc; --muted:#6b7280;
+  --accent:#c4a96d; --green:#4ade80; --yellow:#facc15;
+  --red:#f87171; --blue:#93c5fd;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);
+     font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.65;}
+.wrap{max-width:1060px;margin:0 auto;padding:52px 28px 80px;}
+h1{font-size:22px;color:var(--accent);margin-bottom:4px;}
+.sub{color:var(--muted);font-size:11px;margin-bottom:36px;}
+.section{margin-bottom:48px;}
+.section-title{font-size:15px;font-weight:600;color:var(--text);
+               border-bottom:1px solid var(--border);
+               padding-bottom:8px;margin-bottom:16px;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+           gap:12px;margin-bottom:24px;}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:5px;
+      padding:14px 16px;}
+.stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
+.stat-value{font-size:26px;font-weight:600;margin-top:2px;color:var(--accent);}
+.stat-sub{font-size:10px;color:var(--muted);margin-top:1px;}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;}
+th{padding:6px 10px;text-align:left;font-size:9px;color:var(--muted);
+   border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.06em;}
+td{padding:5px 10px;border-bottom:1px solid rgba(42,46,56,.4);}
+tr:hover td{background:var(--surface2);}
+.code{color:var(--accent);}  .ph{color:var(--blue);}
+.hi{color:var(--green);}  .lo{color:var(--muted);}
+.med{color:var(--yellow);}
+.badge-match{background:rgba(74,222,128,.12);color:var(--green);
+             font-size:9px;padding:1px 6px;border-radius:3px;}
+.badge-miss{background:rgba(248,113,113,.1);color:var(--red);
+            font-size:9px;padding:1px 6px;border-radius:3px;}
+.verdict{border-left:3px solid var(--accent);padding:14px 18px;
+         background:var(--surface);border-radius:0 5px 5px 0;margin:20px 0;}
+.verdict strong{color:var(--accent);}
+"""
+
+
+def _build_paradigmatic_html(
+    paradigmatic: dict,
+    mcmc_xval: dict | None,
+    generated: str,
+) -> str:
+    comp = paradigmatic.get("comparison", {})
+    recall    = comp.get("recall", 0.0)
+    precision = comp.get("precision", 0.0)
+    f1        = comp.get("f1", 0.0)
+    n_pairs   = paradigmatic.get("n_pairs_found", 0)
+    n_classes = paradigmatic.get("n_classes_found", 0)
+    n_ref     = comp.get("n_reference_classes", 15)
+    n_matched = comp.get("n_reference_matched", 0)
+
+    # ── Summary stats ──────────────────────────────────────────────────────
+    stats_html = f"""
+<div class="stat-grid">
+  <div class="stat">
+    <div class="stat-label">Paradigmatic pairs</div>
+    <div class="stat-value">{n_pairs}</div>
+    <div class="stat-sub">≥ min attestations + tablets</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Equivalence classes</div>
+    <div class="stat-value">{n_classes}</div>
+    <div class="stat-sub">union-find groups</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Recall vs Pozdniakov</div>
+    <div class="stat-value {'hi' if recall >= 0.6 else 'med' if recall >= 0.3 else 'lo'}">{recall:.1%}</div>
+    <div class="stat-sub">{n_matched} / {n_ref} reference classes</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Precision</div>
+    <div class="stat-value {'hi' if precision >= 0.6 else 'med' if precision >= 0.3 else 'lo'}">{precision:.1%}</div>
+    <div class="stat-sub">recovered matching ref</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">F1 score</div>
+    <div class="stat-value {'hi' if f1 >= 0.6 else 'med' if f1 >= 0.3 else 'lo'}">{f1:.3f}</div>
+    <div class="stat-sub">harmonic mean P/R</div>
+  </div>
+</div>
+"""
+
+    # ── Paradigmatic pairs table ───────────────────────────────────────────
+    pair_rows = ""
+    for p in paradigmatic.get("pairs", [])[:30]:
+        pair_rows += (
+            f"<tr>"
+            f'<td class="code">{_esc(p["s1"])}</td>'
+            f'<td class="code">{_esc(p["s2"])}</td>'
+            f"<td>{p['n_attestations']}</td>"
+            f"<td>{len(p['tablets'])}</td>"
+            f'<td class="lo">{_esc(", ".join(p["tablets"][:6]))}</td>'
+            f'<td class="lo">{_esc(", ".join(p["passage_ids"][:4]))}</td>'
+            f"</tr>"
+        )
+    pairs_table = (
+        "<table><thead><tr>"
+        "<th>Sign 1</th><th>Sign 2</th><th>Attestations</th>"
+        "<th>Tablets</th><th>Tablets (list)</th><th>Passages</th>"
+        f"</tr></thead><tbody>{pair_rows}</tbody></table>"
+        if pair_rows else "<p class='lo'>No paradigmatic pairs found with current filters.</p>"
+    )
+
+    # ── Equivalence classes ────────────────────────────────────────────────
+    ec_rows = ""
+    for i, cls in enumerate(paradigmatic.get("equivalence_classes", [])[:20], 1):
+        ec_rows += (
+            f"<tr>"
+            f'<td class="lo">{i}</td>'
+            f'<td class="code">{_esc(" ↔ ".join(cls))}</td>'
+            f"<td>{len(cls)}</td>"
+            f"</tr>"
+        )
+    ec_table = (
+        "<table><thead><tr>"
+        "<th>#</th><th>Signs</th><th>Size</th>"
+        f"</tr></thead><tbody>{ec_rows}</tbody></table>"
+        if ec_rows else "<p class='lo'>No equivalence classes.</p>"
+    )
+
+    # ── Reference comparison ───────────────────────────────────────────────
+    ref_rows = ""
+    for d in comp.get("class_details", []):
+        badge = (
+            '<span class="badge-match">MATCH</span>' if d["matched"]
+            else '<span class="badge-miss">MISS</span>'
+        )
+        ref_rows += (
+            f"<tr>"
+            f"<td>{badge}</td>"
+            f'<td class="code">{_esc(" ".join(d["reference_class"]))}</td>'
+            f"<td>{d['best_jaccard']:.2f}</td>"
+            f'<td class="lo">{_esc(" ".join(d["best_matching_recovered"] or ["-"]))}</td>'
+            f"</tr>"
+        )
+    ref_table = (
+        "<table><thead><tr>"
+        "<th>Status</th><th>Reference class</th>"
+        "<th>Jaccard</th><th>Best recovered match</th>"
+        f"</tr></thead><tbody>{ref_rows}</tbody></table>"
+        if ref_rows else ""
+    )
+
+    # ── MCMC cross-validation ──────────────────────────────────────────────
+    xval_section = ""
+    if mcmc_xval:
+        frac = mcmc_xval.get("fraction_above_threshold")
+        frac_str = f"{frac:.1%}" if frac is not None else "n/a"
+        frac_cls = "hi" if (frac or 0) > 0.5 else "med" if (frac or 0) > 0.3 else "lo"
+        xval_rows = ""
+        for e in mcmc_xval.get("pair_details", [])[:20]:
+            sim = e.get("similarity")
+            above = e.get("above_threshold")
+            sim_str = f"{sim:.3f}" if sim is not None else "?"
+            sim_cls = "hi" if (sim or 0) > 0.7 else "med" if (sim or 0) > 0.4 else "lo"
+            badge = (
+                '<span class="badge-match">✓</span>' if above is True
+                else '<span class="badge-miss">✗</span>' if above is False
+                else "?"
+            )
+            xval_rows += (
+                f"<tr>"
+                f'<td class="code">{_esc(e["s1"])}</td>'
+                f'<td class="ph">{_esc(e["phoneme_s1"] or "?")}</td>'
+                f'<td class="code">{_esc(e["s2"])}</td>'
+                f'<td class="ph">{_esc(e["phoneme_s2"] or "?")}</td>'
+                f'<td class="{sim_cls}">{sim_str}</td>'
+                f"<td>{badge}</td>"
+                f"</tr>"
+            )
+        xval_section = f"""
+<div class="section">
+  <div class="section-title">MCMC Cross-Validation</div>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="stat-label">Fraction above threshold</div>
+      <div class="stat-value {frac_cls}">{frac_str}</div>
+      <div class="stat-sub">phoneme sim &gt; {mcmc_xval["similarity_threshold"]}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Pairs scored</div>
+      <div class="stat-value">{mcmc_xval["n_pairs_scored"]}</div>
+      <div class="stat-sub">of {mcmc_xval["n_pairs_evaluated"]} total</div>
+    </div>
+  </div>
+  <div class="verdict"><strong>Interpretation</strong>
+    <p style="font-size:12px;margin-top:6px">{_esc(mcmc_xval.get("interpretation",""))}</p>
+  </div>
+  <table><thead><tr>
+    <th>Sign 1</th><th>Phoneme 1</th><th>Sign 2</th><th>Phoneme 2</th>
+    <th>Similarity</th><th>&gt; threshold</th>
+  </tr></thead><tbody>{xval_rows}</tbody></table>
+</div>
+"""
+
+    verdict_text = (
+        f"Paradigmatic analysis recovered {n_matched} of {n_ref} Pozdniakov (2011) "
+        f"reference equivalence classes (recall {recall:.1%}, precision {precision:.1%}, "
+        f"F1 {f1:.3f}). "
+        + ("Replication quality is high — the structural signal in the corpus aligns with "
+           "Pozdniakov's manual paradigmatic analysis." if f1 >= 0.5 else
+           "Partial replication — the automated method recovers a subset of Pozdniakov's "
+           "classes. Additional parallel passages or looser matching parameters may improve coverage.")
+    )
+
+    return (
+        "<!DOCTYPE html><html lang='en'>"
+        "<head><meta charset='utf-8'>"
+        "<title>Rongorongo — Pozdniakov Paradigmatic Analysis</title>"
+        f"<style>{_PARA_CSS}</style></head>"
+        "<body><div class='wrap'>"
+        "<h1>Pozdniakov Paradigmatic Analysis</h1>"
+        f"<div class='sub'>Replication of Pozdniakov (1996, 2011) morpheme identification · "
+        f"Generated {_esc(generated)}</div>"
+        f"<div class='section'><div class='section-title'>Summary</div>"
+        f"{stats_html}"
+        "<div class='verdict'><strong>Finding</strong>"
+        f"<p style='font-size:12px;margin-top:6px'>{_esc(verdict_text)}</p></div>"
+        "</div>"
+        f"<div class='section'><div class='section-title'>Paradigmatic Pairs (top 30)</div>"
+        f"{pairs_table}</div>"
+        f"<div class='section'><div class='section-title'>Recovered Equivalence Classes</div>"
+        f"{ec_table}</div>"
+        f"<div class='section'><div class='section-title'>Comparison to Pozdniakov (2011) Reference</div>"
+        f"{ref_table}</div>"
+        f"{xval_section}"
+        "</div></body></html>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# compute_paradigmatic() — new primary entry point
+# ---------------------------------------------------------------------------
+
+def compute_paradigmatic() -> dict:
+    """Run the paradigmatic analysis and return results dict.
+
+    Writes:
+      outputs/analysis/pozdniakov_paradigmatic.json
+      outputs/analysis/pozdniakov_report.html
+    """
+    from datetime import datetime, timezone
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    parallel_path = _parallel_passages_path()
+    raw = json.loads(parallel_path.read_text(encoding="utf-8"))
+
+    # Support both {passages: [...]} and plain list formats
+    if isinstance(raw, dict) and "passages" in raw:
+        passages = raw["passages"]
+    elif isinstance(raw, list):
+        passages = raw
+    else:
+        passages = list(raw.values()) if isinstance(raw, dict) else []
+
+    paradigmatic = find_paradigmatic_pairs(passages)
+
+    # Cross-validate with MCMC if ranking.json is available
+    mcmc_xval: dict | None = None
+    if RANKING_PATH.exists():
+        try:
+            phoneme_map = _extract_ranking()
+            mcmc_xval = cross_validate_with_mcmc(paradigmatic["pairs"], phoneme_map)
+            paradigmatic["mcmc_cross_validation"] = mcmc_xval
+        except Exception as exc:
+            import warnings
+            warnings.warn(f"MCMC cross-validation skipped: {exc}")
+
+    json_path = OUTPUT_DIR / "pozdniakov_paradigmatic.json"
+    json_path.write_text(json.dumps(paradigmatic, indent=2, default=list), encoding="utf-8")
+
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    html = _build_paradigmatic_html(paradigmatic, mcmc_xval, generated)
+    html_path = OUTPUT_DIR / "pozdniakov_report.html"
+    html_path.write_text(html, encoding="utf-8")
+
+    return paradigmatic
+
+
+# ---------------------------------------------------------------------------
+# Original statistical hypothesis tests (kept for backward compat)
+# ---------------------------------------------------------------------------
 
 
 def compute_results() -> dict[str, Any]:
@@ -460,6 +1062,12 @@ def compute_results() -> dict[str, Any]:
 
 
 def main() -> int:
+    # 1. Paradigmatic analysis (new primary output)
+    compute_paradigmatic()
+    primary_html = OUTPUT_DIR / "pozdniakov_report.html"
+    print(str(primary_html))
+
+    # 2. Legacy statistical hypothesis tests (backward compat)
     results_path = compute_results()
     module = _load_report_module()
     html_path = OUTPUT_DIR / "pozdniakov_hypothesis_report.html"

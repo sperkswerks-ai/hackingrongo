@@ -53,6 +53,7 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
@@ -316,6 +317,52 @@ class MCMCSampler:
 
         # Precompute sign → per-sequence position index for incremental scoring.
         self._sign_positions: dict[str, list[list[int]]] = self._build_position_index(corpus_sequences)
+
+        # ── Bigram context scoring via precomputed matrix ─────────────────────
+        # When use_bigram=True (default), delta_bigram_score() is added to
+        # _compute_delta() to capture phoneme-pair context that the base
+        # LM scorer may not handle incrementally.  The matrix is loaded from
+        # the cache written by run_qubo_decipherment.py; if absent, bigram
+        # scoring is silently disabled for this run.
+        self._use_bigram: bool = bool(getattr(mc, "use_bigram", True))
+        self._bigram_matrix: np.ndarray | None = None
+        self._phoneme_to_idx: dict[str, int] = {
+            p: i for i, p in enumerate(self._phoneme_inventory)
+        }
+        if self._use_bigram:
+            _project_root = Path(__file__).resolve().parents[3]
+            _cache_path = _project_root / "outputs" / "decipherment" / "bigram_score_matrix.npy"
+            if _cache_path.exists():
+                try:
+                    mat = np.load(_cache_path)
+                    n_ph = len(self._phoneme_inventory)
+                    if mat.shape == (n_ph, n_ph):
+                        self._bigram_matrix = mat
+                        logger.info(
+                            "MCMCSampler: bigram matrix loaded from cache (%d×%d).", n_ph, n_ph
+                        )
+                    else:
+                        logger.warning(
+                            "MCMCSampler: bigram matrix shape %s does not match "
+                            "phoneme inventory size %d — bigram scoring disabled.",
+                            mat.shape, n_ph,
+                        )
+                        self._use_bigram = False
+                except Exception as _exc:
+                    logger.warning(
+                        "MCMCSampler: could not load bigram matrix (%s) "
+                        "— bigram scoring disabled.", _exc,
+                    )
+                    self._use_bigram = False
+            else:
+                logger.info(
+                    "MCMCSampler: bigram matrix cache not found at %s "
+                    "— run run_qubo_decipherment.py first to enable bigram scoring.",
+                    _cache_path,
+                )
+                self._use_bigram = False
+        if self._use_bigram:
+            logger.info("MCMCSampler: bigram context scoring enabled.")
 
     # ------------------------------------------------------------------
     # Position index
@@ -824,6 +871,81 @@ class MCMCSampler:
             for seq in self._corpus_sequences
         ]
 
+    def delta_bigram_score(
+        self,
+        phoneme_seqs: list[list[str]],
+        changes: dict[str, tuple[str, str]],
+    ) -> float:
+        """Delta bigram log-prob when one or two signs change phoneme assignments.
+
+        For every bigram (left_pos, left_pos+1) in any corpus sequence where
+        at least one endpoint is being changed, computes::
+
+            Δ = log P_bigram(new_right | new_left) − log P_bigram(old_right | old_left)
+
+        Uses the precomputed ``bigram_score_matrix`` for O(1) per-bigram lookup.
+        Only active when ``cfg.zone_c.mcmc.use_bigram`` is True and the matrix
+        cache was found at construction time.
+
+        Handles swaps (two simultaneous changes) correctly: both endpoints of
+        any affected bigram are evaluated at their *new* phonemes for the
+        "new" score and at their *old* phonemes for the "old" score.
+        """
+        if not self._use_bigram or self._bigram_matrix is None or not changes:
+            return 0.0
+
+        mat    = self._bigram_matrix
+        ph_idx = self._phoneme_to_idx
+        total  = 0.0
+
+        for seq_idx, phoneme_seq in enumerate(phoneme_seqs):
+            seq_len = len(phoneme_seq)
+            if seq_len < 2:
+                continue
+
+            # Build {position: (old_phoneme, new_phoneme)} for this sequence.
+            pos_to_change: dict[int, tuple[str, str]] = {}
+            for sign, (old_ph, new_ph) in changes.items():
+                if old_ph == new_ph:
+                    continue
+                for pos in self._sign_positions[sign][seq_idx]:
+                    pos_to_change[pos] = (old_ph, new_ph)
+
+            if not pos_to_change:
+                continue
+
+            def _old(p: int) -> str:
+                c = pos_to_change.get(p)
+                return c[0] if c else phoneme_seq[p]
+
+            def _new(p: int) -> str:
+                c = pos_to_change.get(p)
+                return c[1] if c else phoneme_seq[p]
+
+            # Collect all bigram start-positions (left_pos) where either end changes.
+            affected: set[int] = set()
+            for pos in pos_to_change:
+                if pos > 0:
+                    affected.add(pos - 1)   # bigram ending at pos
+                if pos < seq_len - 1:
+                    affected.add(pos)        # bigram starting at pos
+
+            for lp in affected:
+                rp = lp + 1
+                if rp >= seq_len:
+                    continue
+                ol = _old(lp);  nl = _new(lp)
+                or_ = _old(rp); nr = _new(rp)
+                if ol == nl and or_ == nr:
+                    continue
+                il_o = ph_idx.get(ol, -1);  ir_o = ph_idx.get(or_, -1)
+                il_n = ph_idx.get(nl, -1);  ir_n = ph_idx.get(nr, -1)
+                old_s = float(mat[il_o, ir_o]) if (il_o >= 0 and ir_o >= 0) else -20.0
+                new_s = float(mat[il_n, ir_n]) if (il_n >= 0 and ir_n >= 0) else -20.0
+                total += new_s - old_s
+
+        return total
+
     def _compute_delta(
         self,
         phoneme_seqs: list[list[str]],
@@ -860,6 +982,9 @@ class MCMCSampler:
                 total_delta += self._scorer.score_delta(
                     phoneme_seq, changed_positions, old_phonemes, new_phonemes
                 )
+        # Add bigram context term from the precomputed matrix when enabled.
+        if self._use_bigram and self._bigram_matrix is not None:
+            total_delta += self.delta_bigram_score(phoneme_seqs, changes)
         return total_delta
 
     # ------------------------------------------------------------------

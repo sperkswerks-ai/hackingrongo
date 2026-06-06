@@ -165,24 +165,67 @@ def _normalize_stratum(stratum: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Barthel century-block classification
+# Barthel iconographic family lookup
 # ---------------------------------------------------------------------------
 
-def _barthel_century_block(code: str) -> int:
-    """Return the Barthel century block for a code (1–99 → 0, 100–199 → 1, …).
+# Module-level cache: loaded once on first use to avoid repeated disk I/O.
+# Keys are Barthel code strings; values are family label strings.
+_FAMILY_CACHE: dict[str, str] | None = None
+_FAMILY_CACHE_LOADED: bool = False
 
-    Barthel organised his catalogue in morphological blocks aligned with the
-    hundreds digit of the numeric code.  Two substituting signs in the same
-    century block are structurally related (same morphological class); those
-    in different blocks cross a genuine sign-family boundary.
 
-    Returns -1 for codes that contain no numeric part (compound, unknown).
+def _load_families() -> dict[str, str]:
+    """Load barthel_families.json and cache it module-wide."""
+    global _FAMILY_CACHE, _FAMILY_CACHE_LOADED
+    if not _FAMILY_CACHE_LOADED:
+        _FAMILY_CACHE_LOADED = True
+        candidates = [
+            Path(__file__).resolve().parents[3] / "data" / "catalog" / "barthel_families.json",
+            Path(__file__).resolve().parents[2] / "data" / "catalog" / "barthel_families.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    import json as _json
+                    raw = _json.loads(path.read_text(encoding="utf-8"))
+                    _FAMILY_CACHE = {k: v for k, v in raw.items() if not k.startswith("_")}
+                    return _FAMILY_CACHE
+                except Exception:
+                    pass
+        _FAMILY_CACHE = {}
+    return _FAMILY_CACHE or {}
+
+
+def _get_family(code: str) -> str:
+    """Return the iconographic family for a Barthel sign code.
+
+    Uses ``barthel_families.json`` (Barthel 1958, Fischer 1997) rather than
+    arithmetic century-block derivation.  Two signs that differ only in their
+    numeric range may still belong to the same iconographic family; conversely,
+    signs in adjacent century blocks may cross genuine morphological boundaries.
+
+    Returns ``'unknown'`` for any code not present in the lookup.
     """
-    try:
-        n = int(re.sub(r"[^0-9]", "", code))
-        return n // 100
-    except ValueError:
-        return -1
+    fam_map = _load_families()
+    if not fam_map:
+        return "unknown"
+    # Try padded form first (corpus convention: '076', '200')
+    fam = fam_map.get(code)
+    if fam is not None:
+        return fam
+    # Try stripping leading zeros
+    stripped = code.lstrip("0") or "0"
+    fam = fam_map.get(stripped)
+    if fam is not None:
+        return fam
+    # Try stripping allograph suffix and re-padding
+    digits = "".join(c for c in code if c.isdigit())
+    if digits:
+        padded = digits.zfill(3)
+        fam = fam_map.get(padded) or fam_map.get(digits)
+        if fam is not None:
+            return fam
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -411,14 +454,14 @@ def analyze_passage(
         else:
             change_type = "substitution"
 
-        # Barthel century-block check
-        pre_block = _barthel_century_block(pre_consensus)
-        post_block = _barthel_century_block(post_consensus)
+        # Iconographic family check using barthel_families.json
+        pre_family  = _get_family(pre_consensus)
+        post_family = _get_family(post_consensus)
         crosses_family = (
             change_type == "substitution"
-            and pre_block >= 0
-            and post_block >= 0
-            and pre_block != post_block
+            and pre_family != "unknown"
+            and post_family != "unknown"
+            and pre_family != post_family
         )
 
         # Known allograph: both signs resolve to the same canonical sign

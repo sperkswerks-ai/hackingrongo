@@ -546,6 +546,52 @@ def step4i_pgood_analysis(dry_run: bool = False) -> tuple[int, float]:
     )
 
 
+def step4i_simon_decipherment(dry_run: bool = False) -> tuple[int, float]:
+    """Simon's algorithm on diachronic key-change events P007 and P012."""
+    variants = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
+    if not dry_run and not _check(variants, "parallel_variants_auto.json (run Step 4e first)"):
+        return 1, 0.0
+    return _run(
+        "simon_decipherment",
+        [
+            sys.executable, "scripts/run_simon_decipherment.py",
+            "--variants-file", str(variants),
+            "--output", str(PROJECT_ROOT / "outputs" / "quantum" / "simon_result.json"),
+        ],
+        dry_run=dry_run,
+    )
+
+
+def step4i_bv_ic_analysis(dry_run: bool = False) -> tuple[int, float]:
+    """Bernstein-Vazirani algorithm on the IC contribution distribution."""
+    return _run(
+        "bv_ic_analysis",
+        [
+            sys.executable, "scripts/run_bv_ic_analysis.py",
+            "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
+            "--output",     str(PROJECT_ROOT / "outputs" / "quantum" / "bv_ic_result.json"),
+        ],
+        dry_run=dry_run,
+    )
+
+
+def step4p_qksvm_parallels(dry_run: bool = False) -> tuple[int, float]:
+    """Projected QK-SVM soft parallel passage detection."""
+    variants = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
+    if not dry_run and not _check(variants, "parallel_variants_auto.json (run Step 4e first)"):
+        return 1, 0.0
+    return _run(
+        "qksvm_parallels",
+        [
+            sys.executable, "scripts/run_qksvm_parallels.py",
+            "--corpus-dir",   str(PROJECT_ROOT / "data" / "corpus"),
+            "--variants-file", str(variants),
+            "--output",       str(PROJECT_ROOT / "outputs" / "quantum" / "soft_parallels_qksvm.json"),
+        ],
+        dry_run=dry_run,
+    )
+
+
 def step4j_qubo_decipherment(dry_run: bool = False) -> tuple[int, float]:
     """QUBO quantum annealing key search."""
     ranking = PROJECT_ROOT / "outputs" / "decipherment" / "ranking.json"
@@ -590,38 +636,325 @@ def step4m_morpheme_seg(dry_run: bool = False) -> tuple[int, float]:
     )
 
 
+def step4o_contact_partition(dry_run: bool = False) -> tuple[int, float]:
+    """Contact partition: G² bipartite sign frequency analysis (pre vs post contact).
+
+    Runs contact_analysis.py with --report to produce:
+      outputs/contact_partition.json          (flat record list, backward-compat)
+      outputs/analysis/contact_partition_report.html
+      outputs/contact_partition_bipartite.html (plotly graph, if plotly installed)
+    """
+    return _run(
+        "contact_partition",
+        [
+            sys.executable, "-m", "hackingrongo.zone_b.contact_analysis",
+            "--output",  str(PROJECT_ROOT / "outputs" / "contact_partition.json"),
+            "--report",  str(PROJECT_ROOT / "outputs" / "analysis" / "contact_partition_report.html"),
+            "--plot",    str(PROJECT_ROOT / "outputs" / "contact_partition_bipartite.html"),
+        ],
+        dry_run=dry_run,
+    )
+
+
+def step4n_pozdniakov(dry_run: bool = False) -> tuple[int, float]:
+    """Pozdniakov (1996/2011) paradigmatic analysis + HTML report.
+
+    Identifies sign substitution pairs from parallel passage variants,
+    groups them into equivalence classes, and compares to Pozdniakov's
+    published 15 reference classes.  Also cross-validates against the
+    MCMC top hypothesis when ranking.json is available.
+
+    Outputs
+    -------
+    outputs/analysis/pozdniakov_paradigmatic.json
+    outputs/analysis/pozdniakov_report.html
+    """
+    parallel_auto = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
+    parallel_base = PROJECT_ROOT / "data" / "parallels" / "parallel_variants.json"
+    if not dry_run and not (parallel_auto.exists() or parallel_base.exists()):
+        log.warning(
+            "step4n_pozdniakov: no parallel_variants*.json found — skipping "
+            "(run step4e_parallel_passages first)."
+        )
+        return 1, 0.0
+    return _run(
+        "pozdniakov_paradigmatic",
+        [
+            sys.executable, "scripts/generate_pozdniakov_report.py",
+        ],
+        dry_run=dry_run,
+    )
+
+
 def step4k_train_fusion(
     smoke_test: bool = False,
     dry_run: bool = False,
 ) -> tuple[int, float]:
-    """Train the Zone C fusion layer (Zone A embeddings + Zone B structural priors).
+    """Train the Zone C fusion layer in-process (no subprocess).
 
-    Requires:
+    Loads Zone A embeddings and Zone B sign classifications, assembles
+    Zone B prior vectors, trains :class:`~hackingrongo.zone_c.fusion.FusionLayer`
+    with early-stop on validation-loss plateau, then saves the best checkpoint
+    and marks the stage done.
+
+    Requires
+    --------
     * ``outputs/embeddings_cache.pt`` — Zone A autoencoder embeddings
-    * ``outputs/analysis/compound_candidates.json`` — Zone B compound scores
-    * ``data/corpus/`` — rongorongo corpus (for training targets)
+    * ``outputs/zone_b_cache.pkl`` — :class:`~hackingrongo.zone_b.sign_classifier.SignInventory`
+      (optional: falls back to neutral UNKNOWN classifications when absent)
+    * ``data/corpus/`` — corpus for IC / bigram features 9–12
 
-    Produces: ``outputs/zone_c/fusion_checkpoint.pt``.
+    Produces
+    --------
+    ``outputs/checkpoints/fusion_layer.pt``
     """
+    import json as _json
+    import pickle
+    import time
+
     embeddings_cache = PROJECT_ROOT / "outputs" / "embeddings_cache.pt"
+    zone_b_cache_path = PROJECT_ROOT / "outputs" / "zone_b_cache.pkl"
     compound_json = PROJECT_ROOT / "outputs" / "analysis" / "compound_candidates.json"
+    checkpoint_path = PROJECT_ROOT / "outputs" / "checkpoints" / "fusion_layer.pt"
 
-    if not dry_run:
-        if not _check(embeddings_cache, "Embeddings cache (run Step 2 first)"):
-            return 1, 0.0
-        if not _check(compound_json, "Compound candidates (run Step 4c first)"):
-            return 1, 0.0
+    if dry_run:
+        log.info("DRY RUN: step4k would train fusion → %s", checkpoint_path)
+        return 0, 0.0
 
-    cmd = [
-        sys.executable, "scripts/train_fusion.py",
-        "--embeddings",  str(embeddings_cache),
-        "--compounds",   str(compound_json),
-        "--corpus-dir",  str(PROJECT_ROOT / "data" / "corpus"),
-        "--output",      str(PROJECT_ROOT / "outputs" / "zone_c" / "fusion_checkpoint.pt"),
-    ]
+    if not _check(embeddings_cache, "Embeddings cache (run Step 2 first)"):
+        return 1, 0.0
+
+    t0 = time.monotonic()
+
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    from omegaconf import OmegaConf
+    from torch.utils.data import DataLoader, TensorDataset
+
+    from hackingrongo.zone_b.priors import (
+        ZoneBPriorBuilder,
+        build_zone_b_prior,
+        compute_corpus_sign_stats,
+    )
+    from hackingrongo.zone_b.sign_classifier import (
+        SignClass,
+        SignClassification,
+        SignInventory,
+    )
+    from hackingrongo.zone_c.fusion import (
+        FusionLayer,
+        build_fusion_optimizer,
+        build_fusion_scheduler,
+        save_fusion_checkpoint,
+        train_fusion_epoch,
+    )
+
+    try:
+        cfg = OmegaConf.load(PROJECT_ROOT / "conf" / "config.yaml")
+    except Exception as exc:
+        log.error("Failed to load config.yaml: %s", exc)
+        return 1, time.monotonic() - t0
+
     if smoke_test:
-        cmd.append("--smoke-test")
-    return _run("train_fusion", cmd, dry_run=dry_run)
+        cfg = OmegaConf.merge(
+            cfg,
+            OmegaConf.create({"zone_c": {"fusion": {"num_epochs": 2, "batch_size": 8}}}),
+        )
+
+    num_epochs: int = int(cfg.zone_c.fusion.num_epochs)
+    batch_size: int = int(cfg.zone_c.fusion.batch_size)
+    zone_b_dim: int = int(cfg.zone_b.prior_output_dim)
+    output_dim: int = int(cfg.zone_c.fusion.output_dim)
+    val_fraction: float = 0.15
+    patience: int = 5
+    min_delta: float = 1e-5
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log.info(
+        "4k fusion: device=%s  epochs=%d  batch=%d  output_dim=%d",
+        device, num_epochs, batch_size, output_dim,
+    )
+
+    # ── Load Zone A embeddings ────────────────────────────────────────────────
+    emb_data = torch.load(embeddings_cache, weights_only=True)
+    zone_a: torch.Tensor = emb_data["embeddings"].float()
+    barthel_codes: list[str] = list(emb_data["barthel_codes"])
+    sign_codes_unique: list[str] = sorted(set(barthel_codes))
+    log.info(
+        "Zone A: %d tokens, dim=%d, %d unique codes",
+        len(barthel_codes), zone_a.shape[1], len(sign_codes_unique),
+    )
+
+    # ── Load sign classifications from zone_b_cache.pkl (or defaults) ────────
+    inventory: SignInventory | None = None
+    if zone_b_cache_path.exists():
+        try:
+            obj = pickle.loads(zone_b_cache_path.read_bytes())
+            if isinstance(obj, SignInventory):
+                inventory = obj
+                log.info("zone_b_cache.pkl loaded: %d sign(s)", len(inventory.classifications))
+            else:
+                log.warning(
+                    "zone_b_cache.pkl contains %s, expected SignInventory — using defaults",
+                    type(obj).__name__,
+                )
+        except Exception as exc:
+            log.warning("Could not load zone_b_cache.pkl (%s) — using defaults", exc)
+
+    if inventory is None:
+        inventory = SignInventory(classifications={
+            code: SignClassification(
+                code=code,
+                sign_class=SignClass.UNKNOWN,
+                confidence=0.0,
+                frequency_percentile=0.5,
+                omission_rate=0.0,
+                positional_entropy=0.0,
+            )
+            for code in sign_codes_unique
+        })
+        log.info("Using neutral UNKNOWN classifications for all %d sign codes", len(sign_codes_unique))
+
+    # ── Load compound scores ──────────────────────────────────────────────────
+    compound_scores: dict[str, float] = {}
+    if compound_json.exists():
+        try:
+            raw = _json.loads(compound_json.read_text(encoding="utf-8"))
+            candidates = raw if isinstance(raw, list) else raw.get("candidates", [])
+            for c in candidates:
+                code = str(c.get("barthel_code", c.get("code", "")))
+                prob = float(c.get("compound_probability", c.get("score", 0.0)))
+                if code:
+                    compound_scores[code] = prob
+        except Exception as exc:
+            log.warning("Could not load compound scores: %s", exc)
+
+    # ── Corpus statistics for features 9–12 ──────────────────────────────────
+    corpus_dir = PROJECT_ROOT / "data" / "corpus"
+    corpus_stats = None
+    if corpus_dir.exists():
+        try:
+            corpus_stats = compute_corpus_sign_stats(corpus_dir)
+        except Exception as exc:
+            log.warning("compute_corpus_sign_stats failed (%s) — features 9-12 default to 0", exc)
+
+    # ── Zone B prior: one vector per unique sign code, then expand per token ──
+    prior_per_code, builder = build_zone_b_prior(
+        sign_codes=sign_codes_unique,
+        inventory=inventory,
+        cfg=cfg,
+        compound_scores=compound_scores,
+        corpus_stats=corpus_stats,
+        device=device,
+    )
+    code_to_idx = {code: i for i, code in enumerate(sign_codes_unique)}
+    token_idx = torch.tensor(
+        [code_to_idx.get(c, 0) for c in barthel_codes], dtype=torch.long
+    )
+    zone_b_expanded: torch.Tensor = prior_per_code[token_idx].detach().cpu()
+
+    # ── Self-supervised targets: truncated SVD of Zone A ─────────────────────
+    try:
+        from sklearn.decomposition import TruncatedSVD  # type: ignore[import]
+        n, d = zone_a.shape
+        n_components = min(output_dim, d, n - 1)
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        coords = svd.fit_transform(zone_a.numpy().astype(np.float32))
+        if n_components < output_dim:
+            coords = np.concatenate(
+                [coords, np.zeros((n, output_dim - n_components), dtype=np.float32)], axis=1
+            )
+        targets = torch.from_numpy(coords[:, :output_dim].astype(np.float32))
+        log.info("SVD targets: %d components → shape %s", n_components, list(targets.shape))
+    except ImportError:
+        log.warning("scikit-learn unavailable — using random-projection targets")
+        targets = torch.randn(zone_a.shape[0], output_dim)
+
+    # ── Patch config if actual zone_a_dim differs from config value ───────────
+    actual_a_dim = zone_a.shape[1]
+    if actual_a_dim != int(cfg.zone_c.fusion.zone_a_dim):
+        log.warning(
+            "Config zone_a_dim=%d but actual embedding dim=%d — patching config",
+            int(cfg.zone_c.fusion.zone_a_dim), actual_a_dim,
+        )
+        cfg = OmegaConf.merge(
+            cfg,
+            OmegaConf.create({"zone_c": {"fusion": {"zone_a_dim": actual_a_dim}}}),
+        )
+
+    # ── Train / validation split ──────────────────────────────────────────────
+    n_total = len(zone_a)
+    n_val = max(1, int(n_total * val_fraction))
+    n_train = n_total - n_val
+    perm = torch.randperm(n_total, generator=torch.Generator().manual_seed(42))
+    train_idx, val_idx = perm[:n_train], perm[n_train:]
+
+    train_ds = TensorDataset(
+        zone_a[train_idx], zone_b_expanded[train_idx], targets[train_idx]
+    )
+    val_ds = TensorDataset(
+        zone_a[val_idx], zone_b_expanded[val_idx], targets[val_idx]
+    )
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,  num_workers=0)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=0)
+    log.info("4k fusion: train=%d  val=%d  batches/epoch=%d", n_train, n_val, len(train_loader))
+
+    # ── Model, optimizer, scheduler ──────────────────────────────────────────
+    fusion = FusionLayer(cfg).to(device)
+    optimizer = build_fusion_optimizer(fusion, cfg)
+    scheduler = build_fusion_scheduler(optimizer, cfg)
+    loss_fn = nn.MSELoss()
+
+    # ── Training loop with early stopping on val loss ─────────────────────────
+    best_val_loss = float("inf")
+    no_improve_epochs = 0
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
+    for epoch in range(num_epochs):
+        train_loss = train_fusion_epoch(fusion, train_loader, optimizer, cfg, device, epoch)
+
+        fusion.eval()
+        val_total = 0.0
+        val_batches = 0
+        with torch.no_grad():
+            for za, zb, tgt in val_loader:
+                za, zb, tgt = za.to(device), zb.to(device), tgt.to(device)
+                val_total += loss_fn(fusion(za, zb), tgt).item()
+                val_batches += 1
+        val_loss = val_total / max(val_batches, 1)
+
+        log.info(
+            "Epoch %d/%d  train=%.6f  val=%.6f",
+            epoch + 1, num_epochs, train_loss, val_loss,
+        )
+
+        if scheduler is not None:
+            scheduler.step()
+
+        if val_loss < best_val_loss - min_delta:
+            best_val_loss = val_loss
+            no_improve_epochs = 0
+            save_fusion_checkpoint(fusion, optimizer, epoch + 1, val_loss, checkpoint_path)
+        else:
+            no_improve_epochs += 1
+            if no_improve_epochs >= patience:
+                log.info(
+                    "Early stopping at epoch %d — no val improvement for %d epochs",
+                    epoch + 1, patience,
+                )
+                break
+
+    # Write final checkpoint if early stopping fired before any improvement saved one
+    if not checkpoint_path.exists():
+        save_fusion_checkpoint(fusion, optimizer, num_epochs, best_val_loss, checkpoint_path)
+
+    log.info(
+        "4k fusion complete: best_val_loss=%.6f  checkpoint=%s",
+        best_val_loss, checkpoint_path.relative_to(PROJECT_ROOT),
+    )
+    mark_stage_complete("4k_fusion")
+    return 0, time.monotonic() - t0
 
 
 def step5b_decipherment_report(dry_run: bool = False) -> tuple[int, float]:
@@ -650,8 +983,19 @@ def step5b_decipherment_report(dry_run: bool = False) -> tuple[int, float]:
     return _run("decipherment_report", cmd, dry_run=dry_run)
 
 
-def step5_zone_c(smoke_test: bool = False, dry_run: bool = False) -> tuple[int, float]:
-    """Zone C MCMC + beam-search decipherment."""
+def step5_zone_c(
+    smoke_test: bool = False,
+    dry_run: bool = False,
+    skip_fusion: bool = False,
+) -> tuple[int, float]:
+    """Zone C MCMC + beam-search decipherment.
+
+    When ``outputs/checkpoints/fusion_layer.pt`` exists and *skip_fusion* is
+    False, passes ``--fusion-checkpoint`` to the decipherment script so the
+    MCMC uses fused (Zone A + Zone B) embeddings for sign proposal weights
+    instead of raw sequential-entropy weights.  Pass ``--skip-fusion`` at the
+    CLI to force the pre-fusion fallback behaviour.
+    """
     if not dry_run:
         lm_dir = PROJECT_ROOT / "data" / "language_models"
         if not _check_any_file(lm_dir, "*.json", "Language models (run Step 1 first)"):
@@ -662,9 +1006,17 @@ def step5_zone_c(smoke_test: bool = False, dry_run: bool = False) -> tuple[int, 
         ):
             return 1, 0.0
 
+    fusion_ckpt = PROJECT_ROOT / "outputs" / "checkpoints" / "fusion_layer.pt"
     cmd = [sys.executable, "scripts/run_decipherment.py"]
     if smoke_test:
         cmd.append("--smoke-test")
+    if not skip_fusion and fusion_ckpt.exists():
+        cmd.append(f"--fusion-checkpoint={fusion_ckpt}")
+        log.info("Fusion checkpoint found — passing to decipherment: %s", fusion_ckpt)
+    elif skip_fusion:
+        log.info("--skip-fusion: using raw Zone A embeddings for MCMC proposal weights")
+    else:
+        log.info("No fusion checkpoint — using sequential-entropy proposal weights")
     return _run("run_decipherment", cmd, dry_run=dry_run)
 
 
@@ -739,13 +1091,22 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignore stage checkpoints and re-run every step.",
     )
+    p.add_argument(
+        "--skip-fusion",
+        action="store_true",
+        help=(
+            "Step 5: ignore the fusion checkpoint even if present and fall back "
+            "to sequential-entropy MCMC proposal weights."
+        ),
+    )
     return p.parse_args()
 
 
 def _parse_steps(steps_str: str | None) -> set[str]:
     """Parse --steps value; return set of enabled step IDs."""
     valid = {"1", "1b", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
-             "4g", "4h", "4i", "4j", "4k", "4l", "4m", "5", "5b"}
+             "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
+             "4p", "5", "5b"}
     if steps_str is None:
         return valid
     result: set[str] = set()
@@ -753,7 +1114,8 @@ def _parse_steps(steps_str: str | None) -> set[str]:
         part = part.strip()
         if part == "4":
             result.update({"4a", "4ar", "4b", "4c", "4d", "4e", "4f",
-                           "4g", "4h", "4i", "4j", "4k", "4l", "4m"})
+                           "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
+                           "4p"})
         elif part == "5":
             result.update({"5", "5b"})
         elif part in valid:
@@ -802,11 +1164,16 @@ def main() -> None:
         ("4g", "Astronomical glyph analysis",     lambda: step4g_astronomical(dry_run)),
         ("4h", "Astronomical HTML report",         lambda: step4h_astronomical_report(dry_run)),
         ("4i", "Quantum hardness (p_good) analysis",  lambda: step4i_pgood_analysis(dry_run)),
+        ("4i_simon", "Simon's algo on diachronic key-changes", lambda: step4i_simon_decipherment(dry_run)),
+        ("4i_bv",   "BV algorithm on IC distribution",         lambda: step4i_bv_ic_analysis(dry_run)),
+        ("4p", "QK-SVM soft parallel detection",            lambda: step4p_qksvm_parallels(dry_run)),
         ("4j", "QUBO quantum annealing key search",   lambda: step4j_qubo_decipherment(dry_run)),
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
         ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run)),
         ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run)),
-        ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run)),
+        ("4n", "Pozdniakov paradigmatic analysis",      lambda: step4n_pozdniakov(dry_run)),
+        ("4o", "Contact partition (bipartite)",          lambda: step4o_contact_partition(dry_run)),
+        ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run, args.skip_fusion)),
         ("5b", "Zone C HTML report",               lambda: step5b_decipherment_report(dry_run)),
     ]
 

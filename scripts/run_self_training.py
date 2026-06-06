@@ -569,6 +569,7 @@ def _build_html_report(
     state: SelfTrainingState,
     generated: str,
     args_meta: dict,
+    stability: dict | None = None,
 ) -> str:
     # Mission brief
     conv_colour = {"no_new_promotions": "green", "score_plateau": "yellow",
@@ -591,19 +592,21 @@ def _build_html_report(
         + "</div></div>"
     )
 
-    # Score trajectory
+    # Score trajectory (inline SVG chart)
     scores = [r.top_lm_score for r in state.history if math.isfinite(r.top_lm_score)]
     if len(scores) >= 2:
         total_delta = scores[-1] - scores[0]
         delta_str = f"{total_delta:+.6f}"
+        delta_colour = "var(--green)" if total_delta >= 0 else "var(--red)"
         traj_html = (
             f'<div style="background:var(--surface2);border:1px solid var(--border);'
-            f'border-radius:4px;padding:12px 18px;margin-bottom:24px;">'
-            f'<span style="color:var(--muted);font-size:10px">Score trajectory: </span>'
-            + " → ".join(f'<span style="color:var(--green)">{s:.4f}</span>' for s in scores)
-            + f'<span style="color:var(--muted);font-size:10px"> &nbsp; Δ = '
-            f'<span style="color:{"var(--green)" if total_delta >= 0 else "var(--red)"}">'
-            f"{delta_str}</span></span></div>"
+            f'border-radius:4px;padding:14px 18px;margin-bottom:24px;">'
+            f'<div style="color:var(--muted);font-size:10px;margin-bottom:8px">'
+            f'LM score by iteration &nbsp; Δ = '
+            f'<span style="color:{delta_colour}">{delta_str}</span>'
+            f'</div>'
+            + _svg_lm_chart(scores)
+            + f'</div>'
         )
     else:
         traj_html = ""
@@ -717,6 +720,54 @@ def _build_html_report(
         ),
     }.get(state.convergence, f"Convergence: {state.convergence}")
 
+    # Confidence trajectory table
+    conf_traj_section = (
+        '<div class="section" style="margin-top:32px">'
+        '<div style="font-size:14px;color:var(--text);border-bottom:1px solid var(--border);'
+        'padding-bottom:8px;margin-bottom:16px">Promotion Confidence Trajectories</div>'
+        + _confidence_trajectory_html(state)
+        + '</div>'
+    )
+
+    # Stability section
+    stability_section = ""
+    if stability and stability.get("n_runs", 0) >= 2:
+        n_stable   = len(stability["stable"])
+        n_unstable = len(stability["unstable"])
+        n_partial  = len(stability["partial"])
+        n_total    = n_stable + n_unstable + n_partial
+        stab_colour = "var(--green)" if n_unstable == 0 else "var(--yellow)"
+        stability_section = (
+            '<div class="section" style="margin-top:32px">'
+            '<div style="font-size:14px;color:var(--text);border-bottom:1px solid var(--border);'
+            'padding-bottom:8px;margin-bottom:16px">Assignment Stability</div>'
+            f'<div class="stat-row">'
+            f'<div class="stat"><div class="stat-label">Total signs</div>'
+            f'<div class="stat-value">{n_total}</div></div>'
+            f'<div class="stat"><div class="stat-label">Stable</div>'
+            f'<div class="stat-value" style="color:var(--green)">{n_stable}</div>'
+            f'<div class="stat-sub">same phoneme across all runs</div></div>'
+            f'<div class="stat"><div class="stat-label">Unstable</div>'
+            f'<div class="stat-value" style="color:{stab_colour}">{n_unstable}</div>'
+            f'<div class="stat-sub">diverges across runs</div></div>'
+            f'<div class="stat"><div class="stat-label">Partial</div>'
+            f'<div class="stat-value">{n_partial}</div>'
+            f'<div class="stat-sub">absent from ≥1 run</div></div>'
+            f'</div>'
+            + (''.join(
+                f'<div style="font-size:10px;color:var(--muted);margin-top:4px">'
+                f'<span class="code">{_html.escape(e["sign_code"])}</span>'
+                f' unstable: '
+                + ' / '.join(
+                    f'{_html.escape(rn)}→<span class="ph">{_html.escape(ph)}</span>'
+                    for rn, ph in e["phonemes_by_run"].items()
+                )
+                + '</div>'
+                for e in stability["unstable"][:20]
+            ) if stability["unstable"] else '')
+            + '</div>'
+        )
+
     return (
         "<!DOCTYPE html><html lang='en'>"
         "<head><meta charset='utf-8'>"
@@ -731,11 +782,13 @@ def _build_html_report(
         + mission
         + traj_html
         + cards
+        + conf_traj_section
         + '<div class="section" style="margin-top:32px">'
         '<div style="font-size:14px;color:var(--text);border-bottom:1px solid var(--border);'
         'padding-bottom:8px;margin-bottom:16px">Final Anchor Set</div>'
         + anchor_table
         + "</div>"
+        + stability_section
         + f'<div class="verdict" style="margin-top:28px"><strong>Convergence verdict</strong>'
           f'<p style="font-size:12px;margin-top:8px">{_html.escape(verdict_text)}</p></div>'
         + "</div></body></html>"
@@ -748,6 +801,179 @@ def _find_promotion_iter(state: SelfTrainingState, sign: str, kind: str) -> str:
         if any(p.sign == sign for p in pool):
             return f"iter {r.iteration}"
     return "?"
+
+
+# ---------------------------------------------------------------------------
+# New report helpers (SVG chart, confidence trajectories, stability)
+# ---------------------------------------------------------------------------
+
+def _svg_lm_chart(scores: list[float]) -> str:
+    """Return an inline SVG polyline chart of LM scores across iterations."""
+    if len(scores) < 2:
+        return ""
+    W, H = 480, 120
+    pad_l, pad_r, pad_t, pad_b = 54, 18, 16, 26
+    min_s = min(scores)
+    max_s = max(scores)
+    rng = max_s - min_s or 1e-9
+    n = len(scores)
+    inner_w = W - pad_l - pad_r
+    inner_h = H - pad_t - pad_b
+
+    def x(i: int) -> float:
+        return pad_l + i * inner_w / max(n - 1, 1)
+
+    def y(s: float) -> float:
+        return pad_t + (1.0 - (s - min_s) / rng) * inner_h
+
+    dots = "".join(
+        f'<circle cx="{x(i):.1f}" cy="{y(s):.1f}" r="3.5" fill="#4ade80"/>'
+        f'<line x1="{x(i):.1f}" y1="{pad_t}" x2="{x(i):.1f}" y2="{H - pad_b}"'
+        f' stroke="#2a2e38" stroke-width="1"/>'
+        f'<text x="{x(i):.1f}" y="{H - pad_b + 13}" text-anchor="middle"'
+        f' font-size="9" fill="#6b7280">i{i}</text>'
+        for i, s in enumerate(scores)
+    )
+    points = " ".join(f"{x(i):.1f},{y(s):.1f}" for i, s in enumerate(scores))
+    y_top = f'<text x="{pad_l - 4}" y="{pad_t + 4}" text-anchor="end" font-size="8" fill="#6b7280">{max_s:.4f}</text>'
+    y_bot = f'<text x="{pad_l - 4}" y="{H - pad_b}" text-anchor="end" font-size="8" fill="#6b7280">{min_s:.4f}</text>'
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"'
+        f' style="background:#161920;border:1px solid #2a2e38;border-radius:4px;display:block">'
+        f'{dots}'
+        f'<polyline points="{points}" fill="none" stroke="#4ade80" stroke-width="2"/>'
+        f'{y_top}{y_bot}'
+        f'</svg>'
+    )
+
+
+def _confidence_trajectory_html(state: SelfTrainingState) -> str:
+    """Return an HTML table showing confidence per iteration for every promoted sign."""
+    # Gather all signs ever promoted, keyed by sign → {iter: (kind, conf, phoneme)}
+    all_promos: dict[str, dict[int, tuple[str, float, str]]] = defaultdict(dict)
+    for r in state.history:
+        for p in r.new_soft + r.new_hard:
+            all_promos[p.sign][p.iteration] = (p.kind, p.confidence, p.phoneme)
+
+    if not all_promos:
+        return '<p style="color:var(--muted);margin:8px 0">No promotions in this run.</p>'
+
+    n_iters = len(state.history)
+    iter_cols = "".join(f"<th>iter {i}</th>" for i in range(n_iters))
+    rows = ""
+    for sign in sorted(all_promos):
+        per_iter = all_promos[sign]
+        # Phoneme from latest appearance
+        last_iter = max(per_iter)
+        phoneme = per_iter[last_iter][2]
+        final_kind = per_iter[last_iter][0]
+        cells = ""
+        for i in range(n_iters):
+            if i in per_iter:
+                kind, conf, _ = per_iter[i]
+                badge = (
+                    '<span class="hard-badge">H</span>' if kind == "hard"
+                    else '<span class="soft-badge">S</span>'
+                )
+                cells += f'<td>{badge}&nbsp;{conf:.3f}</td>'
+            else:
+                cells += '<td style="color:var(--muted)">—</td>'
+        final_badge = (
+            '<span class="hard-badge">HARD</span>' if final_kind == "hard"
+            else '<span class="soft-badge">SOFT</span>'
+        )
+        rows += (
+            f'<tr>'
+            f'<td class="code">{_html.escape(sign)}</td>'
+            f'<td class="ph">{_html.escape(phoneme)}</td>'
+            f'{cells}'
+            f'<td>{final_badge}</td>'
+            f'</tr>'
+        )
+    return (
+        f'<table><thead><tr>'
+        f'<th>Sign</th><th>Phoneme</th>{iter_cols}<th>Final</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+
+
+def _compute_stability(out_dir: Path) -> dict:
+    """Read iter_NN/ranking.json files and compute cross-iteration stability metrics."""
+    ranking_paths = sorted(out_dir.glob("iter_*/ranking.json"))
+    run_assignments: dict[str, dict] = {}
+    run_scores: dict[str, float] = {}
+    for path in ranking_paths:
+        iter_name = path.parent.name
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+            hyp = d["hypotheses"][0]
+            run_assignments[iter_name] = {
+                asn["sign_code"]: asn for asn in hyp["assignments"]
+            }
+            run_scores[iter_name] = hyp.get("overall_lm_score", float("nan"))
+        except (KeyError, IndexError, json.JSONDecodeError, OSError):
+            log.warning("_compute_stability: skipping unreadable %s", path)
+            continue
+
+    run_names = sorted(run_assignments)
+    if not run_names:
+        return {"lm_scores": {}, "stable": [], "unstable": [], "partial": [], "n_runs": 0}
+
+    sign_phonemes: dict[str, dict[str, str]] = defaultdict(dict)
+    for run_name, asn_map in run_assignments.items():
+        for sc, asn in asn_map.items():
+            sign_phonemes[sc][run_name] = asn["phoneme"]
+
+    n_runs = len(run_names)
+    stable, unstable, partial = [], [], []
+    for sc in sorted(sign_phonemes):
+        present = {rn: sign_phonemes[sc][rn] for rn in run_names if rn in sign_phonemes[sc]}
+        if len(present) < n_runs:
+            partial.append({"sign_code": sc, "present_in": present})
+            continue
+        phonemes = [present[rn] for rn in run_names]
+        conf = run_assignments[run_names[0]].get(sc, {}).get("confidence")
+        if len(set(phonemes)) == 1:
+            stable.append({"sign_code": sc, "phoneme": phonemes[0], "confidence": conf})
+        else:
+            unstable.append({"sign_code": sc, "phonemes_by_run": {rn: present[rn] for rn in run_names}})
+
+    return {
+        "lm_scores": run_scores,
+        "stable": stable,
+        "unstable": unstable,
+        "partial": partial,
+        "n_runs": n_runs,
+    }
+
+
+def write_self_training_report(
+    state: SelfTrainingState,
+    generated: str,
+    args_meta: dict,
+    out_dir: Path,
+) -> Path:
+    """Generate the self-training HTML report and write auxiliary JSON files.
+
+    Writes:
+      out_dir/self_training_report.html  — main report (inline SVG + stability)
+      out_dir/stability_analysis.json    — cross-iteration stability data
+
+    Returns the Path to the HTML report.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Compute stability from already-written iter_NN/ranking.json files
+    stability = _compute_stability(out_dir)
+    stability_path = out_dir / "stability_analysis.json"
+    stability_path.write_text(json.dumps(stability, indent=2), encoding="utf-8")
+    log.info("Stability analysis → %s", stability_path)
+
+    html = _build_html_report(state, generated, args_meta, stability=stability)
+    report_path = out_dir / "self_training_report.html"
+    report_path.write_text(html, encoding="utf-8")
+    log.info("HTML report → %s", report_path)
+    return report_path
 
 
 # ---------------------------------------------------------------------------
@@ -1105,10 +1331,7 @@ def main() -> None:
         "threshold_end": args.threshold_end,
         "smoke_test": args.smoke_test,
     }
-    html = _build_html_report(state, generated, args_meta)
-    report_path = args.output_dir / "self_training_report.html"
-    report_path.write_text(html, encoding="utf-8")
-    log.info("HTML report → %s", report_path)
+    report_path = write_self_training_report(state, generated, args_meta, args.output_dir)
 
     # ── MLflow: summary metrics + artifacts + end run ─────────────────────────
     if _mlflow_active:

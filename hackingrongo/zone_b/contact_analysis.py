@@ -450,6 +450,306 @@ def contact_sensitivity_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Contact partition (structured output with Bonferroni correction)
+# ---------------------------------------------------------------------------
+
+def build_contact_partition(
+    min_g2: float = CHI2_P05,
+    scenario: str | None = None,
+    output_path: Path | None = None,
+    report_path: Path | None = None,
+) -> dict:
+    """Compute the contact partition with Bonferroni correction and bipartite edges.
+
+    Extends :func:`analyse` with:
+
+    * Bonferroni correction for 120 signs × 2 strata multiple comparisons.
+    * Structured output with ``stratum_shifting_signs``, ``stable_signs``, and
+      ``bipartite_edges`` keys (expected by ``generate_holy_grail_report.py``).
+    * The per-sign record list (same schema as :func:`analyse`) is written to
+      *output_path* if given, preserving backward compatibility with
+      ``CONTACT_JSON`` consumers that iterate the list directly.
+    * Optionally writes an HTML report to *report_path* when ``--report`` is used.
+
+    Parameters
+    ----------
+    min_g2 :
+        Unadjusted G² threshold for the uncorrected analysis (default p<0.05).
+    scenario :
+        Dating scenario for unknown-stratum tablets; ``None`` excludes them.
+    output_path :
+        Path to write ``contact_partition.json``.
+    report_path :
+        Path to write ``contact_partition_report.html``.
+
+    Returns
+    -------
+    dict
+        Keys: ``stratum_shifting_signs``, ``stable_signs``, ``bipartite_edges``,
+        ``summary``, ``records`` (the per-sign list).
+    """
+    import scipy.stats as _stats  # type: ignore
+
+    records = analyse(min_g2=0.0, emit_json=False, scenario=scenario)
+
+    n_tests = len(records) * 2  # signs × strata
+    # Bonferroni-adjusted alpha
+    alpha_bonf = 0.05 / max(n_tests, 1)
+    # Corresponding G²_1 critical value (chi-squared CDF inverse)
+    chi2_bonf = _stats.chi2.ppf(1.0 - alpha_bonf, df=1)
+    log.info(
+        "Bonferroni correction: n_tests=%d, alpha_adj=%.2e, G²_threshold=%.3f",
+        n_tests, alpha_bonf, chi2_bonf,
+    )
+
+    stratum_shifting: list[dict] = []
+    stable: list[dict] = []
+
+    for r in records:
+        g2_val = r["g2"]
+        # Raw p-value from chi-squared(1) distribution
+        p_raw = float(1.0 - _stats.chi2.cdf(g2_val, df=1)) if g2_val > 0 else 1.0
+        p_bonf = min(p_raw * n_tests, 1.0)
+        r["p_value"] = round(p_raw, 6)
+        r["p_bonferroni"] = round(p_bonf, 6)
+        r["bonferroni_significant"] = p_bonf < 0.05
+
+        if r["bonferroni_significant"]:
+            stratum_shifting.append({
+                "sign":        r["sign"],
+                "g2":          r["g2"],
+                "p_value":     r["p_value"],
+                "p_bonferroni": r["p_bonferroni"],
+                "direction":   r["bias"],   # "pre_biased" | "post_biased"
+                "f_pre":       r["f_pre"],
+                "f_post":      r["f_post"],
+                "freq_pre_per_1k":  r["freq_pre_per_1k"],
+                "freq_post_per_1k": r["freq_post_per_1k"],
+                "log_odds":    r["log_odds"],
+                "seen_in_both": r["seen_in_both"],
+            })
+        else:
+            stable.append({
+                "sign":    r["sign"],
+                "g2":      r["g2"],
+                "p_value": r["p_value"],
+                "p_bonferroni": r["p_bonferroni"],
+                "bias":    r["bias"],
+                "seen_in_both": r["seen_in_both"],
+            })
+
+    log.info(
+        "Bonferroni-significant stratum-shifting signs: %d / %d total",
+        len(stratum_shifting), len(records),
+    )
+
+    # Build bipartite edges: each sign connects to itself on the other side
+    # with weight = G².  High G² → strong stratum-shifting (thick edge).
+    bipartite_edges: list[dict] = [
+        {
+            "sign":      r["sign"],
+            "g2":        r["g2"],
+            "direction": r["bias"],
+            "is_shifting": r["bonferroni_significant"],
+        }
+        for r in records
+        if r["g2"] > 0
+    ]
+    bipartite_edges.sort(key=lambda e: -e["g2"])
+
+    summary = {
+        "n_total_signs":        len(records),
+        "n_stratum_shifting":   len(stratum_shifting),
+        "n_stable":             len(stable),
+        "bonferroni_alpha":     round(alpha_bonf, 8),
+        "g2_bonferroni_threshold": round(chi2_bonf, 4),
+        "n_pre_biased_shifting": sum(1 for s in stratum_shifting if s["direction"] == "pre_biased"),
+        "n_post_biased_shifting": sum(1 for s in stratum_shifting if s["direction"] == "post_biased"),
+    }
+
+    result = {
+        "stratum_shifting_signs": stratum_shifting,
+        "stable_signs":           stable,
+        "bipartite_edges":        bipartite_edges,
+        "summary":                summary,
+    }
+
+    # Write the flat per-sign list (backward-compatible with CONTACT_JSON consumers)
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+        log.info("Contact partition records → %s", output_path)
+
+    if report_path is not None:
+        _write_contact_partition_report(result, records, report_path)
+
+    return result
+
+
+def _write_contact_partition_report(
+    partition: dict,
+    records: list[dict],
+    report_path: Path,
+) -> None:
+    """Write a self-contained HTML report for the contact partition analysis."""
+    import html as _html_mod
+
+    def _esc(s: object) -> str:
+        return _html_mod.escape(str(s))
+
+    summary = partition["summary"]
+    shifting = partition["stratum_shifting_signs"]
+    stable   = partition["stable_signs"]
+    n_shift  = summary["n_stratum_shifting"]
+    n_total  = summary["n_total_signs"]
+    n_pre    = summary["n_pre_biased_shifting"]
+    n_post   = summary["n_post_biased_shifting"]
+    alpha    = summary["bonferroni_alpha"]
+    g2_thr   = summary["g2_bonferroni_threshold"]
+
+    css = """
+:root{--bg:#0d0f12;--surface:#161920;--surface2:#1e2229;
+      --border:#2a2e38;--text:#d0d4dc;--muted:#6b7280;
+      --accent:#c4a96d;--green:#4ade80;--yellow:#facc15;
+      --red:#f87171;--blue:#93c5fd;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);
+     font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.65;}
+.wrap{max-width:1060px;margin:0 auto;padding:52px 28px 80px;}
+h1{font-size:22px;color:var(--accent);margin-bottom:4px;}
+.sub{color:var(--muted);font-size:11px;margin-bottom:36px;}
+.section{margin-bottom:48px;}
+.section-title{font-size:15px;font-weight:600;color:var(--text);
+               border-bottom:1px solid var(--border);
+               padding-bottom:8px;margin-bottom:16px;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+           gap:12px;margin-bottom:24px;}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:5px;
+      padding:14px 16px;}
+.stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
+.stat-value{font-size:26px;font-weight:600;margin-top:2px;color:var(--accent);}
+.stat-sub{font-size:10px;color:var(--muted);margin-top:1px;}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;}
+th{padding:6px 10px;text-align:left;font-size:9px;color:var(--muted);
+   border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.06em;}
+td{padding:5px 10px;border-bottom:1px solid rgba(42,46,56,.4);}
+tr:hover td{background:var(--surface2);}
+.code{color:var(--accent);}  .hi{color:var(--green);}
+.lo{color:var(--muted);}  .med{color:var(--yellow);}  .neg{color:var(--red);}
+.pre{background:rgba(74,222,128,.1);color:var(--green);
+     font-size:9px;padding:1px 6px;border-radius:3px;}
+.post{background:rgba(147,197,253,.12);color:var(--blue);
+      font-size:9px;padding:1px 6px;border-radius:3px;}
+.neut{font-size:9px;color:var(--muted);}
+.verdict{border-left:3px solid var(--accent);padding:14px 18px;
+         background:var(--surface);border-radius:0 5px 5px 0;margin:20px 0;}
+.verdict strong{color:var(--accent);}
+"""
+
+    stats_html = f"""
+<div class="stat-grid">
+  <div class="stat">
+    <div class="stat-label">Total signs</div>
+    <div class="stat-value">{n_total}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Stratum-shifting</div>
+    <div class="stat-value hi">{n_shift}</div>
+    <div class="stat-sub">Bonferroni p &lt; 0.05</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Pre-biased shifts</div>
+    <div class="stat-value">{n_pre}</div>
+    <div class="stat-sub">enriched pre-contact</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Post-biased shifts</div>
+    <div class="stat-value">{n_post}</div>
+    <div class="stat-sub">enriched post-contact</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Stable signs</div>
+    <div class="stat-value lo">{summary["n_stable"]}</div>
+    <div class="stat-sub">no significant shift</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">G² threshold (Bonf.)</div>
+    <div class="stat-value med">{g2_thr:.2f}</div>
+    <div class="stat-sub">&alpha;={alpha:.2e}</div>
+  </div>
+</div>
+"""
+
+    verdict_text = (
+        f"{n_shift} of {n_total} signs show statistically significant frequency "
+        f"shifts across the contact boundary (Bonferroni-corrected G² ≥ {g2_thr:.2f}). "
+        f"{n_pre} are pre-biased (characteristic of Tablet D / pre-contact rongorongo); "
+        f"{n_post} are post-biased (enriched in the post-contact corpus). "
+        + ("The majority of signs are stable across the contact boundary, consistent "
+           "with script continuity." if n_shift < n_total * 0.3 else
+           "A large fraction of signs shift — suggesting substantial register change "
+           "or scribal innovation at contact.")
+    )
+
+    def _shift_row(s: dict) -> str:
+        dir_badge = (
+            f'<span class="pre">PRE</span>' if s["direction"] == "pre_biased"
+            else f'<span class="post">POST</span>'
+        )
+        return (
+            f"<tr>"
+            f'<td class="code">{_esc(s["sign"])}</td>'
+            f"<td>{dir_badge}</td>"
+            f"<td class=\"hi\">{s['g2']:.3f}</td>"
+            f"<td>{s['p_value']:.2e}</td>"
+            f"<td>{s['p_bonferroni']:.2e}</td>"
+            f"<td>{s['f_pre']}</td>"
+            f"<td>{s['f_post']}</td>"
+            f"<td>{s['freq_pre_per_1k']:.1f}</td>"
+            f"<td>{s['freq_post_per_1k']:.1f}</td>"
+            f"<td>{s['log_odds']:+.3f}</td>"
+            f"</tr>"
+        )
+
+    shift_rows = "".join(_shift_row(s) for s in shifting[:50])
+    shift_table = (
+        "<table><thead><tr>"
+        "<th>Sign</th><th>Direction</th><th>G²</th>"
+        "<th>p (raw)</th><th>p (Bonf.)</th>"
+        "<th>f_pre</th><th>f_post</th>"
+        "<th>pre/k</th><th>post/k</th><th>log-odds</th>"
+        f"</tr></thead><tbody>{shift_rows}</tbody></table>"
+    )
+
+    from datetime import datetime, timezone
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    html = (
+        "<!DOCTYPE html><html lang='en'>"
+        "<head><meta charset='utf-8'>"
+        "<title>Rongorongo — Contact Partition Analysis</title>"
+        f"<style>{css}</style></head>"
+        "<body><div class='wrap'>"
+        "<h1>Contact Partition Analysis</h1>"
+        f"<div class='sub'>G² sign-frequency partition: pre-contact vs post-contact · "
+        f"Generated {_esc(generated)}</div>"
+        f"<div class='section'><div class='section-title'>Summary</div>"
+        f"{stats_html}"
+        "<div class='verdict'><strong>Finding</strong>"
+        f"<p style='font-size:12px;margin-top:6px'>{_esc(verdict_text)}</p></div>"
+        "</div>"
+        f"<div class='section'><div class='section-title'>"
+        f"Stratum-Shifting Signs (Bonferroni p &lt; 0.05, top 50)</div>"
+        f"{shift_table}</div>"
+        "</div></body></html>"
+    )
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(html, encoding="utf-8")
+    log.info("Contact partition HTML report → %s", report_path)
+
+
+# ---------------------------------------------------------------------------
 # Bigram co-occurrence (for bipartite edge weights)
 # ---------------------------------------------------------------------------
 
@@ -671,6 +971,17 @@ def main() -> None:
         help="Write plotly bipartite HTML visualisation to this path.",
     )
     parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Write structured contact partition + HTML report. "
+             "Generates contact_partition_report.html alongside the JSON output. "
+             "Overrides simple --output behaviour: writes structured JSON with "
+             "stratum_shifting_signs / stable_signs / bipartite_edges keys plus "
+             "the flat record list for backward compat.",
+    )
+    parser.add_argument(
         "--scenario",
         choices=[*_SCENARIO_NAMES, "all"],
         default=None,
@@ -689,6 +1000,23 @@ def main() -> None:
     if args.scenario == "all":
         sensitivity_path = args.output or Path("outputs/contact_sensitivity.json")
         contact_sensitivity_analysis(min_g2=args.min_g2, output_path=sensitivity_path)
+        return
+
+    if args.report:
+        # Structured mode: Bonferroni correction + HTML report
+        try:
+            build_contact_partition(
+                min_g2=args.min_g2,
+                scenario=args.scenario,
+                output_path=args.output,
+                report_path=args.report,
+            )
+        except ImportError:
+            log.error(
+                "scipy is required for --report (Bonferroni correction). "
+                "Install with: pip install scipy"
+            )
+            sys.exit(1)
         return
 
     records = analyse(min_g2=args.min_g2, emit_json=args.json, scenario=args.scenario)

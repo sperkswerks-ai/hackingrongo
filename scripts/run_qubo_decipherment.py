@@ -156,6 +156,80 @@ def _bigram_score(prev_phoneme: str, phoneme: str, lms: list[NGramLM]) -> float:
     return total / n if n > 0 else -20.0
 
 
+def _build_bigram_matrix(
+    phonemes: list[str],
+    lms: list[NGramLM],
+    cache_path: Path | None = None,
+    lm_dir: Path | None = None,
+) -> np.ndarray:
+    """Build or reload a (n_phonemes × n_phonemes) bigram log-prob matrix.
+
+    ``matrix[p1_idx, p2_idx]`` = mean log P(p2 | p1) across all
+    bigram-capable LMs, falling back to -20.0 for non-finite values.
+
+    The result is cached to *cache_path* as a ``.npy`` file.  The cache
+    is considered stale and recomputed when any ``*.json`` file in
+    *lm_dir* has a modification time newer than the cache file.
+    """
+    n = len(phonemes)
+
+    if cache_path is not None and cache_path.exists():
+        cache_mtime = cache_path.stat().st_mtime
+        stale = False
+        if lm_dir is not None and lm_dir.is_dir():
+            for lm_file in lm_dir.glob("*.json"):
+                if lm_file.stat().st_mtime > cache_mtime:
+                    log.info(
+                        "LM file %s is newer than bigram cache — invalidating.",
+                        lm_file.name,
+                    )
+                    stale = True
+                    break
+        if not stale:
+            try:
+                mat = np.load(cache_path)
+                if mat.shape == (n, n):
+                    log.info(
+                        "Bigram score matrix loaded from cache (%s, %d×%d).",
+                        cache_path, n, n,
+                    )
+                    return mat
+                else:
+                    log.warning(
+                        "Cached bigram matrix shape %s != (%d, %d) — recomputing.",
+                        mat.shape, n, n,
+                    )
+            except Exception as exc:
+                log.warning("Bigram matrix cache load failed (%s) — recomputing.", exc)
+
+    log.info(
+        "Precomputing bigram score matrix (%d × %d = %d pairs) …",
+        n, n, n * n,
+    )
+    t0 = time.perf_counter()
+    mat = np.empty((n, n), dtype=np.float64)
+    for p1_idx, p1 in enumerate(phonemes):
+        for p2_idx, p2 in enumerate(phonemes):
+            mat[p1_idx, p2_idx] = _bigram_score(p1, p2, lms)
+    # Replace non-finite values with the sentinel used throughout.
+    mat = np.where(np.isfinite(mat), mat, -20.0)
+    elapsed = time.perf_counter() - t0
+    log.info(
+        "Bigram score matrix computed in %.1f s (%.0f pairs/s).",
+        elapsed, n * n / max(elapsed, 1e-9),
+    )
+
+    if cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(cache_path, mat)
+            log.info("Bigram score matrix cached → %s", cache_path)
+        except Exception as exc:
+            log.warning("Could not write bigram matrix cache: %s", exc)
+
+    return mat
+
+
 def _score_assignment(
     phone_map: dict[str, str],
     corpus_seqs: list[list[str]],
@@ -198,15 +272,22 @@ def build_qubo(
     lambda2: float = 5.0,
     max_per_phoneme: int = 5,
     lambda3: float = 1.0,
+    bigram_weight: float = 1.0,
     max_bigram_pairs: int = 500,
     cribs: dict[str, str] | None = None,
     crib_penalty: float = 200.0,
     taxogram_signs: set[str] | None = None,
-) -> dict[tuple[int, int], float]:
+    bigram_cache_path: Path | None = None,
+    lm_dir: Path | None = None,
+) -> tuple[dict[tuple[int, int], float], dict]:
     """Build the QUBO matrix Q.
 
-    Returns a dict {(i, j): coefficient} in upper-triangular form
-    (i ≤ j), compatible with dimod.BinaryQuadraticModel.
+    Returns a tuple ``(Q, bigram_meta)``:
+    - ``Q``: dict {(i, j): coefficient} in upper-triangular form (i ≤ j),
+      compatible with dimod.BinaryQuadraticModel.
+    - ``bigram_meta``: dict with keys ``matrix``, ``top_pairs``, ``max_adj``,
+      ``lambda3_eff``, ``n_couplings``, ``score_min``, ``score_max`` (or empty
+      dict when bigram couplings are disabled).
 
     Variable layout: var(s, p) = s * n_phonemes + p.
 
@@ -284,7 +365,10 @@ def build_qubo(
                 _add(vi, vj, 2.0 * lambda2)
 
     # ── Bigram context couplings: corpus-adjacency weighted ───────────────────
-    if lambda3 > 0.0 and max_bigram_pairs > 0:
+    lambda3_eff = lambda3 * bigram_weight
+    bigram_meta: dict = {}
+
+    if lambda3_eff > 0.0 and max_bigram_pairs > 0:
         # Count how often each (s1, s2) ordered pair appears consecutively.
         adj_counts: dict[tuple[int, int], int] = {}
         for seq in corpus_seqs:
@@ -301,25 +385,46 @@ def build_qubo(
         # Keep only the most frequent pairs to bound coupling count.
         top_pairs = sorted(adj_counts.items(), key=lambda kv: -kv[1])[:max_bigram_pairs]
         if top_pairs:
-            # Normalise adjacency weights so the max pair gets weight 1.0.
-            max_adj = top_pairs[0][1]
-            # Precompute bigram score matrix once to avoid repeated LM calls.
-            bigram_matrix = {
-                (p1_idx, p2_idx): _bigram_score(p1, p2, lms)
-                for p1_idx, p1 in enumerate(phonemes)
-                for p2_idx, p2 in enumerate(phonemes)
-            }
+            max_adj = float(top_pairs[0][1])
+            # Precompute full bigram score matrix once as a numpy array,
+            # then cache to disk.  Avoids n_pairs × n_phonemes² LM calls.
+            bigram_matrix = _build_bigram_matrix(
+                phonemes, lms,
+                cache_path=bigram_cache_path,
+                lm_dir=lm_dir,
+            )
+
+            coupling_scores: list[float] = []
+            n_bigram_couplings = 0
             for (s1_idx, s2_idx), count in top_pairs:
                 weight = count / max_adj
                 for p1_idx in range(n_phonemes):
                     for p2_idx in range(n_phonemes):
-                        bscore = bigram_matrix[(p1_idx, p2_idx)]
-                        if math.isfinite(bscore):
+                        bscore = float(bigram_matrix[p1_idx, p2_idx])
+                        if math.isfinite(bscore) and bscore > -20.0:
                             vi = _var(s1_idx, p1_idx, n_phonemes)
                             vj = _var(s2_idx, p2_idx, n_phonemes)
-                            _add(vi, vj, -lambda3 * bscore * weight)
-            log.info("Bigram couplings: %d pairs × %d² phonemes added (λ3=%.2f).",
-                     len(top_pairs), n_phonemes, lambda3)
+                            _add(vi, vj, -lambda3_eff * bscore * weight)
+                            coupling_scores.append(bscore)
+                            n_bigram_couplings += 1
+
+            score_min = float(np.min(coupling_scores)) if coupling_scores else 0.0
+            score_max = float(np.max(coupling_scores)) if coupling_scores else 0.0
+            log.info(
+                "Bigram couplings: %d total (λ3_eff=%.3f, "
+                "score range [%.3f, %.3f], top %d adj pairs).",
+                n_bigram_couplings, lambda3_eff,
+                score_min, score_max, len(top_pairs),
+            )
+            bigram_meta = {
+                "matrix":       bigram_matrix,
+                "top_pairs":    top_pairs,
+                "max_adj":      max_adj,
+                "lambda3_eff":  lambda3_eff,
+                "n_couplings":  n_bigram_couplings,
+                "score_min":    score_min,
+                "score_max":    score_max,
+            }
 
     # ── Crib constraints: known-plaintext fragments ──────────────────────────
     # For each (sign, phoneme) pair in cribs, force x_{s,p}=1 by adding a
@@ -349,7 +454,7 @@ def build_qubo(
 
     n_couplings = sum(1 for (i, j) in Q if i != j)
     log.info("QUBO built: %d variables, %d couplings.", n_signs * n_phonemes, n_couplings)
-    return Q
+    return Q, bigram_meta
 
 
 def _qubo_to_bqm(Q: dict[tuple[int, int], float]) -> Any:
@@ -770,6 +875,9 @@ def _parse_args() -> argparse.Namespace:
                    help="One-hot penalty weight (default: 10.0).")
     p.add_argument("--lambda2",      type=float, default=5.0, metavar="F",
                    help="Capacity penalty weight (default: 5.0).")
+    p.add_argument("--bigram-weight", type=float, default=1.0, metavar="F",
+                   help="Scale factor for lambda3 bigram couplings relative to "
+                        "lambda1/lambda2 (default: 1.0; set 0 to disable bigrams).")
     p.add_argument("--max-per-phoneme", type=int, default=5, metavar="K",
                    help="Max signs per phoneme (default: 5).")
     p.add_argument("--smoke-test",   action="store_true",
@@ -868,14 +976,18 @@ def main() -> None:
         log.warning("--init-from path not found: %s", args.init_from)
 
     # ── Build QUBO ────────────────────────────────────────────────────────────
-    Q = build_qubo(
+    bigram_cache_path = PROJECT_ROOT / "outputs" / "decipherment" / "bigram_score_matrix.npy"
+    Q, bigram_meta = build_qubo(
         all_signs, all_phonemes, lms, corpus_seqs,
         lambda1=args.lambda1,
         lambda2=args.lambda2,
+        bigram_weight=args.bigram_weight,
         max_per_phoneme=args.max_per_phoneme,
         cribs=cribs or None,
         crib_penalty=args.crib_penalty,
         taxogram_signs=(set(LOGOGRAPHIC_TAXOGRAMS) if not args.disable_taxogram_cribs else set()),
+        bigram_cache_path=bigram_cache_path,
+        lm_dir=lm_dir,
     )
     bqm = _qubo_to_bqm(Q)
     n_couplings = sum(1 for (i, j) in Q if i != j)
@@ -903,6 +1015,32 @@ def main() -> None:
         corpus_seqs,
         lms,
         non_scoring_signs=taxogram_signs,
+    )
+
+    # ── Benchmark: bigram coupling contribution ───────────────────────────────
+    bigram_contribution = 0.0
+    if bigram_meta:
+        bm_mat     = bigram_meta.get("matrix")
+        bm_pairs   = bigram_meta.get("top_pairs", [])
+        bm_max_adj = bigram_meta.get("max_adj", 1.0)
+        bm_l3      = bigram_meta.get("lambda3_eff", 0.0)
+        if bm_mat is not None and bm_pairs and bm_l3 > 0:
+            ph_index = {p: i for i, p in enumerate(all_phonemes)}
+            s_index  = {s: i for i, s in enumerate(all_signs)}
+            for (s1_idx, s2_idx), count in bm_pairs:
+                weight = count / bm_max_adj
+                p1 = phone_map.get(all_signs[s1_idx])
+                p2 = phone_map.get(all_signs[s2_idx])
+                if p1 and p2:
+                    i1 = ph_index.get(p1, -1)
+                    i2 = ph_index.get(p2, -1)
+                    if i1 >= 0 and i2 >= 0:
+                        bs = float(bm_mat[i1, i2])
+                        if math.isfinite(bs) and bs > -20.0:
+                            bigram_contribution += bm_l3 * bs * weight
+    log.info(
+        "Bigram coupling added %.4f nats to objective vs unigram-only baseline.",
+        bigram_contribution,
     )
 
     # ── Print results ─────────────────────────────────────────────────────────
@@ -963,7 +1101,15 @@ def main() -> None:
         "qubo_parameters": {
             "lambda1":          args.lambda1,
             "lambda2":          args.lambda2,
+            "bigram_weight":    args.bigram_weight,
+            "lambda3_eff":      bigram_meta.get("lambda3_eff", 0.0) if bigram_meta else 0.0,
             "max_per_phoneme":  args.max_per_phoneme,
+            "bigram_couplings": bigram_meta.get("n_couplings", 0) if bigram_meta else 0,
+            "bigram_score_range": (
+                [bigram_meta["score_min"], bigram_meta["score_max"]]
+                if bigram_meta else None
+            ),
+            "bigram_contribution_nats": round(bigram_contribution, 6),
         },
     }
 

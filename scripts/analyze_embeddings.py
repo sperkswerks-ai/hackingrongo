@@ -101,47 +101,46 @@ def save_embeddings_cache(
 
 
 def _barthel_family(code: str | None) -> str:
-    """Map a Barthel code to its family based on Barthel's (1958) actual taxonomy.
+    """Return the iconographic family for a Barthel code.
 
-    Barthel's numbering encodes his morphological classification directly:
-      1–199     Objects · Plants · Phenomena (most common signs)
-      200–299   Anthropomorphic — type-2 head
-      300–399   Anthropomorphic — type-3 head
-      400–499   Miscellaneous (300-series head)
-      500–599   Miscellaneous anthropomorphic
-      600–699   Bird-headed figures
-      700–799   Zoomorphic figures
-      800–999   Additional / poorly attested
-    
-    References
-    ----------
-    Barthel, T.S. (1958). Grundlagen zur Entzifferung der Osterinselschrift.
-    Hamburg: Cram, de Gruyter.
+    Delegates to ``barthel_families.json`` via :mod:`hackingrongo.data.passage_alignment`
+    so the lookup is consistent across the entire codebase.  Families are from
+    Barthel (1958) as documented in Fischer (1997): anthropomorphic, zoomorphic,
+    botanical, celestial, geometric, composite, positional, or unknown.
+
+    Using the JSON lookup avoids arithmetic derivation (``code // 100``) which
+    conflates Barthel's *ordering* with his *iconographic taxonomy*.
     """
     if not code:
         return "unlabeled"
     try:
-        num = int("".join(c for c in code if c.isdigit()))
-    except ValueError:
+        from hackingrongo.data.passage_alignment import _get_family
+        result = _get_family(code)
+        return result if result else "unlabeled"
+    except ImportError:
+        pass
+    # Fallback: load directly if import unavailable
+    _fam_map: dict[str, str] = {}
+    try:
+        import json as _json
+        _p = Path(__file__).resolve().parents[1] / "data" / "catalog" / "barthel_families.json"
+        if _p.exists():
+            _raw = _json.loads(_p.read_text(encoding="utf-8"))
+            _fam_map = {k: v for k, v in _raw.items() if not k.startswith("_")}
+    except Exception:
+        pass
+    if not code:
         return "unlabeled"
-    
-    # Map to Barthel's actual ranges → family categories
-    if 1 <= num <= 199:
-        return "objects_plants_phenomena"
-    elif 200 <= num <= 299:
-        return "anthropomorphic_type2"
-    elif 300 <= num <= 399:
-        return "anthropomorphic_type3"
-    elif 400 <= num <= 499:
-        return "miscellaneous_300series"
-    elif 500 <= num <= 599:
-        return "miscellaneous_anthropomorphic"
-    elif 600 <= num <= 699:
-        return "bird_headed"
-    elif 700 <= num <= 799:
-        return "zoomorphic"
-    else:
-        return "additional"
+    fam = _fam_map.get(code)
+    if fam:
+        return fam
+    digits = "".join(c for c in code if c.isdigit())
+    if digits:
+        padded = digits.zfill(3)
+        fam = _fam_map.get(padded) or _fam_map.get(digits)
+        if fam:
+            return fam
+    return "unlabeled"
 
 
 def _adjusted_rand_index(labels_true: list, labels_pred: list) -> float:
@@ -174,7 +173,7 @@ def _barthel_tree_distance(na: int, nb: int) -> int:
         return 0
     if na // 10 == nb // 10:
         return 1
-    if na // 100 == nb // 100:
+    if na // 100 == nb // 100:  # within same century block (200s or 300s)
         return 2
     return 3
 

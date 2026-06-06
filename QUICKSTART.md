@@ -29,6 +29,9 @@ python scripts/run_qubo_decipherment.py \
   --num-reads 1000 \
   --output outputs/decipherment/qubo_result.json
 
+# MLflow experiment tracking (optional — omit to use local outputs/mlruns)
+export MLFLOW_TRACKING_URI=file:///path/to/your/mlruns  # or a remote URI
+
 # QUBO on real D-Wave QPU (requires free Leap account)
 export DWAVE_API_TOKEN=your_token_here
 python scripts/run_qubo_decipherment.py \

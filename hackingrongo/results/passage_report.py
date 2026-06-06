@@ -841,6 +841,19 @@ def _render_changes_inline(changes: list[dict]) -> str:
             flags.append('<span class="badge bd-holy">★ Holy Grail</span>')
         if is_cross:
             flags.append('<span class="badge bd-cross">↕ Family-Crossing</span>')
+        elif ct == "substitution" and not is_holy:
+            # Check whether both signs share the same iconographic family
+            try:
+                from hackingrongo.data.passage_alignment import _get_family
+                pre_fam  = _get_family(str(pre))
+                post_fam = _get_family(str(post_sign))
+                if pre_fam not in ("unknown", "") and pre_fam == post_fam:
+                    flags.append(
+                        f'<span class="badge" style="background:rgba(147,197,253,.12);'
+                        f'color:#93c5fd;font-size:8.5px">≡ Within-Family ({_html.escape(pre_fam)})</span>'
+                    )
+            except Exception:
+                pass
         flags_html = (
             f'<div class="chg-flags">{"".join(flags)}</div>' if flags else ""
         )
@@ -1212,7 +1225,7 @@ def _render_passage_page(passage: dict, catalog: dict | None = None) -> str:
     if cross_changes:
         cross_html = (
             '<div class="section-label" style="margin-top:16px;color:var(--cross)">'
-            'Family-Crossing changes — substitutions spanning Barthel century blocks</div>'
+            'Family-Crossing changes — substitutions spanning iconographic family boundaries</div>'
             + "".join(_render_change_card(c, catalog) for c in cross_changes)
         )
     if other_changes:
@@ -1317,7 +1330,12 @@ def _render_passage_page(passage: dict, catalog: dict | None = None) -> str:
   Diachronic analysis: consensus sign per stratum; holy-grail criterion requires
   non-allographic substitution consistent across ≥ 2 post-contact tablets.
   Family-Crossing: pre- and post-contact consensus signs in different Barthel
-  century blocks (1–199, 200–299, …, 700–799).</p>
+  iconographic families (anthropomorphic, zoomorphic, botanical, celestial,
+  geometric, composite, positional) per Barthel (1958) as documented in
+  Fischer (1997).  Signs with uncertain family assignment are labelled
+  'unknown' and do not generate Family-Crossing findings.
+  Within-Family Substitution: substitution where both signs share the same
+  iconographic family.</p>
 </div>
 
 </div>
@@ -1420,8 +1438,9 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any], catalog: di
         f'We found <b>{n_holy}</b>.</p>'
         f'<p><b>Holy Grail candidate:</b> same passage position, different glyph, consistent across '
         f'≥ 2 independent post-contact tablets. Idiosyncratic scribal error can\'t explain it. '
-        f'<b>Family-Crossing:</b> the pre- and post-contact glyphs are in different Barthel century '
-        f'blocks — e.g. a bird-headed sign replaced by an object. Iconographically surprising. '
+        f'<b>Family-Crossing:</b> the pre- and post-contact glyphs are in different Barthel '
+        f'iconographic families (Barthel 1958 · Fischer 1997). '
+        f'Signs assigned \'unknown\' family are excluded from this count. '
         f'There are <b>{n_cross}</b> such changes.</p>'
         f'<p>Click any passage row to expand its attestation alignment. '
         f'The <span style="color:var(--holy)">★ Holy Grail</span> section above shows glyphs.</p>'
@@ -1473,7 +1492,9 @@ def _render_summary_page(passages: list[dict], meta: dict[str, Any], catalog: di
   Post-contact tablets: B, C, E, G, H, I, K, P, Q, S and others (RC min ≥ 1650 CE).
   Holy-Grail criterion: non-allographic substitution consistent in ≥ 2 post-contact
   tablets at the same canonical position (Barthel 1958 allograph catalog).
-  Family-Crossing: pre/post consensus signs in different Barthel century blocks.</p>
+  Family-Crossing: pre/post consensus signs in different Barthel iconographic families
+  (anthropomorphic, zoomorphic, botanical, celestial, geometric, composite, positional)
+  per Barthel (1958) / Fischer (1997).  'unknown' family signs are excluded.</p>
   <p>This is a computational hypothesis report. All candidates require expert
   epigraphic and linguistic review before any interpretive claim.</p>
   <p><b>SperksWerks LLC</b> ·

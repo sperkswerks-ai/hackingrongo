@@ -279,3 +279,149 @@ class TestRunDeciphermentSmoke:
             f"--smoke-test failed (exit {proc.returncode}):\n"
             f"{proc.stderr[-3000:]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Zone B prior + Fusion layer
+# ---------------------------------------------------------------------------
+
+def _minimal_fusion_cfg(zone_a_dim: int = 8, zone_b_dim: int = 4, output_dim: int = 6) -> OmegaConf:
+    return OmegaConf.create({
+        "zone_b": {"prior_output_dim": zone_b_dim},
+        "zone_c": {
+            "fusion": {
+                "zone_a_dim":        zone_a_dim,
+                "zone_b_dim":        zone_b_dim,
+                "output_dim":        output_dim,
+                "use_batch_norm":    False,
+                "dropout_rate":      0.0,
+                "activation":        "relu",
+                "optimizer":         "adam",
+                "lr":                1e-3,
+                "weight_decay":      0.0,
+                "scheduler":         "none",
+                "scheduler_T_max":   10,
+                "grad_clip_norm":    0.0,
+                "num_epochs":        30,
+                "batch_size":        8,
+                "checkpoint_interval_epochs": 5,
+            },
+        },
+    })
+
+
+class TestZoneBPrior:
+    def test_shape_and_finite(self):
+        """build_zone_b_prior returns (N, output_dim) tensor with all finite values."""
+        import torch
+        from hackingrongo.zone_b.priors import build_zone_b_prior
+        from hackingrongo.zone_b.sign_classifier import (
+            SignClass,
+            SignClassification,
+            SignInventory,
+        )
+
+        sign_codes = ["001", "002", "040", "152", "200"]
+        inventory = SignInventory(classifications={
+            c: SignClassification(
+                code=c,
+                sign_class=SignClass.PHONETIC,
+                confidence=0.8,
+                frequency_percentile=0.5,
+                omission_rate=0.1,
+                positional_entropy=1.5,
+            )
+            for c in sign_codes
+        })
+        output_dim = 4
+        cfg = OmegaConf.create({"zone_b": {"prior_output_dim": output_dim}})
+
+        prior, builder = build_zone_b_prior(sign_codes, inventory, cfg)
+
+        assert prior.shape == (len(sign_codes), output_dim), (
+            f"Expected shape ({len(sign_codes)}, {output_dim}), got {prior.shape}"
+        )
+        assert torch.isfinite(prior).all(), "Zone B prior contains non-finite values"
+
+
+class TestFusionEpoch:
+    def test_loss_decreases_over_two_epochs(self):
+        """train_fusion_epoch reduces MSE loss over two epochs on synthetic data."""
+        import torch
+        from torch.utils.data import DataLoader, TensorDataset
+        from hackingrongo.zone_c.fusion import (
+            FusionLayer,
+            build_fusion_optimizer,
+            train_fusion_epoch,
+        )
+
+        cfg = _minimal_fusion_cfg(zone_a_dim=8, zone_b_dim=4, output_dim=6)
+        device = torch.device("cpu")
+        fusion = FusionLayer(cfg).to(device)
+        optimizer = build_fusion_optimizer(fusion, cfg)
+
+        torch.manual_seed(0)
+        N = 32
+        zone_a   = torch.randn(N, 8)
+        zone_b   = torch.randn(N, 4)
+        targets  = torch.randn(N, 6)
+        loader = DataLoader(TensorDataset(zone_a, zone_b, targets), batch_size=8, shuffle=False)
+
+        loss0 = train_fusion_epoch(fusion, loader, optimizer, cfg, device, epoch=0)
+        loss1 = train_fusion_epoch(fusion, loader, optimizer, cfg, device, epoch=1)
+
+        # Two gradient steps on the same data should reduce the loss.
+        assert loss1 < loss0, (
+            f"Expected loss to decrease: epoch0={loss0:.6f}  epoch1={loss1:.6f}"
+        )
+
+
+class TestStep4kProducesCheckpoint:
+    def test_checkpoint_file_created(self, tmp_path, monkeypatch):
+        """step4k_train_fusion writes fusion_layer.pt when dry_run=False."""
+        import pickle
+        import torch
+
+        # Build a tiny embeddings cache
+        N, D = 20, 8
+        embs = torch.randn(N, D)
+        codes = [f"{i:03d}" for i in range(N)]
+        emb_cache = tmp_path / "outputs" / "embeddings_cache.pt"
+        emb_cache.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"embeddings": embs, "barthel_codes": codes}, emb_cache)
+
+        # Write a minimal config.yaml
+        conf_dir = tmp_path / "conf"
+        conf_dir.mkdir()
+        (conf_dir / "config.yaml").write_text(
+            "zone_b:\n  prior_output_dim: 4\n"
+            "zone_c:\n"
+            "  fusion:\n"
+            "    zone_a_dim: 8\n    zone_b_dim: 4\n    output_dim: 6\n"
+            "    use_batch_norm: false\n    dropout_rate: 0.0\n"
+            "    activation: relu\n    optimizer: adam\n    lr: 0.001\n"
+            "    weight_decay: 0.0\n    scheduler: none\n    scheduler_T_max: 10\n"
+            "    grad_clip_norm: 0.0\n    num_epochs: 2\n    batch_size: 8\n"
+            "    checkpoint_interval_epochs: 1\n",
+            encoding="utf-8",
+        )
+
+        # Redirect PROJECT_ROOT and _STAGE_CHECKPOINT_DIR to tmp_path
+        import hackingrongo.pipeline as _pl
+        monkeypatch.setattr(_pl, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            _pl,
+            "_STAGE_CHECKPOINT_DIR",
+            tmp_path / "outputs" / "checkpoints" / "pipeline_stages",
+        )
+
+        rc, _ = _pl.step4k_train_fusion(smoke_test=True, dry_run=False)
+
+        checkpoint = tmp_path / "outputs" / "checkpoints" / "fusion_layer.pt"
+        assert rc == 0, f"step4k_train_fusion returned non-zero exit code {rc}"
+        assert checkpoint.exists(), (
+            f"fusion_layer.pt not found at {checkpoint}"
+        )
+        ckpt = torch.load(checkpoint, weights_only=True)
+        assert "model_state_dict" in ckpt, "Checkpoint missing model_state_dict"
+        assert math.isfinite(float(ckpt["loss"])), "Checkpoint loss is not finite"

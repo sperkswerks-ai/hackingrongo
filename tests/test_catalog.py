@@ -317,3 +317,151 @@ class TestBarthelToImplicitGroup:
 
     def test_empty_string_returns_unknown(self, catalog):
         assert catalog.barthel_to_implicit_group("") == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# get_barthel_family() — new iconographic family lookup
+# ---------------------------------------------------------------------------
+
+_FAMILIES_JSON = Path(__file__).resolve().parents[1] / "data" / "catalog" / "barthel_families.json"
+
+_ACTIVE_SIGNS = [
+    "001", "002", "003", "004", "005", "006", "007", "008", "009", "010",
+    "011", "013", "015", "017", "019", "020", "022", "023", "024", "025",
+    "027", "028", "034", "037", "040", "041", "044", "045", "046", "047",
+    "048", "050", "052", "053", "056", "057", "060", "061", "062", "063",
+    "064", "065", "066", "067", "068", "069", "070", "071", "072", "073",
+    "074", "075", "076", "077", "078", "079", "080", "081", "084", "086",
+    "087", "090", "091", "092", "093", "095", "099", "124",
+    "200", "202", "203", "204", "205", "206", "207", "208",
+    "220", "240", "244", "246", "254", "260", "280", "290", "291",
+    "300", "301", "305", "306", "320", "326", "330", "360", "379",
+    "380", "381", "384", "385", "386", "390",
+    "400", "430", "431", "440", "450", "451", "470", "499",
+    "522", "530", "591",
+    "600", "604", "605", "606", "607", "630", "631", "660", "670", "678", "680",
+    "700", "711", "730", "739", "741", "745", "755", "760",
+    "999",
+]
+
+_VALID_FAMILIES = {
+    "anthropomorphic", "zoomorphic", "botanical", "celestial",
+    "geometric", "composite", "positional", "unknown",
+}
+_ARITHMETIC_LABELS = {str(i) for i in range(10)}
+
+
+@pytest.fixture(scope="module")
+def families_json() -> dict[str, str]:
+    raw = json.loads(_FAMILIES_JSON.read_text(encoding="utf-8"))
+    return {k: v for k, v in raw.items() if not k.startswith("_")}
+
+
+@pytest.fixture(scope="module")
+def catalog_with_families(families_json):
+    minimal_horley = {code: f"H{i:03d}" for i, code in enumerate(_ACTIVE_SIGNS)}
+    return SignCatalog(minimal_horley, {}, {}, families_json)
+
+
+class TestGetBarthelFamily:
+    # ── (a) All active signs have a family ───────────────────────────────────
+
+    def test_families_json_covers_all_active_signs(self, families_json):
+        missing = [c for c in _ACTIVE_SIGNS if c not in families_json]
+        assert not missing, f"Missing from barthel_families.json: {missing}"
+
+    def test_get_barthel_family_returns_non_none(self, catalog_with_families):
+        for code in _ACTIVE_SIGNS:
+            assert catalog_with_families.get_barthel_family(code) is not None
+
+    def test_all_family_labels_are_valid(self, families_json):
+        invalid = {k: v for k, v in families_json.items() if v not in _VALID_FAMILIES}
+        assert not invalid, f"Invalid family labels: {invalid}"
+
+    def test_catalog_matches_json(self, catalog_with_families, families_json):
+        for code in _ACTIVE_SIGNS:
+            expected = families_json.get(code, "unknown")
+            assert catalog_with_families.get_barthel_family(code) == expected
+
+    # ── (b) No arithmetic derivation ─────────────────────────────────────────
+
+    def test_no_bare_integer_labels(self, families_json):
+        bad = {k: v for k, v in families_json.items() if v in _ARITHMETIC_LABELS}
+        assert not bad, f"Arithmetic-looking family labels (should be iconographic): {bad}"
+
+    def test_sign_678_not_arithmetic(self, families_json):
+        assert families_json.get("678") not in _ARITHMETIC_LABELS
+
+    def test_sign_076_not_arithmetic(self, families_json):
+        assert families_json.get("076") not in _ARITHMETIC_LABELS
+
+    def test_no_numeric_family_value(self, families_json):
+        for code, fam in families_json.items():
+            assert not fam.isdigit(), f"Sign {code!r} has numeric family {fam!r}"
+
+    # ── (c) P007 and P012 sign pair assignments ───────────────────────────────
+
+    def test_p012_sign_678_is_zoomorphic(self, families_json):
+        assert families_json.get("678") == "zoomorphic", (
+            f"Sign 678 should be 'zoomorphic', got {families_json.get('678')!r}"
+        )
+
+    def test_p012_sign_076_is_botanical(self, families_json):
+        assert families_json.get("076") == "botanical", (
+            f"Sign 076 should be 'botanical', got {families_json.get('076')!r}"
+        )
+
+    def test_p012_678_076_cross_family_boundary(self, families_json):
+        """678→076 still crosses a family boundary under the corrected taxonomy."""
+        fam_678 = families_json.get("678")
+        fam_076 = families_json.get("076")
+        assert fam_678 not in ("unknown", None)
+        assert fam_076 not in ("unknown", None)
+        assert fam_678 != fam_076, (
+            "P012 Family-Crossing finding would be invalidated: "
+            f"678={fam_678!r} == 076={fam_076!r}"
+        )
+
+    def test_sign_600_is_zoomorphic(self, families_json):
+        assert families_json.get("600") == "zoomorphic"
+
+    def test_200_series_all_anthropomorphic(self, families_json):
+        two_hundreds = [c for c in _ACTIVE_SIGNS if c.startswith("2") and len(c) == 3]
+        for code in two_hundreds:
+            assert families_json.get(code) == "anthropomorphic", (
+                f"200-series sign {code!r} should be 'anthropomorphic', got {families_json.get(code)!r}"
+            )
+
+    def test_600_series_all_zoomorphic(self, families_json):
+        six_hundreds = [c for c in _ACTIVE_SIGNS if c.startswith("6") and len(c) == 3]
+        for code in six_hundreds:
+            assert families_json.get(code) == "zoomorphic", (
+                f"600-series sign {code!r} should be 'zoomorphic', got {families_json.get(code)!r}"
+            )
+
+    def test_700_series_all_zoomorphic(self, families_json):
+        seven_hundreds = [c for c in _ACTIVE_SIGNS if c.startswith("7") and len(c) == 3]
+        for code in seven_hundreds:
+            assert families_json.get(code) == "zoomorphic", (
+                f"700-series sign {code!r} should be 'zoomorphic', got {families_json.get(code)!r}"
+            )
+
+    # ── Lookup robustness ─────────────────────────────────────────────────────
+
+    def test_padded_unpadded_resolve_same(self, families_json):
+        cat = SignCatalog({"076": "H076"}, {}, {}, families_json)
+        assert cat.get_barthel_family("076") == cat.get_barthel_family("76") == "botanical"
+
+    def test_allograph_suffix_stripped(self, families_json):
+        cat = SignCatalog({"380": "H380", "380a": "H380a"}, {}, {}, families_json)
+        assert cat.get_barthel_family("380") == "anthropomorphic"
+        assert cat.get_barthel_family("380a") == "anthropomorphic"
+
+    def test_missing_code_returns_unknown(self, families_json):
+        cat = SignCatalog({}, {}, {}, families_json)
+        assert cat.get_barthel_family("999999") == "unknown"
+
+    def test_none_families_returns_unknown(self):
+        cat = SignCatalog({}, {}, {}, None)
+        assert cat.get_barthel_family("076") == "unknown"
+        assert cat.get_barthel_family("600") == "unknown"

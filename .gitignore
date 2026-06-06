@@ -52,6 +52,7 @@ venv/
 # MLflow / experiment tracking
 mlruns/
 mlartifacts/
+# MLFLOW_TRACKING_URI — store in .env (already gitignored) or export as env var
 
 # Hydra run outputs
 outputs/

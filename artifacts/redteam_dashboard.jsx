@@ -31,6 +31,9 @@ const TOOL_COLORS = {
   query_history:     "#8b949e",
   run_mcmc_chain:    "#ff4444",
   declare_hypothesis:"#ffd700",
+  run_qaoa_subproblem: "#a5f3fc",
+  check_simon_period:  "#f9a8d4",
+  measure_hardness:    "#fde68a",
 };
 
 // ─── Tool Definitions (mirrors redteam_agent.py) ──────────────────────────────
@@ -109,6 +112,42 @@ const TOOL_DEFINITIONS = [
         confidence:       { type: "number" },
       },
       required: ["phoneme_map", "attack_path", "evidence_summary", "confidence"],
+    },
+  },
+  {
+    name: "run_qaoa_subproblem",
+    description: "Run QAOA on top-K signs by IC contribution. Returns QAOA-refined phoneme assignments and delta LM score vs MCMC best.",
+    input_schema: {
+      type: "object",
+      properties: {
+        top_signs: { type: "integer", description: "Number of highest-IC signs (4–10)" },
+        reps:      { type: "integer", description: "QAOA circuit repetitions / layers (1–2)" },
+        backend:   { type: "string", enum: ["simulator", "ibmq"], description: "'simulator' (default) or 'ibmq'" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "check_simon_period",
+    description: "Test whether a diachronic key-change passage has XOR-period structure and run Simon's algorithm. Returns precondition_holds, period s, classical vs quantum query count.",
+    input_schema: {
+      type: "object",
+      properties: {
+        passage_id: { type: "string", description: "Passage ID, e.g. 'P007_ADHS' or 'P012_ABCDEGHINPQSX'" },
+      },
+      required: ["passage_id"],
+    },
+  },
+  {
+    name: "measure_hardness",
+    description: "Compute quantum hardness certificate: p_good, Grover oracle call count, speedup ratio at thresholds 0.90/0.95/0.99.",
+    input_schema: {
+      type: "object",
+      properties: {
+        n_samples:        { type: "integer", description: "Monte Carlo samples for p_good (100–10000)" },
+        use_quantum_iqae: { type: "boolean", description: "Use Iterative QAE for tighter p_good bound" },
+      },
+      required: [],
     },
   },
 ];
@@ -352,10 +391,71 @@ function mockDeclare(args) {
   };
 }
 
+function mockQAOA(topSigns, reps, backend, baseLm) {
+  const delta = _rng(8, 28);
+  const assignments = Array.from({ length: topSigns }, (_, i) => ({
+    sign_code: String(i * 7 + 1).padStart(3, "0"),
+    phoneme: ["ma", "ku", "ri", "ta", "ko", "pa", "re", "nu", "ti", "wa"][i % 10],
+    confidence: parseFloat((_rng(0.72, 0.94)).toFixed(3)),
+  }));
+  return {
+    solver: "qaoa_" + backend,
+    reps,
+    top_signs: topSigns,
+    best_lm_score: Math.round((baseLm + delta) * 100) / 100,
+    delta_vs_mcmc: Math.round(delta * 100) / 100,
+    baseline_lm_score: Math.round(baseLm * 100) / 100,
+    qaoa_assignments: assignments,
+    n_function_evaluations: reps * topSigns * 12,
+    exit_code: 0,
+  };
+}
+
+function mockSimon(passageId) {
+  const holds = Math.random() > 0.35;
+  return {
+    passage_id: passageId,
+    precondition_holds: holds,
+    period: holds ? "01101" : null,
+    period_length: holds ? 5 : null,
+    classical_queries_needed: 32,
+    quantum_queries_needed: holds ? 6 : null,
+    speedup_ratio: holds ? parseFloat((32 / 6).toFixed(2)) : null,
+    interpretation: holds
+      ? `XOR-period structure detected at ${passageId}. Simon's algorithm recovers period in 6 queries vs 32 classical.`
+      : `No XOR-period structure found at ${passageId}. Classical search is optimal for this passage.`,
+    exit_code: 0,
+  };
+}
+
+function mockHardness(nSamples, useQuantum) {
+  const pgood = parseFloat((_rng(0.012, 0.048)).toFixed(4));
+  const groverCalls = Math.round(Math.PI / (4 * Math.sqrt(pgood)));
+  const classicalCalls = Math.round(1 / pgood);
+  return {
+    n_samples: nSamples,
+    use_quantum_iqae: useQuantum,
+    p_good: pgood,
+    grover_oracle_calls: groverCalls,
+    classical_expected_calls: classicalCalls,
+    speedup_ratio: parseFloat((classicalCalls / groverCalls).toFixed(2)),
+    thresholds: [
+      { tau: 0.90, p_good: parseFloat((pgood * 0.62).toFixed(5)), grover_calls: Math.round(Math.PI / (4 * Math.sqrt(pgood * 0.62))) },
+      { tau: 0.95, p_good: parseFloat((pgood * 0.41).toFixed(5)), grover_calls: Math.round(Math.PI / (4 * Math.sqrt(pgood * 0.41))) },
+      { tau: 0.99, p_good: parseFloat((pgood * 0.18).toFixed(5)), grover_calls: Math.round(Math.PI / (4 * Math.sqrt(pgood * 0.18))) },
+    ],
+    recommendation: groverCalls < 50
+      ? "QPU budget is justified: Grover speedup is " + (classicalCalls / groverCalls).toFixed(1) + "×."
+      : "Classical MCMC is more practical at this hardness level.",
+    exit_code: 0,
+  };
+}
+
 const TOOL_DELAYS = {
   reconnaissance: [900, 1600], known_plaintext: [350, 650], crib_drag: [450, 900],
   oracle_probe: [1800, 3200], supply_chain_inject: [300, 550],
   query_history: [200, 420], run_mcmc_chain: [3200, 5500], declare_hypothesis: [500, 900],
+  run_qaoa_subproblem: [2400, 4200], check_simon_period: [1200, 2200], measure_hardness: [800, 1600],
 };
 
 async function execMock(name, input, currentLm) {
@@ -370,6 +470,9 @@ async function execMock(name, input, currentLm) {
     case "query_history":       return mockQueryHistory();
     case "run_mcmc_chain":      return mockMCMC(input.focus_passage, currentLm);
     case "declare_hypothesis":  return mockDeclare(input);
+    case "run_qaoa_subproblem": return mockQAOA(input.top_signs ?? 6, input.reps ?? 1, input.backend ?? "simulator", currentLm);
+    case "check_simon_period":  return mockSimon(input.passage_id ?? "P007_ADHS");
+    case "measure_hardness":    return mockHardness(input.n_samples ?? 1000, input.use_quantum_iqae ?? false);
     default:                    return { error: `Unknown tool: ${name}` };
   }
 }
@@ -459,6 +562,9 @@ function fmtInput(tool, inp) {
     return `${n} signs, conf = ${((inp.confidence ?? 0) * 100).toFixed(0)}%`;
   }
   if (tool === "known_plaintext") return `min_conf = ${inp.min_confidence ?? 0.7}`;
+  if (tool === "run_qaoa_subproblem") return `top_signs=${inp.top_signs ?? 6} reps=${inp.reps ?? 1} backend=${inp.backend ?? "sim"}`;
+  if (tool === "check_simon_period") return `passage: ${inp.passage_id ?? "?"}` ;
+  if (tool === "measure_hardness") return `n=${inp.n_samples ?? 1000} iqae=${inp.use_quantum_iqae ? "yes" : "no"}`;
   return "—";
 }
 
@@ -483,6 +589,16 @@ function fmtResult(tool, res) {
     return `${res.overall_lm_score} nats · ${res.n_assignments} assignments · ${res.status}`;
   if (tool === "declare_hypothesis")
     return `${res.n_signs} signs · conf ${((res.confidence ?? 0) * 100).toFixed(0)}% · COMPLETE`;
+  if (tool === "run_qaoa_subproblem") {
+    const d = res.delta_vs_mcmc;
+    return `Δ${d != null ? (d >= 0 ? "+" : "") + d.toFixed(2) : "?"} nats vs MCMC · ${res.best_lm_score} nats`;
+  }
+  if (tool === "check_simon_period")
+    return res.precondition_holds
+      ? `period found: s=${res.period} · ${res.quantum_queries_needed}q vs ${res.classical_queries_needed}c queries`
+      : `no XOR-period · classical optimal`;
+  if (tool === "measure_hardness")
+    return `p_good=${res.p_good} · Grover=${res.grover_oracle_calls} calls · ${res.speedup_ratio}× speedup`;
   return JSON.stringify(res).slice(0, 90);
 }
 
@@ -548,6 +664,9 @@ export default function RedRongoDashboard() {
   const [phase,     setPhase]     = useState("idle");
   const [hypo,      setHypo]      = useState(null);
   const [err,       setErr]       = useState(null);
+  const [qaoa,      setQaoa]      = useState(null);   // latest QAOA result
+  const [simon,     setSimon]     = useState(null);   // latest Simon result
+  const [hardness,  setHardness]  = useState(null);   // latest hardness result
 
   const logScrollRef = useRef(null);
   const abortRef     = useRef(false);
@@ -565,7 +684,8 @@ export default function RedRongoDashboard() {
     // Reset chart to the real pre-run baseline from demo data (not a placeholder)
     setLmData(DEMO_INIT_LM_CHART);
     setAnchors(INIT_ANCHORS + DEMO_N_SOFT_PROMOTED);
-    setHypo(null); setPhase("reason");
+    setHypo(null); setQaoa(null); setSimon(null); setHardness(null);
+    setPhase("reason");
     abortRef.current = false; _mcmcCount = 0;
 
     const messages = [{
@@ -605,6 +725,17 @@ export default function RedRongoDashboard() {
             setLmData(prev => [...prev, { label: `T${turn}`, score: Math.round(currentLm * 10) / 10 }]);
             setAnchors(prev => Math.min(prev + 2, TOTAL_SIGNS));
           }
+          if (blk.name === "run_qaoa_subproblem" && result.best_lm_score != null) {
+            setQaoa(result);
+            // If QAOA beat MCMC, update chart and LM baseline
+            if (result.delta_vs_mcmc > 0) {
+              currentLm = result.best_lm_score;
+              setLmData(prev => [...prev, { label: `Q${turn}`, score: Math.round(currentLm * 10) / 10 }]);
+              setAnchors(prev => Math.min(prev + (result.qaoa_assignments?.length ?? 0), TOTAL_SIGNS));
+            }
+          }
+          if (blk.name === "check_simon_period") setSimon(result);
+          if (blk.name === "measure_hardness")   setHardness(result);
           if (blk.name === "oracle_probe" && result.delta_lm > 0) {
             setAnchors(prev => Math.min(prev + 1, TOTAL_SIGNS));
           }
@@ -817,7 +948,7 @@ export default function RedRongoDashboard() {
                 ? `${lmDelta >= 0 ? "+" : ""}${lmDelta.toFixed(1)} nats from baseline`
                 : "awaiting first MCMC run"}
             </div>
-            <ResponsiveContainer width="100%" height={160}>
+            <ResponsiveContainer width="100%" height={130}>
               <LineChart data={lmData} margin={{ top: 4, right: 6, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="label"
@@ -832,11 +963,97 @@ export default function RedRongoDashboard() {
                                   color: "#c9d1d9" }}
                   formatter={v => [`${v} nats`, "LM score"]} />
                 <Line type="monotone" dataKey="score" stroke="#39d353" strokeWidth={2}
-                  dot={{ fill: "#39d353", r: 3, strokeWidth: 0 }}
+                  dot={({ cx, cy, payload }) => (
+                    <circle key={payload.label} cx={cx} cy={cy} r={3} strokeWidth={0}
+                      fill={payload.label?.startsWith("Q") ? "#a5f3fc" : "#39d353"} />
+                  )}
                   activeDot={{ r: 4, fill: "#39d353" }} />
               </LineChart>
             </ResponsiveContainer>
+            {/* Q-prefix dot legend */}
+            {lmData.some(d => d.label?.startsWith("Q")) && (
+              <div style={{ fontSize: 9, color: "#8b949e", marginTop: 4, display: "flex", gap: 10 }}>
+                <span><span style={{ color: "#39d353" }}>●</span> MCMC</span>
+                <span><span style={{ color: "#a5f3fc" }}>●</span> QAOA</span>
+              </div>
+            )}
           </div>
+
+          {/* Quantum Results Panel */}
+          {(qaoa || simon || hardness) && (
+            <div style={{ background: "#161b22", border: "1px solid #30363d",
+                           borderRadius: 6, padding: 10 }}>
+              <div style={{ color: "#a5f3fc", fontWeight: 700, fontSize: 10,
+                             letterSpacing: 2, borderBottom: "1px solid #21262d",
+                             paddingBottom: 6, marginBottom: 8 }}>QUANTUM RESULTS</div>
+
+              {qaoa && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 3 }}>QAOA SUBPROBLEM</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: qaoa.delta_vs_mcmc >= 0 ? "#39d353" : "#f87171", fontWeight: 700 }}>
+                        {qaoa.delta_vs_mcmc >= 0 ? "+" : ""}{qaoa.delta_vs_mcmc?.toFixed(2)} nats
+                      </div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>vs MCMC</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#a5f3fc", fontWeight: 700 }}>{qaoa.best_lm_score?.toFixed(1)}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>LM score</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#c9d1d9" }}>{qaoa.n_function_evaluations}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>fn evals</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {simon && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 3 }}>SIMON'S ALGORITHM</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{
+                      background: simon.precondition_holds ? "rgba(74,222,128,.12)" : "rgba(248,113,113,.1)",
+                      color: simon.precondition_holds ? "#39d353" : "#f87171",
+                      fontSize: 9, padding: "1px 5px", borderRadius: 3,
+                    }}>
+                      {simon.precondition_holds ? "XOR-PERIOD FOUND" : "NO PERIOD"}
+                    </span>
+                    {simon.precondition_holds && (
+                      <span style={{ fontSize: 10, color: "#f9a8d4" }}>s={simon.period}</span>
+                    )}
+                    {simon.speedup_ratio && (
+                      <span style={{ fontSize: 10, color: "#8b949e" }}>{simon.speedup_ratio}× speedup</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {hardness && (
+                <div>
+                  <div style={{ fontSize: 9, color: "#8b949e", letterSpacing: 1, marginBottom: 3 }}>HARDNESS CERTIFICATE</div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#fde68a", fontWeight: 700 }}>{hardness.p_good}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>p_good</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#fde68a", fontWeight: 700 }}>{hardness.grover_oracle_calls}</div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>Grover calls</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#c9d1d9", fontWeight: 700 }}>{hardness.speedup_ratio}×</div>
+                      <div style={{ fontSize: 9, color: "#8b949e" }}>speedup</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 9, color: "#8b949e", marginTop: 4, fontStyle: "italic" }}>
+                    {hardness.recommendation}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Phase indicator */}
           <div style={{ background: "#161b22", border: "1px solid #30363d",

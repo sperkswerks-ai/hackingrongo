@@ -1,8 +1,4 @@
-"""
-hackingrongo.data.catalog
-====================
-
-Single source of truth for all rongorongo sign identity and encoding
+"""Single source of truth for all rongorongo sign identity and encoding
 questions.
 
 This module loads and validates the three catalog artifacts:
@@ -11,6 +7,8 @@ This module loads and validates the three catalog artifacts:
 * ``allographs.json``       — Horley allograph groupings (variant → canonical).
 * ``sign_metadata.json``    — per-sign scholarly metadata (readings, taxogram
                               flag, notes).
+* ``barthel_families.json`` — iconographic family assignments per Barthel (1958)
+                              and Fischer (1997).
 
 **Every module** that needs to look up a sign code imports
 :class:`SignCatalog` from here.  No other module may maintain its own
@@ -22,11 +20,11 @@ Public API
     Frozen dataclass: all catalog information for a single sign.
 
 ``SignCatalog``
-    Container loaded from the three JSON files.  Provides
+    Container loaded from the catalog JSON files.  Provides
     ``barthel_to_horley()``, ``horley_to_barthels()``,
     ``get_allograph_group()``, ``get_canonical_id()``,
-    ``is_taxogram()``, ``get_taxogram_codes()``, and
-    ``barthel_to_implicit_group()``.
+    ``is_taxogram()``, ``get_taxogram_codes()``,
+    ``get_barthel_family()``, and ``barthel_to_implicit_group()``.
 """
 
 from __future__ import annotations
@@ -89,7 +87,7 @@ class SignRecord:
 class SignCatalog:
     """Central registry for rongorongo sign identities and encodings.
 
-    Constructed from three JSON catalog files.  Use :meth:`load` to build
+    Constructed from four JSON catalog files.  Use :meth:`load` to build
     from the Hydra config rather than calling the constructor directly.
 
     Parameters
@@ -104,6 +102,10 @@ class SignCatalog:
     sign_metadata : dict[str, dict[str, Any]]
         Contents of ``sign_metadata.json``.  Maps Barthel code strings
         to metadata dicts.
+    barthel_families : dict[str, str] | None
+        Contents of ``barthel_families.json``.  Maps Barthel code strings
+        to iconographic family labels.  ``None`` disables the lookup
+        (for backward compatibility when the file is absent).
 
     Attributes
     ----------
@@ -115,7 +117,8 @@ class SignCatalog:
     ``barthel_to_horley()``, ``horley_to_barthels()`` — encoding translation.
     ``get_canonical_id()``, ``get_allograph_group()`` — allograph navigation.
     ``is_taxogram()``, ``get_taxogram_codes()`` — sign-class queries.
-    ``barthel_to_implicit_group()`` — Barthel (1958) morphological taxonomy.
+    ``get_barthel_family()`` — iconographic family lookup (Barthel 1958).
+    ``barthel_to_implicit_group()`` — legacy arithmetic taxonomy.
     """
 
     def __init__(
@@ -123,6 +126,7 @@ class SignCatalog:
         horley_encoding: dict[str, str],
         allographs: dict[str, str],
         sign_metadata: dict[str, dict[str, Any]],
+        barthel_families: dict[str, str] | None = None,
     ) -> None:
         # Strip schema-metadata keys (start with "_")
         horley_clean = {k: v for k, v in horley_encoding.items() if not k.startswith("_")}
@@ -138,6 +142,15 @@ class SignCatalog:
                 self._horley_to_barthels_map.setdefault(horley, []).append(barthel)
 
         self._allographs: dict[str, str] = dict(allographs_clean)
+
+        # Iconographic family assignments from barthel_families.json
+        _fam_clean: dict[str, str] = {}
+        if barthel_families is not None:
+            _fam_clean = {
+                k: v for k, v in barthel_families.items()
+                if not k.startswith("_")
+            }
+        self._barthel_families: dict[str, str] = _fam_clean
 
         # Canonical → all variants (including the canonical sign itself)
         self._sign_groups: dict[str, list[str]] = {}
@@ -165,11 +178,15 @@ class SignCatalog:
 
         logger.debug(
             "SignCatalog initialised: %d signs, %d Barthel→Horley mappings, "
-            "%d allograph groups.",
+            "%d allograph groups, %d family assignments.",
             len(self.signs),
             len(self._barthel_to_horley_map),
             len(self._sign_groups),
+            len(self._barthel_families),
         )
+
+    # Internal family lookup populated in __init__
+    _barthel_families: dict[str, str]
 
     # ------------------------------------------------------------------
     # Encoding translation
@@ -295,6 +312,56 @@ class SignCatalog:
         """
         return sorted(c for c, r in self.signs.items() if r.is_taxogram)
 
+    def get_barthel_family(self, code: str) -> str:
+        """Return the iconographic family for a Barthel sign code.
+
+        Uses the curated ``barthel_families.json`` lookup rather than
+        arithmetic century-block derivation.  The lookup also tries the
+        zero-padded form (``"076"``) and the unpadded form (``"76"``)
+        so that both representations resolve correctly.
+
+        Parameters
+        ----------
+        code : str
+            Barthel code (padded or unpadded, with or without allograph
+            suffix).
+
+        Returns
+        -------
+        str
+            One of ``"anthropomorphic"``, ``"zoomorphic"``,
+            ``"botanical"``, ``"celestial"``, ``"geometric"``,
+            ``"composite"``, ``"positional"``, or ``"unknown"``.
+            Returns ``"unknown"`` if the code is absent from the
+            family lookup.
+
+        Notes
+        -----
+        Call-sites should NEVER derive the family arithmetically
+        (``int(code) // 100``) — that conflates Barthel's numeric
+        *ordering* with his iconographic *taxonomy*.
+        """
+        if not self._barthel_families:
+            return "unknown"
+        # Try direct lookup first (covers both padded and unpadded keys)
+        fam = self._barthel_families.get(code)
+        if fam is not None:
+            return fam
+        # Strip leading zeros and retry (corpus uses '001', JSON may use '001' or '1')
+        normalized = self._ZERO_PAD.sub("", code)
+        if normalized != code:
+            fam = self._barthel_families.get(normalized)
+            if fam is not None:
+                return fam
+        # Strip allograph suffix (e.g. '380a' → '380')
+        base = re.sub(r"[^0-9]", "", code)
+        if base:
+            padded = base.zfill(3)
+            fam = self._barthel_families.get(padded) or self._barthel_families.get(base)
+            if fam is not None:
+                return fam
+        return "unknown"
+
     @staticmethod
     def barthel_to_implicit_group(code: str) -> str:
         """Map a Barthel code to Barthel's (1958) implicit sign taxonomy.
@@ -395,7 +462,16 @@ class SignCatalog:
         allographs = cls._load_json(allographs_path, "allograph catalog")
         sign_metadata = cls._load_json(metadata_path, "sign metadata")
 
-        return cls(horley_encoding, allographs, sign_metadata)
+        # Load iconographic family assignments (optional; degrades gracefully)
+        families_path = project_root / "data" / "catalog" / "barthel_families.json"
+        barthel_families: dict[str, str] | None = None
+        if families_path.exists():
+            try:
+                barthel_families = cls._load_json(families_path, "Barthel families")
+            except Exception as exc:
+                logger.warning("Could not load barthel_families.json: %s", exc)
+
+        return cls(horley_encoding, allographs, sign_metadata, barthel_families)
 
     @staticmethod
     def _load_json(path: Path, label: str) -> dict[str, Any]:

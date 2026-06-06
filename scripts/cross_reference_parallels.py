@@ -362,13 +362,36 @@ def infer_stratum_from_tablets(tablet_id: str, tablets: dict) -> str:
     return "undated"
 
 
-def _barthel_family_bucket(code: str) -> int:
-    """Return the Barthel century (0-9) for a sign code, or -1 if unparseable."""
-    digits = "".join(c for c in code.split(".")[0] if c.isdigit())
+def _barthel_family_bucket(code: str) -> str:
+    """Return the iconographic family for a sign code.
+
+    Delegates to ``barthel_families.json`` (Barthel 1958, Fischer 1997)
+    rather than arithmetic century-block derivation.
+    Returns ``'unknown'`` for codes absent from the lookup.
+    """
     try:
-        return int(digits) // 100 if digits else -1
-    except ValueError:
-        return -1
+        from hackingrongo.data.passage_alignment import _get_family
+        return _get_family(code)
+    except Exception:
+        pass
+    # Fallback: direct JSON load
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        _p = _Path(__file__).resolve().parents[1] / "data" / "catalog" / "barthel_families.json"
+        if _p.exists():
+            _raw = _json.loads(_p.read_text(encoding="utf-8"))
+            _fam_map = {k: v for k, v in _raw.items() if not k.startswith("_")}
+            digits = "".join(c for c in code if c.isdigit())
+            return (
+                _fam_map.get(code)
+                or _fam_map.get(digits.zfill(3))
+                or _fam_map.get(digits)
+                or "unknown"
+            )
+    except Exception:
+        pass
+    return "unknown"
 
 
 def _compute_diachronic_changes(attestations: list[dict]) -> list[dict]:
@@ -408,7 +431,9 @@ def _compute_diachronic_changes(attestations: list[dict]) -> list[dict]:
             "n_tablets_consistent": n_consistent,
             "is_holy_grail_candidate": n_consistent >= 2,
             "crosses_barthel_family": (
-                _barthel_family_bucket(pre_cons[i])
+                _barthel_family_bucket(pre_cons[i]) != "unknown"
+                and _barthel_family_bucket(post_cons[i]) != "unknown"
+                and _barthel_family_bucket(pre_cons[i])
                 != _barthel_family_bucket(post_cons[i])
             ),
         })

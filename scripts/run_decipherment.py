@@ -57,6 +57,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 _FOCUS_PASSAGE: str | None = None
 _SMOKE_TEST: bool = False
+_FUSION_CHECKPOINT: "Path | None" = None
 
 if __name__ == "__main__":
     for _arg in list(sys.argv):
@@ -64,6 +65,17 @@ if __name__ == "__main__":
             _FOCUS_PASSAGE = _arg.split("=", 1)[1].strip()
             sys.argv.remove(_arg)
             break
+
+    for _arg in list(sys.argv):
+        if _arg.startswith("--fusion-checkpoint="):
+            _ckpt_str = _arg.split("=", 1)[1].strip()
+            _FUSION_CHECKPOINT = Path(_ckpt_str)
+            sys.argv.remove(_arg)
+            break
+
+    if "--skip-fusion" in sys.argv:
+        _FUSION_CHECKPOINT = None
+        sys.argv.remove("--skip-fusion")
 
     _SMOKE_TEST = "--smoke-test" in sys.argv
     if _SMOKE_TEST:
@@ -596,6 +608,7 @@ def _mlflow_run(cfg: "DictConfig", project_root: Path, config_hash: str):
             "mcmc.occupancy_weight":   float(mc.occupancy_penalty_weight),
             "mcmc.max_per_phoneme":    int(mc.max_signs_per_phoneme),
             "mcmc.lm_guided_prob":     float(getattr(mc, "lm_guided_prob", 0.0)),
+            "mcmc.target_acceptance":  float(getattr(mc, "target_acceptance", 0.0)) or "",
             "beam.width":              int(bs.beam_width),
             "beam.max_depth":          int(bs.max_depth),
             "n_hard_anchors":          len(CALENDAR_ANCHORS_HARD),
@@ -641,8 +654,17 @@ def _mlflow_log_results(
             metrics["mcmc_acceptance_mean"] = float(
                 statistics.mean(mcmc_result.acceptance_rates)
             )
+            for _i, _rate in enumerate(mcmc_result.acceptance_rates):
+                metrics[f"acceptance_rate_chain_{_i}"] = float(_rate)
+        if getattr(mcmc_result, "geweke_z", None) is not None:
+            metrics["mcmc_geweke_z"] = float(mcmc_result.geweke_z)
         metrics["mcmc_converged"] = float(int(mcmc_result.converged))
+    if ranked:
+        _best = ranked[0].overall_lm_score
+        if math.isfinite(_best):
+            metrics["best_lm_score_final"] = _best
     mlflow.log_metrics({k: v for k, v in metrics.items() if math.isfinite(v)})
+    mlflow.log_param("n_cribs", len(active_anchors))
 
     # ── Artifacts (JSON outputs + HTML report only — no LMs or image data) ───
     _ARTIFACT_PATHS = [
@@ -790,22 +812,114 @@ def _run(
             sorted(skipped_anchors),
         )
 
-    # Sequential entropy as sign proposal weights: high-entropy signs appear
-    # in many different contexts and are more likely phonemic, so the MCMC
-    # should explore them more aggressively.  Falls back to uniform if the
-    # file doesn't exist (e.g. first run before train_sequential_embeddings.py).
-    _seq_entropy_path = project_root / "outputs" / "sequential_entropy.json"
+    # ── MCMC proposal weights ──────────────────────────────────────────────────
+    # Priority order (highest wins):
+    #   1. Fused (Zone A + Zone B) embedding norms, when a fusion checkpoint
+    #      is present.  High L2 norm → the sign carries rich structure in the
+    #      joint representation → explore it more aggressively.
+    #   2. Sequential entropy from sequential_entropy.json.
+    #   3. Uniform (fallback when neither source exists).
     _sign_ic_weights: dict[str, float] | None = None
-    if _seq_entropy_path.exists():
-        _raw_entropy: dict[str, float] = json.loads(_seq_entropy_path.read_text(encoding="utf-8"))
-        # Shift by +1 so zero-entropy signs still get a small (non-zero) weight.
-        _sign_ic_weights = {s: _raw_entropy.get(s, 0.0) + 1.0 for s in sign_ids}
-        log.info(
-            "Sequential entropy proposal weights loaded from %s (%d signs).",
-            _seq_entropy_path, len(_raw_entropy),
-        )
-    else:
-        log.info("sequential_entropy.json not found — uniform MCMC proposal weights.")
+
+    if _FUSION_CHECKPOINT is not None and _FUSION_CHECKPOINT.exists():
+        _emb_cache = project_root / "outputs" / "embeddings_cache.pt"
+        if _emb_cache.exists():
+            try:
+                import torch as _torch
+                from omegaconf import OmegaConf as _OmegaConf
+                from hackingrongo.zone_b.priors import (
+                    ZoneBPriorBuilder as _ZBPBuilder,
+                    build_zone_b_prior as _build_prior,
+                )
+                from hackingrongo.zone_c.fusion import (
+                    FusionLayer as _FusionLayer,
+                    load_fusion_checkpoint as _load_fusion_ckpt,
+                )
+
+                _fuse_cfg = _OmegaConf.load(project_root / "conf" / "config.yaml")
+                _fuse_device = _torch.device("cpu")
+
+                _emb_data = _torch.load(_emb_cache, weights_only=True)
+                _all_embs: _torch.Tensor = _emb_data["embeddings"].float()
+                _all_codes: list[str] = list(_emb_data["barthel_codes"])
+                _unique_codes = sorted(set(_all_codes))
+
+                # Patch config if embedding dim changed since the fusion was trained.
+                _actual_a_dim = _all_embs.shape[1]
+                if _actual_a_dim != int(_fuse_cfg.zone_c.fusion.zone_a_dim):
+                    _fuse_cfg = _OmegaConf.merge(
+                        _fuse_cfg,
+                        _OmegaConf.create({"zone_c": {"fusion": {"zone_a_dim": _actual_a_dim}}}),
+                    )
+
+                _fusion_model = _FusionLayer(_fuse_cfg).to(_fuse_device)
+                _load_fusion_ckpt(_fusion_model, _FUSION_CHECKPOINT, device=_fuse_device)
+                _fusion_model.eval()
+
+                # Build Zone B priors for unique sign codes only (no full inventory needed).
+                from hackingrongo.zone_b.sign_classifier import (
+                    SignClass as _SC,
+                    SignClassification as _SCl,
+                    SignInventory as _SI,
+                )
+                _dummy_inv = _SI(classifications={
+                    c: _SCl(c, _SC.UNKNOWN, 0.0, 0.5, 0.0, 0.0) for c in _unique_codes
+                })
+                _zb_prior, _ = _build_prior(
+                    _unique_codes, _dummy_inv, _fuse_cfg, device=_fuse_device
+                )
+
+                # Fuse and derive per-unique-code weights from embedding L2 norm.
+                _code_to_idx = {c: i for i, c in enumerate(_unique_codes)}
+                _tok_idx = _torch.tensor(
+                    [_code_to_idx.get(c, 0) for c in _all_codes], dtype=_torch.long
+                )
+                _za_expanded = _all_embs[_tok_idx]
+                _zb_expanded = _zb_prior[_tok_idx]
+
+                with _torch.no_grad():
+                    _fused = _fusion_model(_za_expanded.to(_fuse_device), _zb_expanded.to(_fuse_device))
+
+                # Aggregate per sign_id: mean fused-embedding norm across all tokens.
+                _fused_cpu = _fused.cpu().numpy()
+                _norms: dict[str, list] = {s: [] for s in sign_ids}
+                for _i, _code in enumerate(_all_codes):
+                    if _code in _norms:
+                        _norms[_code].append(float(np.linalg.norm(_fused_cpu[_i])))
+                _sign_ic_weights = {
+                    s: float(np.mean(v)) + 1.0 if v else 1.0
+                    for s, v in _norms.items()
+                }
+                log.info(
+                    "Fusion proposal weights derived from %s (%d sign codes).",
+                    _FUSION_CHECKPOINT.name, len(_sign_ic_weights),
+                )
+            except Exception as _fuse_exc:
+                log.warning(
+                    "Could not load fusion checkpoint (%s) — falling back to sequential entropy.",
+                    _fuse_exc,
+                )
+        else:
+            log.warning(
+                "Fusion checkpoint supplied but embeddings_cache.pt not found — "
+                "falling back to sequential entropy."
+            )
+
+    if _sign_ic_weights is None:
+        # Fallback: sequential entropy from Zone B sequential embeddings step.
+        _seq_entropy_path = project_root / "outputs" / "sequential_entropy.json"
+        if _seq_entropy_path.exists():
+            _raw_entropy: dict[str, float] = json.loads(
+                _seq_entropy_path.read_text(encoding="utf-8")
+            )
+            # Shift by +1 so zero-entropy signs still get a small (non-zero) weight.
+            _sign_ic_weights = {s: _raw_entropy.get(s, 0.0) + 1.0 for s in sign_ids}
+            log.info(
+                "Sequential entropy proposal weights loaded from %s (%d signs).",
+                _seq_entropy_path, len(_raw_entropy),
+            )
+        else:
+            log.info("No fusion checkpoint or sequential_entropy.json — uniform MCMC weights.")
 
     sampler = MCMCSampler(
         cfg=cfg,

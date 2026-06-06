@@ -52,6 +52,15 @@ def _load(rel: str, default: Any = None) -> Any:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def _load_html(rel: str) -> str | None:
+    """Load an HTML file as a raw string, or None if missing."""
+    p = PROJECT_ROOT / rel
+    if not p.exists():
+        log.warning("Missing HTML file: %s", rel)
+        return None
+    return p.read_text(encoding="utf-8")
+
+
 def _b64_png(rel: str) -> str | None:
     p = PROJECT_ROOT / rel
     if not p.exists():
@@ -145,6 +154,18 @@ tr:hover td { background: var(--surface2); }
 .positive-badge { display: inline-block; background: rgba(74,222,128,.12);
                   color: var(--green); padding: 3px 10px; border-radius: 3px;
                   font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-left: 8px; }
+/* section 10 — self-training collapsible */
+details.st-embed { border: 1px solid var(--border); border-radius: 6px;
+                   background: var(--surface2); margin-top: 18px; overflow: hidden; }
+details.st-embed > summary { padding: 12px 18px; cursor: pointer;
+                              font-family: 'JetBrains Mono', monospace; font-size: 11px;
+                              color: var(--muted); list-style: none; user-select: none; }
+details.st-embed > summary::before { content: '▶ '; color: var(--accent); }
+details.st-embed[open] > summary::before { content: '▼ '; }
+details.st-embed > .st-iframe-wrap { border-top: 1px solid var(--border); }
+details.st-embed > .st-iframe-wrap iframe {
+  width: 100%; border: none; min-height: 600px; display: block;
+  background: var(--bg); }
 """
 
 # ---------------------------------------------------------------------------
@@ -651,6 +672,86 @@ def _section8_sign600(tax: dict | None, logo: dict | None) -> str:
     )
 
 
+def _section10_self_training(stability: dict | None, st_html: str | None) -> str:
+    """§10 — Self-training summary card + collapsible embedded report."""
+    # Summary card
+    if stability:
+        n_stable   = len(stability.get("stable", []))
+        n_unstable = len(stability.get("unstable", []))
+        n_partial  = len(stability.get("partial", []))
+        n_runs     = stability.get("n_runs", 0)
+        lm_scores  = stability.get("lm_scores", {})
+
+        score_traj = ""
+        if lm_scores:
+            sorted_scores = [v for _, v in sorted(lm_scores.items())]
+            score_traj = " → ".join(f"{s:.4f}" for s in sorted_scores)
+            if len(sorted_scores) >= 2:
+                delta = sorted_scores[-1] - sorted_scores[0]
+                delta_colour = "var(--green)" if delta >= 0 else "var(--red)"
+                score_traj += (
+                    f' &nbsp;<span style="color:{delta_colour};font-size:11px">'
+                    f'(Δ {delta:+.4f})</span>'
+                )
+
+        stab_colour = "hi" if n_unstable == 0 else "med"
+        summary_cards = f"""
+<div class="stat-grid">
+  <div class="stat"><div class="stat-label">Iterations run</div>
+    <div class="stat-value">{n_runs}</div></div>
+  <div class="stat"><div class="stat-label">Stable assignments</div>
+    <div class="stat-value hi">{n_stable}</div>
+    <div class="stat-sub">same phoneme across all runs</div></div>
+  <div class="stat"><div class="stat-label">Unstable assignments</div>
+    <div class="stat-value {stab_colour}">{n_unstable}</div>
+    <div class="stat-sub">diverges between runs</div></div>
+  <div class="stat"><div class="stat-label">Partial (absent ≥1 run)</div>
+    <div class="stat-value">{n_partial}</div></div>
+</div>
+"""
+        if score_traj:
+            summary_cards += (
+                f'<p style="font-family:\'JetBrains Mono\',monospace;font-size:10px;'
+                f'color:var(--muted);margin:6px 0 14px">LM trajectory: {score_traj}</p>'
+            )
+
+        verdict_text = (
+            f"Self-training completed {n_runs} iteration(s). "
+            f"{n_stable} sign assignments are fully stable (zero variance across runs); "
+            f"{n_unstable} diverge and remain uncertain. "
+            + (f"The {n_unstable} unstable assignments are the highest-priority targets "
+               "for the next decipherment cycle." if n_unstable else
+               "All assignments that appear in multiple runs are consistent.")
+        )
+        summary_cards += (
+            f'<div class="verdict"><strong>Finding</strong>'
+            f'<p>{_esc(verdict_text)}</p></div>'
+        )
+    else:
+        summary_cards = (
+            "<p class='lo'>stability_analysis.json not found — "
+            "run stability_analysis.py or run_self_training.py</p>"
+        )
+
+    # Collapsible embedded self-training report
+    if st_html:
+        srcdoc = st_html.replace("&", "&amp;").replace('"', "&quot;")
+        embed_block = (
+            '<details class="st-embed">'
+            '<summary>Full self-training report (expand)</summary>'
+            '<div class="st-iframe-wrap">'
+            f'<iframe srcdoc="{srcdoc}" title="Self-Training Report"></iframe>'
+            '</div>'
+            '</details>'
+        )
+    else:
+        embed_block = (
+            "<p class='lo'>self_training_report.html not found — run run_self_training.py</p>"
+        )
+
+    return summary_cards + embed_block
+
+
 def _section9_holy_grail_update(hyp: dict | None, cal: dict | None) -> str:
     """Updated holy-grail substitution analysis with new phoneme context."""
     # P007 canonical form: ['007', '600', '007', '010']
@@ -736,6 +837,8 @@ def build_report() -> str:
     anc  = _load("outputs/analysis/anchor_conflict_diagnosis.json")
     tax  = _load("outputs/analysis/sign_600_taxogram_test.json")
     logo = _load("outputs/analysis/deity_logographic_600.json")
+    stability = _load("outputs/self_training/stability_analysis.json")
+    st_html   = _load_html("outputs/self_training/self_training_report.html")
     chart_uri = _b64_png("outputs/analysis/reading_direction_combined.png")
 
     generated = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -750,6 +853,7 @@ def build_report() -> str:
         ("7", "New Calendar Anchors",              _section7_anchors(anc, hyp)),
         ("8", "Sign 600 Diagnostic",               _section8_sign600(tax, logo)),
         ("9", "Holy-Grail Update — Enhanced Context", _section9_holy_grail_update(hyp, cal)),
+        ("10", "Self-Training & Stability",        _section10_self_training(stability, st_html)),
     ]
 
     sections_html = ""

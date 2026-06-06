@@ -421,6 +421,18 @@ def _parse_args() -> argparse.Namespace:
         "--iqae-alpha", type=float, default=0.05, metavar="ALPHA",
         help="IQAE significance level for Clopper-Pearson CI (default: 0.05).",
     )
+    p.add_argument(
+        "--oracle-circuit", action="store_true",
+        help="Build the Grover oracle circuit and append circuit_stats to the output JSON.",
+    )
+    p.add_argument(
+        "--oracle-k", type=int, default=8, metavar="K",
+        help="Top-K signs for oracle construction (default 8).",
+    )
+    p.add_argument(
+        "--oracle-m", type=int, default=8, metavar="M",
+        help="Top-M phonemes for oracle construction (default 8).",
+    )
     return p.parse_args()
 
 
@@ -561,6 +573,35 @@ def main() -> None:
             )
         print()
 
+    # ── Oracle circuit (optional) ─────────────────────────────────────────────
+    if args.oracle_circuit:
+        log.info(
+            "Building Grover oracle circuit (K=%d, M=%d) …",
+            args.oracle_k, args.oracle_m,
+        )
+        try:
+            from scripts.build_grover_oracle import build_oracle_stats
+        except ImportError:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from build_grover_oracle import build_oracle_stats
+
+        tau_for_oracle = thresholds[-1] if thresholds else 0.90
+        oracle_stats = build_oracle_stats(
+            corpus_dir=corpus_dir,
+            lm_dir=lm_dir,
+            k=args.oracle_k,
+            m=args.oracle_m,
+            tau=tau_for_oracle,
+        )
+        results["oracle_circuit"] = oracle_stats
+
+        print(f"  Oracle circuit: {oracle_stats['num_qubits']} logical qubits, "
+              f"depth {oracle_stats['depth']}, "
+              f"{oracle_stats['num_nonlocal_gates']} non-local gates, "
+              f"~{oracle_stats['t_gate_count_approx']:,} T-gates, "
+              f"{oracle_stats['surface_code_d3_phys']:,} physical qubits (surface d=3)")
+        print()
+
     # ── Save ──────────────────────────────────────────────────────────────────
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -568,6 +609,41 @@ def main() -> None:
             json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         log.info("Results written to %s", output)
+
+    # ── MLflow tracking ───────────────────────────────────────────────────────
+    try:
+        import os as _os
+        import mlflow as _mlflow
+        from datetime import datetime as _dt, timezone as _tz
+        _tracking_uri = _os.environ.get(
+            "MLFLOW_TRACKING_URI",
+            f"file://{(PROJECT_ROOT / 'outputs' / 'mlruns').resolve()}",
+        )
+        _mlflow.set_tracking_uri(_tracking_uri)
+        _mlflow.set_experiment("rongorongo_pgood")
+        _ts = _dt.now(tz=_tz.utc).strftime("%Y%m%d-%H%M")
+        with _mlflow.start_run(run_name=f"pgood-{_ts}"):
+            _mlflow.log_params({
+                "n_samples":  args.n_samples,
+                "thresholds": args.thresholds,
+                "n_signs":    len(signs),
+                "n_phonemes": len(phonemes),
+            })
+            for _t in results["thresholds"]:
+                _step = int(round(_t["tau"] * 100))
+                _mlflow.log_metric("p_good", float(_t["p_good"]), step=_step)
+                if _t["grover_oracle_calls"] > 0:
+                    _mlflow.log_metric(
+                        "grover_oracle_calls", float(_t["grover_oracle_calls"]), step=_step
+                    )
+                if _t["quantum_speedup_ratio"] is not None:
+                    _mlflow.log_metric(
+                        "quantum_speedup_ratio", float(_t["quantum_speedup_ratio"]), step=_step
+                    )
+            if output and output.exists():
+                _mlflow.log_artifact(str(output), artifact_path="pgood")
+    except ImportError:
+        pass
 
 
 if __name__ == "__main__":

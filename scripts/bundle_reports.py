@@ -172,14 +172,28 @@ _CATALOGUE: list[tuple[str, str, str, str]] = [
         "Tablet D occupies the most syllabic end.",
     ),
     (
+        "analysis/pozdniakov_report.html",
+        "Pozdniakov Paradigmatic Analysis",
+        "zone_b_structural",
+        "Automated replication of Pozdniakov (1996/2011) paradigmatic equivalence classes. "
+        "Sign substitution pairs from parallel passages, union-find grouping, "
+        "recall/precision/F1 vs reference classes, and MCMC cross-validation.",
+    ),
+    (
         "analysis/pozdniakov_hypothesis_report.html",
         "Pozdniakov Hypothesis Tests",
         "zone_b_structural",
         "Independent replication of Pozdniakov (1996/2011) morpheme "
         "identification tests against the corpus.",
     ),
-    (
-        "contact_partition_bipartite.html",
+    (        "analysis/contact_partition_report.html",
+        "Contact Partition Report",
+        "zone_b_structural",
+        "G\u00b2 bipartite sign-frequency partition with Bonferroni correction. "
+        "Stratum-shifting signs (pre- vs post-contact), stable signs, "
+        "and p-values for 120 signs \u00d7 2 strata comparisons.",
+    ),
+    (        "contact_partition_bipartite.html",
         "Contact Partition (Bipartite)",
         "zone_b_structural",
         "G² bipartite graph of pre- vs post-contact sign frequency differences. "

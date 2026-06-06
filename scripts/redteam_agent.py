@@ -48,7 +48,8 @@ ANALYSIS_DIR = OUTPUTS / "analysis"
 DATA_DIR = REPO_ROOT / "data"
 
 MODEL = "claude-opus-4-8"
-LM_IMPROVEMENT_THRESHOLD = 10.0  # nats; below this for 3 consecutive turns → stop
+LM_IMPROVEMENT_THRESHOLD = 10.0      # nats; below this for 3 consecutive turns → stop
+QUANTUM_IMPROVEMENT_THRESHOLD = 5.0  # nats; QAOA delta required to keep going when MCMC is stalled
 
 log = logging.getLogger("redteam")
 logging.basicConfig(
@@ -223,6 +224,105 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["phoneme_map", "attack_path", "evidence_summary", "confidence"],
+        },
+    },
+    {
+        "name": "run_qaoa_subproblem",
+        "description": (
+            "Run QAOA on the top-K signs by IC contribution as a quantum subproblem. "
+            "Returns the QAOA-refined phoneme assignments and the delta LM score versus "
+            "the current MCMC best."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "top_signs": {
+                    "type": "integer",
+                    "description": "Number of highest-IC signs to include (4–10).",
+                },
+                "reps": {
+                    "type": "integer",
+                    "description": "QAOA circuit repetitions / layers (1–2).",
+                },
+                "backend": {
+                    "type": "string",
+                    "enum": ["simulator", "ibmq"],
+                    "description": "'simulator' (default) or 'ibmq' (real QPU).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "check_simon_period",
+        "description": (
+            "Test whether the diachronic key-change at a specified passage has XOR-period "
+            "structure. If yes, run Simon's algorithm to recover the period. Returns: "
+            "precondition_holds bool, period s if found, classical_vs_quantum query count."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "passage_id": {
+                    "type": "string",
+                    "description": "Passage ID to analyse, e.g. 'P007_ADHS' or 'P012_ABCDEGHINPQSX'.",
+                },
+            },
+            "required": ["passage_id"],
+        },
+    },
+    {
+        "name": "measure_hardness",
+        "description": (
+            "Compute the quantum hardness certificate: p_good, Grover oracle call count, "
+            "and speedup ratio at thresholds 0.90, 0.95, 0.99. Use this to decide whether "
+            "QAOA or Grover search is worth the QPU budget."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "n_samples": {
+                    "type": "integer",
+                    "description": "Number of samples for Monte Carlo p_good estimate (100–10000).",
+                },
+                "use_quantum_iqae": {
+                    "type": "boolean",
+                    "description": "If true, use Iterative QAE for tighter p_good bound (slower).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "find_soft_parallels",
+        "description": (
+            "Run the projected quantum kernel SVM to score all cross-tablet position "
+            "pairs and surface near-parallel sequences missed by exact Barthel-code "
+            "matching. Trains on the 13 confirmed passages and returns soft parallel "
+            "candidates with SVM decision scores. High-scoring candidates are the "
+            "best new crib targets for the MCMC decipherment chain."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "svm_score_threshold": {
+                    "type": "number",
+                    "description": (
+                        "Minimum SVM decision value to include a pair as a soft "
+                        "parallel candidate. Default: 0.7. Lower = more candidates, "
+                        "higher false-positive rate."
+                    ),
+                },
+                "backend": {
+                    "type": "string",
+                    "enum": ["simulator", "fake_brisbane", "ibmq"],
+                    "description": (
+                        "'simulator' (noiseless, default), 'fake_brisbane' "
+                        "(Eagle r3 noise model), or 'ibmq' (real QPU)."
+                    ),
+                },
+            },
+            "required": [],
         },
     },
 ]
@@ -531,11 +631,57 @@ def supply_chain_inject(args: dict) -> str:
     )
 
 
+_HISTORY_KEY_PARAMS = (
+    "smoke_test", "hypothesis_type", "mcmc.num_chains",
+    "mcmc.num_iterations", "n_hard_anchors", "n_cribs",
+)
+
+
 def query_history(_args: dict) -> str:
     mlruns_dir = OUTPUTS / "mlruns"
     if not mlruns_dir.exists():
         return json.dumps({"error": "No MLflow runs found (outputs/mlruns does not exist)"})
 
+    # Try mlflow SDK first for richer ordering and type-safe access.
+    try:
+        import mlflow
+        client = mlflow.MlflowClient(tracking_uri=f"file://{mlruns_dir.resolve()}")
+        all_runs: list[dict] = []
+        for exp in client.search_experiments():
+            for run in client.search_runs(
+                [exp.experiment_id],
+                order_by=["metrics.best_lm_score_final DESC"],
+                max_results=20,
+            ):
+                metrics = {k: round(v, 4) for k, v in run.data.metrics.items()}
+                if metrics:
+                    all_runs.append({
+                        "run_id": run.info.run_id[:12],
+                        "metrics": metrics,
+                        "key_params": {
+                            k: v for k, v in run.data.params.items()
+                            if k in _HISTORY_KEY_PARAMS
+                        },
+                    })
+        all_runs.sort(
+            key=lambda r: r["metrics"].get("best_lm_score_final", float("-inf")),
+            reverse=True,
+        )
+        return json.dumps(
+            {
+                "n_runs_found": len(all_runs),
+                "best_runs": all_runs[:5],
+                "recommendation": (
+                    "Focus on anchor counts and chain configs that correlated with "
+                    "higher (less negative) best_lm_score_final."
+                ),
+            },
+            indent=2,
+        )
+    except ImportError:
+        pass
+
+    # Fallback: read MLflow filesystem directly (no mlflow package needed).
     runs: list[dict] = []
     for meta_file in sorted(mlruns_dir.rglob("meta.yaml"))[:20]:
         run_dir = meta_file.parent
@@ -562,26 +708,23 @@ def query_history(_args: dict) -> str:
                     pass
 
         if metrics:
-            runs.append(
-                {
-                    "run_id": run_dir.name[:12],
-                    "metrics": metrics,
-                    "key_params": {k: v for k, v in params.items() if k in (
-                        "smoke_test", "hypothesis_type", "mcmc.num_chains",
-                        "mcmc.num_iterations", "n_hard_anchors",
-                    )},
-                }
-            )
+            runs.append({
+                "run_id": run_dir.name[:12],
+                "metrics": metrics,
+                "key_params": {k: v for k, v in params.items() if k in _HISTORY_KEY_PARAMS},
+            })
 
-    runs.sort(key=lambda r: r["metrics"].get("best_lm_score", float("-inf")), reverse=True)
-
+    runs.sort(
+        key=lambda r: r["metrics"].get("best_lm_score_final", r["metrics"].get("best_lm_score", float("-inf"))),
+        reverse=True,
+    )
     return json.dumps(
         {
             "n_runs_found": len(runs),
             "best_runs": runs[:5],
             "recommendation": (
-                "Focus on hypothesis types and anchor counts that correlated with "
-                "higher (less negative) best_lm_score."
+                "Focus on anchor counts and chain configs that correlated with "
+                "higher (less negative) best_lm_score_final."
             ),
         },
         indent=2,
@@ -684,6 +827,154 @@ def declare_hypothesis(args: dict) -> str:
     )
 
 
+def run_qaoa_subproblem(args: dict) -> str:
+    top_signs   = max(4, min(10, int(args.get("top_signs", 6))))
+    reps        = max(1, min(2, int(args.get("reps", 1))))
+    backend     = str(args.get("backend", "simulator"))
+
+    ranking = _safe_load(DECIPHERMENT_DIR / "ranking.json")
+    baseline_lm: float | None = None
+    if ranking and "hypotheses" in ranking:
+        baseline_lm = ranking["hypotheses"][0].get("overall_lm_score")
+
+    init_arg = str(DECIPHERMENT_DIR / "ranking.json")
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "run_qaoa_decipherment.py"),
+        "--top-signs", str(top_signs),
+        "--reps",      str(reps),
+        "--backend",   backend,
+        "--init-from", init_arg,
+        "--output",    str(DECIPHERMENT_DIR / "qaoa_result.json"),
+    ]
+    log.info("run_qaoa_subproblem: top_signs=%d reps=%d backend=%s", top_signs, reps, backend)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            timeout=600,
+        )
+        result = _safe_load(DECIPHERMENT_DIR / "qaoa_result.json")
+        if result:
+            qaoa_lm = result.get("best_lm_score")
+            delta   = (qaoa_lm - baseline_lm) if (qaoa_lm is not None and baseline_lm is not None) else None
+            result["delta_vs_mcmc"] = delta
+            result["baseline_lm_score"] = baseline_lm
+            result["exit_code"] = proc.returncode
+            return json.dumps(result, indent=2)
+        return json.dumps(
+            {
+                "status": "completed",
+                "exit_code": proc.returncode,
+                "warning": "qaoa_result.json not written — check run_qaoa_decipherment.py.",
+                "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
+            },
+            indent=2,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"status": "timeout", "error": "QAOA run exceeded 600s"})
+    except Exception as exc:
+        return json.dumps({"status": "error", "error": str(exc)})
+
+
+def check_simon_period(args: dict) -> str:
+    passage_id = str(args.get("passage_id", "")).strip()
+    if not passage_id:
+        return json.dumps({"error": "passage_id is required"})
+
+    out_path = OUTPUTS / "quantum" / "simon_result.json"
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "run_simon_decipherment.py"),
+        "--passage-id", passage_id,
+        "--output",     str(out_path),
+    ]
+    log.info("check_simon_period: passage_id=%s", passage_id)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            timeout=300,
+        )
+        result = _safe_load(out_path)
+        if result:
+            result["exit_code"] = proc.returncode
+            return json.dumps(result, indent=2)
+        return json.dumps(
+            {
+                "status": "completed",
+                "exit_code": proc.returncode,
+                "warning": "simon_result.json not written — check run_simon_decipherment.py.",
+                "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
+            },
+            indent=2,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"status": "timeout", "error": "Simon period check exceeded 300s"})
+    except Exception as exc:
+        return json.dumps({"status": "error", "error": str(exc)})
+
+
+def measure_hardness(args: dict) -> str:
+    n_samples      = max(100, min(10000, int(args.get("n_samples", 1000))))
+    use_quantum    = bool(args.get("use_quantum_iqae", False))
+    out_path       = OUTPUTS / "zone_b" / "pgood_analysis.json"
+
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "measure_pgood.py"),
+        "--n-samples", str(n_samples),
+        "--output",   str(out_path),
+    ]
+    if use_quantum:
+        cmd.append("--use-quantum-iqae")
+    log.info("measure_hardness: n_samples=%d use_quantum_iqae=%s", n_samples, use_quantum)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            timeout=600,
+        )
+        result = _safe_load(out_path)
+        if result:
+            result["exit_code"] = proc.returncode
+            return json.dumps(result, indent=2)
+        return json.dumps(
+            {
+                "status": "completed",
+                "exit_code": proc.returncode,
+                "warning": "pgood_analysis.json not written — check measure_pgood.py.",
+                "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
+            },
+            indent=2,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"status": "timeout", "error": "measure_pgood exceeded 600s"})
+    except Exception as exc:
+        return json.dumps({"status": "error", "error": str(exc)})
+
+
+def find_soft_parallels(args: dict) -> str:
+    threshold = float(args.get("svm_score_threshold", 0.7))
+    backend   = str(args.get("backend", "simulator"))
+    try:
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        from run_qksvm_parallels import handle_find_soft_parallels_tool  # type: ignore[import]
+        result = handle_find_soft_parallels_tool(
+            svm_score_threshold=threshold,
+            backend=backend,
+        )
+    except Exception as exc:
+        result = {"error": str(exc), "n_soft_parallels": 0}
+    return json.dumps(result, indent=2)
+
+
 TOOL_DISPATCH: dict[str, Any] = {
     "reconnaissance": reconnaissance,
     "known_plaintext": known_plaintext,
@@ -693,6 +984,10 @@ TOOL_DISPATCH: dict[str, Any] = {
     "query_history": query_history,
     "run_mcmc_chain": run_mcmc_chain,
     "declare_hypothesis": declare_hypothesis,
+    "find_soft_parallels": find_soft_parallels,
+    "run_qaoa_subproblem": run_qaoa_subproblem,
+    "check_simon_period": check_simon_period,
+    "measure_hardness": measure_hardness,
 }
 
 # ---------------------------------------------------------------------------
@@ -938,12 +1233,26 @@ def run_agent(max_turns: int, output_dir: Path) -> None:
             if len(recent) == 3 and all(s is not None for s in recent):
                 improvement = max(recent) - min(recent)
                 if improvement < LM_IMPROVEMENT_THRESHOLD:
-                    log.info(
-                        "LM improvement over last 3 turns (%.2f nats) below threshold (%.2f) — stopping",
-                        improvement,
-                        LM_IMPROVEMENT_THRESHOLD,
-                    )
-                    break
+                    # Before stopping for MCMC stall, check whether the most recent
+                    # QAOA run showed meaningful improvement — if so, keep going.
+                    qaoa_result = _safe_load(DECIPHERMENT_DIR / "qaoa_result.json")
+                    qaoa_delta: float | None = None
+                    if qaoa_result:
+                        qaoa_delta = qaoa_result.get("delta_vs_mcmc")
+                    if qaoa_delta is not None and qaoa_delta >= QUANTUM_IMPROVEMENT_THRESHOLD:
+                        log.info(
+                            "MCMC stalled (%.2f nats < threshold) but QAOA showed +%.2f nats "
+                            "improvement — continuing attack.",
+                            improvement, qaoa_delta,
+                        )
+                    else:
+                        log.info(
+                            "LM improvement over last 3 turns (%.2f nats) below threshold (%.2f) "
+                            "and no quantum improvement (QAOA delta=%s) — stopping.",
+                            improvement, LM_IMPROVEMENT_THRESHOLD,
+                            f"{qaoa_delta:.2f}" if qaoa_delta is not None else "n/a",
+                        )
+                        break
 
     new_ranking = _safe_load(DECIPHERMENT_DIR / "ranking.json")
     lm_after = None

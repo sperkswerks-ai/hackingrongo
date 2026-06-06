@@ -82,8 +82,10 @@ class GlyphToken:
     barthel_code: str
     tablet_id: str
     stratum: str  # cluster label: "pre_contact" | "post_contact" | "unknown" | "excluded"
-    line_num: int = 0   # 1-based line number within the side; 0 if absent
-    side: str = "a"     # tablet side (corpus uses "a"/"b" or "r"/"v" depending on source)
+    line_num: int = 0             # 1-based line number within the side; 0 if absent
+    side: str = "a"               # tablet side (corpus uses "a"/"b" or "r"/"v" depending on source)
+    position_in_line: int = 0     # 0-based rank within the line, sorted by position
+    line_length: int = 0          # total glyphs on the line
 
 
 @dataclass
