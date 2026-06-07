@@ -132,6 +132,8 @@ def compute_centralities(G: "nx.DiGraph") -> dict[str, dict[str, float]]:
     if G.number_of_nodes() == 0:
         return {}
 
+    _too_small = G.number_of_nodes() < 2
+
     result: dict[str, dict[str, float]] = {}
 
     result["in_degree"]  = dict(nx.in_degree_centrality(G))
@@ -144,29 +146,51 @@ def compute_centralities(G: "nx.DiGraph") -> dict[str, dict[str, float]]:
     # Closeness on directed graph: use out-going direction (default).
     # networkx uses distance = 1/weight for closeness; we pass the
     # reciprocal as the distance attribute.
-    G2 = G.copy()
-    for u, v, d in G2.edges(data=True):
-        d["distance"] = 1.0 / max(d.get("weight", 1.0), 1e-9)
-    result["closeness"] = dict(nx.closeness_centrality(G2, distance="distance"))
+    if _too_small:
+        log.warning(
+            "Graph has %d node(s) — skipping closeness centrality (requires ≥ 2).",
+            G.number_of_nodes(),
+        )
+        result["closeness"] = {n: 0.0 for n in G.nodes()}
+    else:
+        G2 = G.copy()
+        for u, v, d in G2.edges(data=True):
+            d["distance"] = 1.0 / max(d.get("weight", 1.0), 1e-9)
+        result["closeness"] = dict(nx.closeness_centrality(G2, distance="distance"))
 
     result["pagerank"] = nx.pagerank(G, alpha=0.85, weight="weight")
 
-    try:
-        result["eigenvector"] = nx.eigenvector_centrality(
-            G, weight="weight", max_iter=1000, tol=1e-6,
+    if _too_small:
+        log.warning(
+            "Graph has %d node(s) — skipping eigenvector centrality (requires ≥ 2).",
+            G.number_of_nodes(),
         )
-    except nx.PowerIterationFailedConvergence:
-        log.warning("Eigenvector centrality did not converge — returning zeros.")
         result["eigenvector"] = {n: 0.0 for n in G.nodes()}
+    else:
+        try:
+            result["eigenvector"] = nx.eigenvector_centrality(
+                G, weight="weight", max_iter=1000, tol=1e-6,
+            )
+        except nx.PowerIterationFailedConvergence:
+            log.warning("Eigenvector centrality did not converge — returning zeros.")
+            result["eigenvector"] = {n: 0.0 for n in G.nodes()}
 
-    try:
-        hubs, authorities = nx.hits(G, max_iter=1000, tol=1e-6)
-        result["hits_hub"]       = hubs
-        result["hits_authority"] = authorities
-    except nx.PowerIterationFailedConvergence:
-        log.warning("HITS did not converge.")
+    if _too_small:
+        log.warning(
+            "Graph has %d node(s) — skipping HITS (requires ≥ 2).",
+            G.number_of_nodes(),
+        )
         result["hits_hub"]       = {n: 0.0 for n in G.nodes()}
         result["hits_authority"] = {n: 0.0 for n in G.nodes()}
+    else:
+        try:
+            hubs, authorities = nx.hits(G, max_iter=1000, tol=1e-6)
+            result["hits_hub"]       = hubs
+            result["hits_authority"] = authorities
+        except nx.PowerIterationFailedConvergence:
+            log.warning("HITS did not converge.")
+            result["hits_hub"]       = {n: 0.0 for n in G.nodes()}
+            result["hits_authority"] = {n: 0.0 for n in G.nodes()}
 
     return result
 

@@ -1234,6 +1234,16 @@ def main() -> None:
     from hackingrongo.repro import set_global_seed
     set_global_seed(seed)
 
+    # ── MLflow experiment tracking (optional — pipeline works without mlflow) ──
+    _mlflow: Any = None
+    try:
+        import os as _os
+        import mlflow as _mlflow
+        _os.environ.setdefault("MLFLOW_TRACKING_URI", "./mlruns")
+        _mlflow.set_experiment("hackingrongo_pipeline")
+    except ImportError:
+        _mlflow = None
+
     # Ring filtering: when --steps is absent let --ring control what runs.
     if args.steps is not None:
         enabled = _parse_steps(args.steps)
@@ -1326,8 +1336,18 @@ def main() -> None:
         print(_bold(_cyan(banner)))
         t0 = time.monotonic()
 
-        rc, elapsed = fn()
-        duration = time.monotonic() - t0
+        if _mlflow is not None:
+            with _mlflow.start_run(run_name=sid):
+                _mlflow.log_param("step", sid)
+                _mlflow.log_param("ring", args.ring)
+                _mlflow.log_param("steps", args.steps or "")
+                rc, elapsed = fn()
+                duration = time.monotonic() - t0
+                _mlflow.log_metric("return_code", float(rc))
+                _mlflow.log_metric("elapsed_s", round(duration, 2))
+        else:
+            rc, elapsed = fn()
+            duration = time.monotonic() - t0
         duration_str = f"{duration:.1f}s"
 
         if rc == 0:
@@ -1373,6 +1393,12 @@ def main() -> None:
     print(_bold("─" * 60))
 
     _write_manifest(results, dry_run)
+
+    if _mlflow is not None:
+        with _mlflow.start_run(run_name="__pipeline_total__"):
+            _mlflow.log_param("ring", args.ring)
+            _mlflow.log_param("steps", args.steps or "")
+            _mlflow.log_metric("pipeline_elapsed_s", round(total, 2))
 
     if any_failed:
         sys.exit(1)
