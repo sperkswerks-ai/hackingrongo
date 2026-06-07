@@ -1996,6 +1996,10 @@ def _parse_args() -> argparse.Namespace:
         "--morphemes", type=Path, default=None, metavar="JSON",
         help="morpheme_segments.json from segment_morphemes.py (optional).",
     )
+    p.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     return p.parse_args()
 
 
@@ -2003,6 +2007,8 @@ def main() -> None:
     import logging as _logging
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s  %(message)s")
     args = _parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     # Auto-discover sibling outputs in the same directory as ranking.json
     ranking_dir = args.ranking.parent

@@ -899,6 +899,7 @@ def save_compound_candidates(
     candidates: list[CompoundCandidate],
     output_path: Path,
     min_methods: int = 2,
+    seed: int | None = None,
 ) -> None:
     """Write compound candidates to a JSON file for downstream use.
 
@@ -917,6 +918,8 @@ def save_compound_candidates(
         "n_two_methods": sum(1 for c in filtered if c.n_methods_agreeing == 2),
         "candidates": [c.to_dict() for c in filtered],
     }
+    from hackingrongo.provenance import stamp
+    stamp(payload, seed=seed)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -972,6 +975,10 @@ def _parse_args():
         action="store_true",
         help="Include known Barthel-marked compounds (for precision validation).",
     )
+    p.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     return p.parse_args()
 
 
@@ -980,6 +987,8 @@ def main() -> None:
 
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s  %(message)s")
     args = _parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     csv_path = args.analysis_dir / "cluster_vs_barthel.csv"
     if not csv_path.exists():
@@ -1000,7 +1009,7 @@ def main() -> None:
     candidates = detector.detect(umap_df)
 
     output_path = args.output or (args.analysis_dir / "compound_candidates.json")
-    save_compound_candidates(candidates, output_path, min_methods=args.min_methods)
+    save_compound_candidates(candidates, output_path, min_methods=args.min_methods, seed=args.seed)
 
     print(f"\n── Compound Detection Results ──────────────────────────")
     print(f"  Total candidates:             {len(candidates)}")

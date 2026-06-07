@@ -370,10 +370,12 @@ def run_ibmq(
     token: str,
     instance: str | None = None,
     backend_name: str | None = None,
-) -> tuple[dict[str, int], float]:
+) -> tuple[dict[str, int], float, dict]:
+    """Returns (counts, elapsed_seconds, provenance_dict)."""
     import os
     from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
     from qiskit.compiler import transpile
+    from hackingrongo.quantum_provenance import collect_provenance
 
     instance = instance or os.environ.get("IBMQ_INSTANCE")
     t0 = time.monotonic()
@@ -388,8 +390,10 @@ def run_ibmq(
     sampler = SamplerV2(mode=backend)
     job = sampler.run([t_qc], shots=shots)
     log.info("Job submitted: %s", job.job_id())
-    counts = dict(job.result()[0].data.meas.get_counts())
-    return counts, time.monotonic() - t0
+    job_result = job.result()
+    counts = dict(job_result[0].data.meas.get_counts())
+    prov = collect_provenance(job, backend)
+    return counts, time.monotonic() - t0, prov
 
 
 def _decode_top_result(counts: dict[str, int]) -> int:
@@ -618,12 +622,13 @@ def run_analysis(
     if backend == "ibmq":
         if not ibmq_token:
             raise ValueError("--ibmq-token required for --backend ibmq.")
-        counts, elapsed_q = run_ibmq(
+        counts, elapsed_q, prov = run_ibmq(
             bv_qc, n_bits, shots,
             token=ibmq_token,
             instance=ibmq_instance,
             backend_name=ibmq_backend_name,
         )
+        result["hardware_provenance"] = prov
     else:
         counts, elapsed_q = run_statevector(bv_qc, n_bits, shots)
 
@@ -792,6 +797,9 @@ def main() -> dict:
         encoding="utf-8",
     )
     log.info("Results written to %s", args.output)
+    if result.get("hardware_provenance"):
+        from hackingrongo.quantum_provenance import write_versioned_result
+        write_versioned_result(result, "bv", f"n{result.get('n_bits', '?')}_ic_analysis")
     return result
 
 

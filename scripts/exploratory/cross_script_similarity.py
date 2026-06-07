@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 cross_script_similarity.py
 
 Tests the Hevesy (1932) hypothesis that rongorongo and the Indus Valley

@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Download the Hawaiian Corpus Project unigram frequency list and write a
 plain word-per-line vocabulary file for the smoothing language model.
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 NXZ Header Analyzer for Nexus 3D Models (INSCRIBE tablet data)
 
 NXZ is the compressed hierarchical LOD mesh format from CNR-ISTI VCLab:

@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Fetch vocabulary forms from the Austronesian Basic Vocabulary Database (ABVD)
 and write them into the directory structure expected by
 ``hackingrongo.data.rapa_nui_corpus.load_text_corpus``.

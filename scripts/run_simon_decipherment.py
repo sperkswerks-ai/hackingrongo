@@ -357,11 +357,16 @@ def run_ibmq(
     token: str,
     instance: str | None = None,
     backend_name: str | None = None,
-) -> tuple[dict[str, int], float]:
-    """Run circuit on IBM Quantum hardware via QiskitRuntimeService / SamplerV2."""
+) -> tuple[dict[str, int], float, dict]:
+    """Run circuit on IBM Quantum hardware via QiskitRuntimeService / SamplerV2.
+
+    Returns (counts, elapsed_seconds, provenance_dict).
+    provenance_dict contains job_id, backend_name, calibration_timestamp, etc.
+    """
     import os
     from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
     from qiskit.compiler import transpile
+    from hackingrongo.quantum_provenance import collect_provenance
 
     instance = instance or os.environ.get("IBMQ_INSTANCE")
     t0 = time.monotonic()
@@ -386,8 +391,10 @@ def run_ibmq(
     sampler = SamplerV2(mode=backend)
     job = sampler.run([t_qc], shots=shots)
     log.info("Job submitted: %s", job.job_id())
-    counts = job.result()[0].data.meas.get_counts()
-    return dict(counts), time.monotonic() - t0
+    job_result = job.result()
+    counts = job_result[0].data.meas.get_counts()
+    prov = collect_provenance(job, backend)
+    return dict(counts), time.monotonic() - t0, prov
 
 
 # ── Per-passage analysis ──────────────────────────────────────────────────────
@@ -475,12 +482,13 @@ def analyse_passage(
     if backend == "ibmq":
         if not ibmq_token:
             raise ValueError("--ibmq-token required for --backend ibmq.")
-        counts, elapsed = run_ibmq(
+        counts, elapsed, prov = run_ibmq(
             simon_qc, n, shots,
             token=ibmq_token,
             instance=ibmq_instance,
             backend_name=ibmq_backend_name,
         )
+        result["hardware_provenance"] = prov
     else:
         counts, elapsed = run_statevector(simon_qc, n, shots)
 
@@ -649,6 +657,10 @@ def main() -> dict:
             json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         log.info("Passage result written to %s", per_path)
+        # Versioned hardware copy (non-overwriting, job-ID keyed).
+        if result.get("hardware_provenance"):
+            from hackingrongo.quantum_provenance import write_versioned_result
+            write_versioned_result(result, "simon", f"{pid}_{tablets_str}")
 
     # Cumulative file: load existing, merge, write back.
     cumulative: dict[str, Any] = {}

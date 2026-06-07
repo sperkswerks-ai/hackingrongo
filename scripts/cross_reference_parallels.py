@@ -572,9 +572,15 @@ def main() -> None:
         metavar="SEED",
         help="RNG seed for reproducible permutation tests (default: unseeded).",
     )
-    
+    parser.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
+
     args = parser.parse_args()
-    
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(name)s: %(levelname)s: %(message)s",
@@ -686,6 +692,8 @@ def main() -> None:
         result["permutation_test"] = perm_result
 
     # Write output
+    from hackingrongo.provenance import stamp
+    stamp(result, seed=args.seed)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2))
 

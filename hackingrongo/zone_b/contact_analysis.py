@@ -326,6 +326,7 @@ def analyse(
 def contact_sensitivity_analysis(
     min_g2: float = CHI2_P05,
     output_path: Path | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Run contact analysis under all three dating scenarios and assess robustness.
 
@@ -442,6 +443,8 @@ def contact_sensitivity_analysis(
     }
 
     if output_path is not None:
+        from hackingrongo.provenance import stamp
+        stamp(result, seed=seed)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
         log.info("Contact sensitivity results written to %s", output_path)
@@ -458,6 +461,7 @@ def build_contact_partition(
     scenario: str | None = None,
     output_path: Path | None = None,
     report_path: Path | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Compute the contact partition with Bonferroni correction and bipartite edges.
 
@@ -574,11 +578,15 @@ def build_contact_partition(
         "summary":                summary,
     }
 
-    # Write the flat per-sign list (backward-compatible with CONTACT_JSON consumers)
     if output_path is not None:
+        from hackingrongo.provenance import stamp
+        # Embed the full records list so consumers of the old list format can
+        # still find all signs under result["records"].
+        result["records"] = records
+        stamp(result, seed=seed)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(records, indent=2), encoding="utf-8")
-        log.info("Contact partition records → %s", output_path)
+        output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        log.info("Contact partition → %s", output_path)
 
     if report_path is not None:
         _write_contact_partition_report(result, records, report_path)
@@ -995,11 +1003,17 @@ def main() -> None:
             "Default: exclude unknown tablets (original behaviour)."
         ),
     )
+    parser.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     args = parser.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     if args.scenario == "all":
         sensitivity_path = args.output or Path("outputs/contact_sensitivity.json")
-        contact_sensitivity_analysis(min_g2=args.min_g2, output_path=sensitivity_path)
+        contact_sensitivity_analysis(min_g2=args.min_g2, output_path=sensitivity_path, seed=args.seed)
         return
 
     if args.report:
@@ -1010,6 +1024,7 @@ def main() -> None:
                 scenario=args.scenario,
                 output_path=args.output,
                 report_path=args.report,
+                seed=args.seed,
             )
         except ImportError:
             log.error(

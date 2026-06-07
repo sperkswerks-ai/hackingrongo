@@ -765,7 +765,7 @@ def _build_paradigmatic_html(
 # compute_paradigmatic() — new primary entry point
 # ---------------------------------------------------------------------------
 
-def compute_paradigmatic() -> dict:
+def compute_paradigmatic(seed: int | None = None) -> dict:
     """Run the paradigmatic analysis and return results dict.
 
     Writes:
@@ -799,6 +799,8 @@ def compute_paradigmatic() -> dict:
             import warnings
             warnings.warn(f"MCMC cross-validation skipped: {exc}")
 
+    from hackingrongo.provenance import stamp
+    stamp(paradigmatic, seed=seed)
     json_path = OUTPUT_DIR / "pozdniakov_paradigmatic.json"
     json_path.write_text(json.dumps(paradigmatic, indent=2, default=list), encoding="utf-8")
 
@@ -1062,8 +1064,16 @@ def compute_results() -> dict[str, Any]:
 
 
 def main() -> int:
+    import argparse as _ap
+    _p = _ap.ArgumentParser(description="Pozdniakov paradigmatic analysis and HTML report.")
+    _p.add_argument("--seed", type=int, default=20260606, metavar="INT",
+                    help="Global RNG seed for reproducibility (default: 20260606).")
+    _args = _p.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(_args.seed)
+
     # 1. Paradigmatic analysis (new primary output)
-    compute_paradigmatic()
+    compute_paradigmatic(seed=_args.seed)
     primary_html = OUTPUT_DIR / "pozdniakov_report.html"
     print(str(primary_html))
 

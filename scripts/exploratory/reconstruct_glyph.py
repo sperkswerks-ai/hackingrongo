@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 Reconstruct a damaged or masked rongorongo glyph via the trained autoencoder.
 
 The "fill the gap" game: supply a glyph image and tell the model which region

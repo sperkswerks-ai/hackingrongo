@@ -84,7 +84,11 @@ def main() -> None:
     p.add_argument("--phoneme-map",  type=Path, default=None, metavar="JSON",
                    help="ranking.json, hypothesis JSON, or qubo_result.json with assignments.")
     p.add_argument("--output",       type=Path, default=None)
+    p.add_argument("--seed", type=int, default=20260606, metavar="INT",
+                   help="Global RNG seed for reproducibility (default: 20260606).")
     args = p.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     # Resolve defaults from config
     corpus_dir = args.corpus_dir
@@ -135,6 +139,8 @@ def main() -> None:
         phoneme_map=phoneme_map,
     )
 
+    from hackingrongo.provenance import stamp
+    stamp(result, seed=args.seed)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info("Frequency-language match written to %s", output)

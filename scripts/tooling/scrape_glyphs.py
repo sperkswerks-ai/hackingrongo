@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Scrape individual glyph SVGs from kohaumotu.org/Rongorongo_new/views/.
 
 Each tablet page (lines.php?item={T}&type=b) contains one inline <svg>

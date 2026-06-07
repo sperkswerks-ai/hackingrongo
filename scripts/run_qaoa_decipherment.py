@@ -343,11 +343,14 @@ def _run_qaoa(
     ibmq_backend: Any | None,
     max_iter: int,
     reps: int,
-) -> tuple[dict[str, int], float, dict[str, float], int, np.ndarray]:
+    seed: int = 20260606,
+) -> tuple[dict[str, int], float, dict[str, float], int, np.ndarray, list[str]]:
     """Classical-quantum optimisation loop via COBYLA.
 
     Returns (best_counts, best_objective, optimal_params_dict, n_evaluations,
-             opt_x) where opt_x is the converged parameter vector.
+             opt_x, ibmq_job_ids) where opt_x is the converged parameter
+             vector and ibmq_job_ids is the list of every IBM job ID submitted
+             (empty for non-IBMQ backends).
     Transpiled circuit (t_ansatz) is used for IBMQ / FakeBrisbane to avoid
     re-routing on every optimizer step.
     """
@@ -355,12 +358,14 @@ def _run_qaoa(
     from qiskit_ibm_runtime import SamplerV2
 
     n_params = ansatz.num_parameters
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
     x0  = rng.uniform(0, np.pi, n_params)
+    log.info("QAOA initial_point (seed=%d): %s", seed, np.round(x0, 4).tolist())
 
     best_energy: list[float]          = [float("inf")]
     best_counts: list[dict[str, int]] = [{}]
     n_evals: list[int]                = [0]
+    ibmq_job_ids: list[str]           = []   # accumulated for provenance
 
     fake_backend: Any | None = None
     if backend == "fake_brisbane":
@@ -379,6 +384,7 @@ def _run_qaoa(
             sampler.options.dynamical_decoupling.enable = True
             sampler.options.default_shots = shots
             job = sampler.run([bound], shots=shots)
+            ibmq_job_ids.append(job.job_id())
             log.info("  Job submitted: %s", job.job_id())
             return _get_counts(job.result(), n_qubits)
 
@@ -399,7 +405,7 @@ def _run_qaoa(
 
     opt_params = {f"param_{i}": round(float(opt_x[i]), 6) for i in range(n_params)}
 
-    return best_counts[0], best_energy[0], opt_params, n_evals[0], opt_x
+    return best_counts[0], best_energy[0], opt_params, n_evals[0], opt_x, ibmq_job_ids
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +561,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--sparse-penalties", action="store_true",
                    help="One-hot ZZ couplings between adjacent phonemes only (O(M×N) terms "
                         "instead of O(M²×N)).  Reduces SWAP overhead on heavy-hex topology.")
+    p.add_argument("--seed", type=int, default=20260606, metavar="INT",
+                   help="Global RNG seed for reproducibility and COBYLA initial point (default: 20260606).")
     p.add_argument("--diagnostics-only", action="store_true",
                    help="Build Ising Hamiltonian and ansatz, print diagnostics, then exit "
                         "without running the optimiser.  Useful for circuit-resource checks "
@@ -568,6 +576,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     if args.smoke_test:
         args.top_signs    = 3
@@ -696,7 +706,7 @@ def main() -> None:
     log.info("Running QAOA optimisation (backend=%s, max_iter=%d) …",
              args.backend, args.max_iter)
     t0 = time.perf_counter()
-    best_counts, best_objective, optimal_params, n_evals, opt_x = _run_qaoa(
+    best_counts, best_objective, optimal_params, n_evals, opt_x, _cobyla_job_ids = _run_qaoa(
         ansatz=ansatz,
         t_ansatz=t_ansatz,
         h=h, J=J,
@@ -706,6 +716,7 @@ def main() -> None:
         ibmq_backend=ibmq_backend,
         max_iter=args.max_iter,
         reps=args.reps,
+        seed=args.seed,
     )
     qaoa_elapsed = time.perf_counter() - t0
     log.info("QAOA done: %.1f s, %d evals, best_objective=%.4f.",
@@ -731,6 +742,7 @@ def main() -> None:
             sampler.options.default_shots = args.shots
             job = sampler.run([bound], shots=args.shots)
             log.info("  One-shot job submitted: %s", job.job_id())
+            _cobyla_job_ids.append(job.job_id())
             extraction_counts = _get_counts(job.result(), n_qubits)
         log.info("One-shot top bitstring count: %d/%d.",
                  max(extraction_counts.values(), default=0), args.shots)
@@ -825,6 +837,13 @@ def main() -> None:
         ],
     }
 
+    # ── Hardware provenance ───────────────────────────────────────────────────
+    if args.backend == "ibmq" and _cobyla_job_ids:
+        from hackingrongo.quantum_provenance import collect_multi_job_provenance
+        result_dict["hardware_provenance"] = collect_multi_job_provenance(
+            _cobyla_job_ids, ibmq_backend
+        )
+
     # ── Save ──────────────────────────────────────────────────────────────────
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -832,6 +851,10 @@ def main() -> None:
             json.dumps(result_dict, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         log.info("Result written to %s", output)
+    if result_dict.get("hardware_provenance"):
+        from hackingrongo.quantum_provenance import write_versioned_result
+        run_key = f"{args.backend}_p{args.reps}_s{args.top_signs}x{args.top_phonemes}"
+        write_versioned_result(result_dict, "qaoa", run_key)
 
     # ── MLflow tracking ───────────────────────────────────────────────────────
     try:

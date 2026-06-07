@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 reconstruct_tablet_d.py — Tablet D uncertain-sign reconstruction pipeline.
 
 Orchestrates two independent evidence streams against Tablet D's uncertain

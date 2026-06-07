@@ -70,7 +70,9 @@ def load_svg_catalog() -> dict[str, list[dict]]:
 
 def load_contact_data() -> dict[str, dict]:
     """Return dict: horley_sign -> contact partition record."""
-    items = json.loads(CONTACT_JSON.read_text())
+    data = json.loads(CONTACT_JSON.read_text())
+    # Support both old list format and new dict format (with _provenance).
+    items = data["records"] if isinstance(data, dict) else data
     return {item["sign"]: item for item in items}
 
 

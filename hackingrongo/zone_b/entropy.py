@@ -843,6 +843,7 @@ def sensitivity_analysis(
     scenarios: list[str],
     uncertain_weight: float = 0.0,
     output_path: Path | None = None,
+    seed: int | None = None,
 ) -> dict:
     """Run IC analysis under each named scenario and compare robustness."""
     cfg = OmegaConf.load(PROJECT_ROOT / "conf" / "config.yaml")
@@ -918,6 +919,8 @@ def sensitivity_analysis(
     }
 
     if output_path is not None:
+        from hackingrongo.provenance import stamp
+        stamp(output, seed=seed)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
         log.info("Sensitivity results written to %s", output_path)
@@ -1517,7 +1520,16 @@ def main() -> None:
             "structurally distinct text streams."
         ),
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=20260606,
+        metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     args = parser.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     if args.boustrophedon:
         cfg = OmegaConf.load(PROJECT_ROOT / "conf" / "config.yaml")
@@ -1552,10 +1564,13 @@ def main() -> None:
             scenarios=args.scenarios,
             uncertain_weight=args.uncertain_weight,
             output_path=args.output,
+            seed=args.seed,
         )
     else:
         results = analyse(emit_json=args.json, uncertain_weight=args.uncertain_weight)
         if args.output:
+            from hackingrongo.provenance import stamp
+            stamp(results, seed=args.seed)
             out_path = args.output
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")

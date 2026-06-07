@@ -1,4 +1,7 @@
-"""link_svg_to_corpus.py — back-fill Barthel/Horley codes into catalog.json.
+"""
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
+link_svg_to_corpus.py — back-fill Barthel/Horley codes into catalog.json.
 
 The kohaumotu SVG path IDs encode side as ``a`` (recto) or ``b`` (verso).
 The corpus JSON files encode side as ``r`` (recto) or ``v`` (verso).

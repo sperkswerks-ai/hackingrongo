@@ -58,6 +58,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 _FOCUS_PASSAGE: str | None = None
 _SMOKE_TEST: bool = False
 _FUSION_CHECKPOINT: "Path | None" = None
+_SEED: int = 20260606
 
 if __name__ == "__main__":
     for _arg in list(sys.argv):
@@ -70,6 +71,12 @@ if __name__ == "__main__":
         if _arg.startswith("--fusion-checkpoint="):
             _ckpt_str = _arg.split("=", 1)[1].strip()
             _FUSION_CHECKPOINT = Path(_ckpt_str)
+            sys.argv.remove(_arg)
+            break
+
+    for _arg in list(sys.argv):
+        if _arg.startswith("--seed="):
+            _SEED = int(_arg.split("=", 1)[1].strip())
             sys.argv.remove(_arg)
             break
 
@@ -697,6 +704,9 @@ def _mlflow_log_results(
 @hydra.main(config_path="../conf", config_name="config", version_base="1.3")
 def main(cfg: DictConfig) -> None:
     """Zone C decipherment: MCMC + beam search."""
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(_SEED)
+
     import hydra.utils as hu
 
     project_root = Path(hu.get_original_cwd())
@@ -1194,6 +1204,8 @@ def _run(
     ranking_csv  = out_dir / "ranking.csv"
     ranking_md   = out_dir / "ranking.md"
     ranking.save(ranking_json)
+    from hackingrongo.provenance import stamp_file
+    stamp_file(ranking_json, seed=_SEED)
     ranking_csv.write_text(ranking.to_csv(), encoding="utf-8")
     ranking_md.write_text(ranking.to_markdown(), encoding="utf-8")
 

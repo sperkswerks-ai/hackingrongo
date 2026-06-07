@@ -1,4 +1,7 @@
-"""Build script: enrich corpus JSON files with Horley codes and cluster labels.
+"""
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
+Build script: enrich corpus JSON files with Horley codes and cluster labels.
 
 Reads the per-tablet JSON files produced by ``hackingrongo.data.corpus_xml``
 and writes them back with three new fields per glyph:

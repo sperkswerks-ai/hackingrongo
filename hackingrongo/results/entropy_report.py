@@ -2055,7 +2055,11 @@ def main() -> None:
     p.add_argument("--corpus-dir",     type=Path, default=Path("data/corpus"))
     p.add_argument("--svg-catalog",    type=Path, default=Path("data/glyphs/svg/catalog.json"))
     p.add_argument("--output",         type=Path, default=Path("outputs/analysis/entropy_report.html"))
+    p.add_argument("--seed", type=int, default=20260606, metavar="INT",
+                   help="Global RNG seed for reproducibility (default: 20260606).")
     args = p.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     import logging as _logging
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s  %(message)s")

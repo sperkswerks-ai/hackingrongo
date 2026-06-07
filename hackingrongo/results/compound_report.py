@@ -1303,6 +1303,10 @@ def _parse_args() -> argparse.Namespace:
         "--max-candidates", type=int, default=50,
         help="Maximum candidates to include (default: 50).",
     )
+    p.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     return p.parse_args()
 
 
@@ -1310,6 +1314,8 @@ def main() -> None:
     import logging as _logging
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s  %(message)s")
     args = _parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
     # Allow running without a candidates file (scholarly comparison only)
     candidates_path = args.candidates if Path(args.candidates).exists() else None
     output = args.output or Path("outputs/analysis/compound_report.html")

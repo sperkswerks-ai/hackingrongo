@@ -1,4 +1,7 @@
-"""extract_barthel_glyphs.py — Extract individual glyph images from Barthel's PDF plates.
+"""
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
+extract_barthel_glyphs.py — Extract individual glyph images from Barthel's PDF plates.
 
 Two extraction modes:
 

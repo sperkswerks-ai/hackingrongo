@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Parse the Intercontinental Dictionary Series (IDS) Rapa Nui contribution
 and write era-stratified word forms for Polynesian language model training.
 

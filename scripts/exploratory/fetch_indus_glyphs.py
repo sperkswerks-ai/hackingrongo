@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 fetch_indus_glyphs.py
 
 Downloads the Mahadevan (1977) Indus Valley sign list images from the archive

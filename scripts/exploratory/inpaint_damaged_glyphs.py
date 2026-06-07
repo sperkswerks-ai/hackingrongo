@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 scripts/inpaint_damaged_glyphs.py
 
 Zone A enhancement: patch-based reconstruction of damaged rongorongo glyphs.

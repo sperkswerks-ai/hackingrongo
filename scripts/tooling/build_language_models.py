@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Build and serialise all Polynesian language models for Zone C scoring.
 
 Usage
@@ -72,10 +74,15 @@ if str(_REPO_ROOT) not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+_SEED: int = 20260606
+
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Entry point — builds all configured language models."""
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(_SEED)
+
     from hackingrongo.data.rapa_nui_corpus import build_all_lms
 
     project_root = Path(hydra.utils.get_original_cwd())
@@ -132,4 +139,9 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    for _arg in list(sys.argv):
+        if _arg.startswith("--seed="):
+            _SEED = int(_arg.split("=", 1)[1].strip())
+            sys.argv.remove(_arg)
+            break
     main()

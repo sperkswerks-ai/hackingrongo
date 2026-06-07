@@ -1,4 +1,7 @@
-"""hsp_analysis.py — Hidden Subgroup Problem (HSP) group structure analysis.
+"""
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
+hsp_analysis.py — Hidden Subgroup Problem (HSP) group structure analysis.
 
 Extracts the substitution group structure from parallel rongorongo passages
 to assess the feasibility of quantum HSP algorithms (Shor, Hallgren) for

@@ -1,4 +1,6 @@
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 render_linearb_glyphs.py
 
 Renders Linear B syllabograms (Unicode U+10000–U+1007F) as PNG images using

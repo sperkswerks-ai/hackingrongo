@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Render NFM Indus Script font glyphs as PNG images.
+"""
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
+Render NFM Indus Script font glyphs as PNG images.
 
 The NFM font encodes Indus signs as PUA codepoints starting at U+E000.
 Codepoint U+E000+N-1 renders sign N (1-indexed). We name output images

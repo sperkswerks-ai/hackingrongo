@@ -1,4 +1,6 @@
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Parse Tregear's *Maori-Polynesian Comparative Dictionary* (1891) and extract
 per-language word forms for Polynesian language model training.
 

@@ -47,6 +47,10 @@ Flags
     --dry-run           Print all commands that would be executed without
                         running them.
     --keep-going        Continue to subsequent steps even when a step fails.
+    --ring {1,2,all}    Analysis ring to execute.
+                        1   = classical core (no ML or quantum) — default
+                        2   = Ring 1 + ML, 3-D processing, and quantum
+                        all = everything
 """
 
 from __future__ import annotations
@@ -66,6 +70,36 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _STEP_TIMEOUT: float | None = None  # seconds; None = no limit
+
+# ---------------------------------------------------------------------------
+# Ring definitions
+# ---------------------------------------------------------------------------
+
+_RING_1_STEPS: frozenset[str] = frozenset({
+    # Classical / linguistic core — no ML training, no quantum
+    "1",
+    "4a", "4ar",
+    "4b",
+    "4c", "4d",
+    "4e", "4f",
+    "4l",
+    "4m",
+    "4n",
+    "4o",
+    "5", "5b",
+})
+
+_RING_2_STEPS: frozenset[str] = _RING_1_STEPS | frozenset({
+    # ML, 3-D processing, and quantum extensions
+    "1b",
+    "2", "3",
+    "4g", "4h",
+    "4i", "4i_simon", "4i_bv",
+    "4j", "4k",
+    "4p",
+    "4q",
+    "4r",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +296,7 @@ def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
         for side in sides:
             corpus_path = corpus_dir / f"{tablet}.json"
             cmd = [
-                sys.executable, "scripts/segment_3d_glyphs.py",
+                sys.executable, "scripts/exploratory/segment_3d_glyphs.py",
                 "--tablet",    tablet,
                 "--side",      side,
                 "--renders",   str(render_dir),
@@ -284,7 +318,7 @@ def step1b_segment_3d_glyphs(dry_run: bool = False) -> tuple[int, float]:
     return total_rc, total_elapsed
 
 
-def step1_build_lms(dry_run: bool = False) -> tuple[int, float]:
+def step1_build_lms(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Build Polynesian n-gram language models for Zone C scoring."""
     # Gate: corpus text files must exist
     poly_dir = PROJECT_ROOT / "data" / "polynesian_texts"
@@ -297,7 +331,7 @@ def step1_build_lms(dry_run: bool = False) -> tuple[int, float]:
 
     return _run(
         "build_language_models",
-        [sys.executable, "scripts/build_language_models.py"],
+        [sys.executable, "scripts/tooling/build_language_models.py", f"--seed={seed}"],
         dry_run=dry_run,
     )
 
@@ -349,7 +383,7 @@ def step3_analyze_embeddings(dry_run: bool = False) -> tuple[int, float]:
     )
 
 
-def step4a_entropy(dry_run: bool = False) -> tuple[int, float]:
+def step4a_entropy(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """IC / entropy sensitivity analysis under all three dating scenarios."""
     out = PROJECT_ROOT / "outputs" / "sensitivity_analysis.json"
     return _run(
@@ -360,12 +394,13 @@ def step4a_entropy(dry_run: bool = False) -> tuple[int, float]:
             "--scenario", "optimistic_distributed",
             "--scenario", "probabilistic_weighted",
             "--output", str(out),
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4a_entropy_report(dry_run: bool = False) -> tuple[int, float]:
+def step4a_entropy_report(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Render IC / entropy + boustrophedon voice-split HTML report."""
     sensitivity_json = PROJECT_ROOT / "outputs" / "sensitivity_analysis.json"
     out = PROJECT_ROOT / "outputs" / "analysis" / "entropy_report.html"
@@ -377,12 +412,13 @@ def step4a_entropy_report(dry_run: bool = False) -> tuple[int, float]:
             sys.executable, "-m", "hackingrongo.results.entropy_report",
             "--input",  str(sensitivity_json),
             "--output", str(out),
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4b_contact(dry_run: bool = False) -> tuple[int, float]:
+def step4b_contact(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """G² contact analysis sensitivity under all three dating scenarios."""
     out = PROJECT_ROOT / "outputs" / "contact_sensitivity.json"
     return _run(
@@ -391,12 +427,13 @@ def step4b_contact(dry_run: bool = False) -> tuple[int, float]:
             sys.executable, "-m", "hackingrongo.zone_b.contact_analysis",
             "--scenario", "all",
             "--output", str(out),
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4c_compound_detector(dry_run: bool = False) -> tuple[int, float]:
+def step4c_compound_detector(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Detect compound glyph candidates from Zone A embeddings."""
     analysis_dir = PROJECT_ROOT / "outputs" / "analysis"
     if not dry_run and not _check(
@@ -414,12 +451,13 @@ def step4c_compound_detector(dry_run: bool = False) -> tuple[int, float]:
             "--analysis-dir", str(analysis_dir),
             "--corpus-dir",   str(corpus_dir),
             "--output",       str(out),
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4d_compound_report(dry_run: bool = False) -> tuple[int, float]:
+def step4d_compound_report(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Generate HTML compound candidate report for scholar review."""
     analysis_dir = PROJECT_ROOT / "outputs" / "analysis"
     if not dry_run and not _check(
@@ -436,11 +474,12 @@ def step4d_compound_report(dry_run: bool = False) -> tuple[int, float]:
             "--svg-catalog", str(PROJECT_ROOT / "data" / "glyphs" / "svg" / "catalog.json"),
             "--corpus-dir",  str(PROJECT_ROOT / "data" / "corpus"),
             "--output",      str(analysis_dir / "compound_report.html"),
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
-def step4e_parallel_passages(dry_run: bool = False) -> tuple[int, float]:
+def step4e_parallel_passages(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Algorithmic parallel passage cross-reference search."""
     parallels_dir = PROJECT_ROOT / "data" / "parallels"
     corpus_dir    = PROJECT_ROOT / "data" / "corpus"
@@ -468,12 +507,13 @@ def step4e_parallel_passages(dry_run: bool = False) -> tuple[int, float]:
             "--tablets",   str(PROJECT_ROOT / "data" / "metadata" / "tablets.json"),
             "--output",    str(out),
             "--threshold", "1",
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4f_passage_report(dry_run: bool = False) -> tuple[int, float]:
+def step4f_passage_report(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Generate diachronic parallel passage HTML report for scholar review."""
     variants_path = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
 
@@ -491,6 +531,7 @@ def step4f_passage_report(dry_run: bool = False) -> tuple[int, float]:
             "--input",  str(variants_path),
             "--output", str(out_dir),
             "--filter-score", "0.0",
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
@@ -635,7 +676,7 @@ def step4r_network_centrality(dry_run: bool = False) -> tuple[int, float]:
     return _run("network_centrality", cmd, dry_run=dry_run)
 
 
-def step4l_freq_match(dry_run: bool = False) -> tuple[int, float]:
+def step4l_freq_match(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Frequency-language match: Zipf α, Spearman ρ, χ² fit vs. each LM."""
     return _run(
         "freq_match",
@@ -644,12 +685,13 @@ def step4l_freq_match(dry_run: bool = False) -> tuple[int, float]:
             "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
             "--lm-dir",     str(PROJECT_ROOT / "data" / "language_models"),
             "--output",     str(PROJECT_ROOT / "outputs" / "zone_b" / "freq_match.json"),
+            "--seed",       str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4m_morpheme_seg(dry_run: bool = False) -> tuple[int, float]:
+def step4m_morpheme_seg(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Zellig Harris successor-entropy morpheme boundary segmentation."""
     return _run(
         "morpheme_segmentation",
@@ -657,12 +699,13 @@ def step4m_morpheme_seg(dry_run: bool = False) -> tuple[int, float]:
             sys.executable, "scripts/segment_morphemes.py",
             "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
             "--output",     str(PROJECT_ROOT / "outputs" / "morpheme_segments.json"),
+            "--seed",       str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4o_contact_partition(dry_run: bool = False) -> tuple[int, float]:
+def step4o_contact_partition(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Contact partition: G² bipartite sign frequency analysis (pre vs post contact).
 
     Runs contact_analysis.py with --report to produce:
@@ -677,12 +720,13 @@ def step4o_contact_partition(dry_run: bool = False) -> tuple[int, float]:
             "--output",  str(PROJECT_ROOT / "outputs" / "contact_partition.json"),
             "--report",  str(PROJECT_ROOT / "outputs" / "analysis" / "contact_partition_report.html"),
             "--plot",    str(PROJECT_ROOT / "outputs" / "contact_partition_bipartite.html"),
+            "--seed",    str(seed),
         ],
         dry_run=dry_run,
     )
 
 
-def step4n_pozdniakov(dry_run: bool = False) -> tuple[int, float]:
+def step4n_pozdniakov(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Pozdniakov (1996/2011) paradigmatic analysis + HTML report.
 
     Identifies sign substitution pairs from parallel passage variants,
@@ -707,6 +751,7 @@ def step4n_pozdniakov(dry_run: bool = False) -> tuple[int, float]:
         "pozdniakov_paradigmatic",
         [
             sys.executable, "scripts/generate_pozdniakov_report.py",
+            "--seed", str(seed),
         ],
         dry_run=dry_run,
     )
@@ -983,7 +1028,7 @@ def step4k_train_fusion(
     return 0, time.monotonic() - t0
 
 
-def step5b_decipherment_report(dry_run: bool = False) -> tuple[int, float]:
+def step5b_decipherment_report(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Render the scholar-facing HTML report from Zone C ranking output."""
     ranking_path = PROJECT_ROOT / "outputs" / "decipherment" / "ranking.json"
     if not dry_run and not _check(ranking_path, "ranking.json (run Step 5 first)"):
@@ -994,6 +1039,7 @@ def step5b_decipherment_report(dry_run: bool = False) -> tuple[int, float]:
         sys.executable, "-m", "hackingrongo.results.decipherment_report",
         "--ranking", str(ranking_path),
         "--output",  str(out),
+        "--seed",    str(seed),
     ]
     # Auto-wire optional enrichment files when they exist.
     optional_args: list[tuple[str, Path]] = [
@@ -1013,6 +1059,7 @@ def step5_zone_c(
     smoke_test: bool = False,
     dry_run: bool = False,
     skip_fusion: bool = False,
+    seed: int = 20260606,
 ) -> tuple[int, float]:
     """Zone C MCMC + beam-search decipherment.
 
@@ -1033,7 +1080,7 @@ def step5_zone_c(
             return 1, 0.0
 
     fusion_ckpt = PROJECT_ROOT / "outputs" / "checkpoints" / "fusion_layer.pt"
-    cmd = [sys.executable, "scripts/run_decipherment.py"]
+    cmd = [sys.executable, "scripts/run_decipherment.py", f"--seed={seed}"]
     if smoke_test:
         cmd.append("--smoke-test")
     if not skip_fusion and fusion_ckpt.exists():
@@ -1125,6 +1172,27 @@ def _parse_args() -> argparse.Namespace:
             "to sequential-entropy MCMC proposal weights."
         ),
     )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=20260606,
+        metavar="INT",
+        help="Global RNG seed threaded into every Ring 1 subprocess (default: 20260606).",
+    )
+    p.add_argument(
+        "--ring",
+        choices=["1", "2", "all"],
+        default="1",
+        metavar="{1,2,all}",
+        help=(
+            "Analysis ring to run: "
+            "1 = classical core (no ML/quantum); "
+            "2 = Ring 1 + ML, 3-D, and quantum; "
+            "all = every pipeline step. "
+            "Default: 1. "
+            "Ignored when --steps is provided."
+        ),
+    )
     return p.parse_args()
 
 
@@ -1160,12 +1228,32 @@ def _parse_steps(steps_str: str | None) -> set[str]:
 def main() -> None:
     global _STEP_TIMEOUT  # noqa: PLW0603
     args = _parse_args()
-    enabled = _parse_steps(args.steps)
     dry_run = args.dry_run
+    seed = args.seed
+
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(seed)
+
+    # Ring filtering: when --steps is absent let --ring control what runs.
+    if args.steps is not None:
+        enabled = _parse_steps(args.steps)
+        _prefix_fallback = False  # _parse_steps already expanded bare step numbers
+    elif args.ring == "1":
+        enabled = _RING_1_STEPS
+        _prefix_fallback = False
+    elif args.ring == "2":
+        enabled = _RING_2_STEPS
+        _prefix_fallback = False
+    else:
+        enabled = _parse_steps(None)  # all — "4" in enabled activates 4n/4o/etc.
+        _prefix_fallback = True
 
     _STEP_TIMEOUT = args.step_timeout if args.step_timeout > 0 else None
     if _STEP_TIMEOUT:
         log.info("Step timeout: %.0fs per step", _STEP_TIMEOUT)
+
+    ring_label = {"1": "Ring 1 (classical core)", "2": "Ring 2 (core + ML/quantum)", "all": "all steps"}
+    log.info("Ring: %s  (%d step(s) enabled)", ring_label.get(args.ring, args.ring), len(enabled))
 
     if dry_run:
         log.info("%s", _yellow("DRY RUN — no commands will be executed"))
@@ -1176,17 +1264,17 @@ def main() -> None:
     # ── Step registry ────────────────────────────────────────────────────────
     # Each entry: (step_id, label, callable, enabled_condition)
     steps: list[tuple[str, str, Any]] = [
-        ("1",   "Build language models",              lambda: step1_build_lms(dry_run)),
+        ("1",   "Build language models",              lambda: step1_build_lms(dry_run, seed)),
         ("1b",  "Segment 3D renders → glyph crops",   lambda: step1b_segment_3d_glyphs(dry_run)),
         ("2",  "Train Zone A autoencoder",         lambda: step2_train_autoencoder(args.smoke_test, dry_run)),
         ("3",  "Analyse embeddings (Zone A)",      lambda: step3_analyze_embeddings(dry_run)),
-        ("4a",  "IC / entropy sensitivity",          lambda: step4a_entropy(dry_run)),
-        ("4ar", "IC / entropy HTML report",         lambda: step4a_entropy_report(dry_run)),
-        ("4b",  "G² contact sensitivity",           lambda: step4b_contact(dry_run)),
-        ("4c", "Compound glyph detection",         lambda: step4c_compound_detector(dry_run)),
-        ("4d", "Compound HTML report",             lambda: step4d_compound_report(dry_run)),
-        ("4e", "Parallel passage cross-reference", lambda: step4e_parallel_passages(dry_run)),
-        ("4f", "Diachronic passage report",        lambda: step4f_passage_report(dry_run)),
+        ("4a",  "IC / entropy sensitivity",          lambda: step4a_entropy(dry_run, seed)),
+        ("4ar", "IC / entropy HTML report",         lambda: step4a_entropy_report(dry_run, seed)),
+        ("4b",  "G² contact sensitivity",           lambda: step4b_contact(dry_run, seed)),
+        ("4c", "Compound glyph detection",         lambda: step4c_compound_detector(dry_run, seed)),
+        ("4d", "Compound HTML report",             lambda: step4d_compound_report(dry_run, seed)),
+        ("4e", "Parallel passage cross-reference", lambda: step4e_parallel_passages(dry_run, seed)),
+        ("4f", "Diachronic passage report",        lambda: step4f_passage_report(dry_run, seed)),
         ("4g", "Astronomical glyph analysis",     lambda: step4g_astronomical(dry_run)),
         ("4h", "Astronomical HTML report",         lambda: step4h_astronomical_report(dry_run)),
         ("4i", "Quantum hardness (p_good) analysis",  lambda: step4i_pgood_analysis(dry_run)),
@@ -1197,19 +1285,19 @@ def main() -> None:
         ("4q", "QAOA hybrid decipherment",            lambda: step4q_qaoa_decipherment(dry_run)),
         ("4r", "Network centrality (PMI bigram graph)", lambda: step4r_network_centrality(dry_run)),
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
-        ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run)),
-        ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run)),
-        ("4n", "Pozdniakov paradigmatic analysis",      lambda: step4n_pozdniakov(dry_run)),
-        ("4o", "Contact partition (bipartite)",          lambda: step4o_contact_partition(dry_run)),
-        ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run, args.skip_fusion)),
-        ("5b", "Zone C HTML report",               lambda: step5b_decipherment_report(dry_run)),
+        ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run, seed)),
+        ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run, seed)),
+        ("4n", "Pozdniakov paradigmatic analysis",      lambda: step4n_pozdniakov(dry_run, seed)),
+        ("4o", "Contact partition (bipartite)",          lambda: step4o_contact_partition(dry_run, seed)),
+        ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run, args.skip_fusion, seed)),
+        ("5b", "Zone C HTML report",               lambda: step5b_decipherment_report(dry_run, seed)),
     ]
 
     def _step_enabled(sid: str) -> bool:
         if sid not in enabled:
-            # Also check if top-level number is enabled
-            top = sid[0]
-            if top not in enabled:
+            # Prefix fallback: "4" in enabled → "4n", "4o", … are also enabled.
+            # Only active in --ring all mode; ring sets list steps explicitly.
+            if not _prefix_fallback or sid[0] not in enabled:
                 return False
         if sid == "2" and args.skip_training:
             return False

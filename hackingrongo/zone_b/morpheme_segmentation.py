@@ -270,12 +270,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Print full result as JSON to stdout in addition to writing file.",
     )
+    p.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     return p
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
     args = _build_parser().parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     sequences = _load_sequences(args.corpus_dir)
     if not sequences:
@@ -324,6 +330,8 @@ def main() -> None:
             outputs_dir = PROJECT_ROOT / "outputs"
         output = outputs_dir / "morpheme_segments.json"
 
+    from hackingrongo.provenance import stamp
+    stamp(result, seed=args.seed)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2))
     log.info("Morpheme segmentation written to %s", output)

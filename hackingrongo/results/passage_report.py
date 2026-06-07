@@ -1699,7 +1699,13 @@ def main() -> None:
         metavar="SCORE",
         help="Exclude passages below this interest_score (default: 0 = show all).",
     )
+    p.add_argument(
+        "--seed", type=int, default=20260606, metavar="INT",
+        help="Global RNG seed for reproducibility (default: 20260606).",
+    )
     args = p.parse_args()
+    from hackingrongo.repro import set_global_seed
+    set_global_seed(args.seed)
 
     if not args.input.exists():
         logger.error("Input not found: %s", args.input)

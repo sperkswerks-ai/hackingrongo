@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+EXPLORATORY — speculative / tangential analysis; not part of the reproducible analysis pipeline.
+
 Glyph segmentation from rendered 3D tablet views.
 
 Takes PNG screenshots produced by render_tablet_views.py and extracts

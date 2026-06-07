@@ -16,8 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# scrape_glyphs lives in scripts/ which is not a package; add it to sys.path
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+# scrape_glyphs lives in scripts/tooling/ which is not a package; add it to sys.path
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts" / "tooling"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import scrape_glyphs as sg  # noqa: E402

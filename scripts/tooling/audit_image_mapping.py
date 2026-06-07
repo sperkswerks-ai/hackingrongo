@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Audit Barthel-code-to-image resolution before Zone A training.
+"""
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
+Audit Barthel-code-to-image resolution before Zone A training.
 
 Usage
 -----

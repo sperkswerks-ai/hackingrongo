@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+TOOLING — one-time data preparation; not part of the reproducible analysis pipeline.
+
 Multi-view synthetic image renderer for INSCRIBE Nexus 3D tablet models.
 
 Renders Tablets B, C, D from multiple viewing angles via the INSCRIBE web
