@@ -1,0 +1,83 @@
+{
+  "passage_id": "P007_ADHS",
+  "canonical_form": [
+    "007",
+    "600",
+    "007",
+    "010"
+  ],
+  "n": 4,
+  "s_int": 8,
+  "s_bits": "1000",
+  "s_positions": [
+    3
+  ],
+  "changes": [
+    {
+      "position": 3,
+      "pre_sign": "010?",
+      "post_sign": "010",
+      "n_tablets_consistent": 4,
+      "is_holy_grail": true
+    }
+  ],
+  "tablet_vectors": {
+    "D": {
+      "x_int": 0,
+      "x_bits": "0000",
+      "stratum": "pre_contact"
+    },
+    "H": {
+      "x_int": 8,
+      "x_bits": "1000",
+      "stratum": "post_contact"
+    },
+    "S": {
+      "x_int": 8,
+      "x_bits": "1000",
+      "stratum": "post_contact"
+    }
+  },
+  "precondition_holds": true,
+  "precondition_message": "Simon precondition HOLDS for P007_ADHS: 1 pre-contact tablet(s) and 2 post-contact tablet(s) all satisfy f(x) = f(x ⊕ s) with period s = 1000 (= 8).",
+  "precondition_conflicts": [],
+  "classical_query_complexity": "O(2^(n/2)) = O(4)",
+  "quantum_query_complexity": "O(n) = O(4)",
+  "simon_circuit": {
+    "num_qubits": 8,
+    "depth": 4,
+    "num_gates": 16,
+    "shots": 14
+  },
+  "hardware_provenance": {
+    "run_timestamp": "2026-06-07T17:31:10.989306+00:00",
+    "job_id": "d8iqlmdv8cos73f5udeg",
+    "status": "DONE",
+    "backend_name": "ibm_marrakesh",
+    "backend_num_qubits": 156,
+    "calibration_timestamp": "2026-06-07T12:09:58-05:00"
+  },
+  "counts": {
+    "0001": 1,
+    "0010": 1,
+    "0100": 3,
+    "0101": 2,
+    "0000": 3,
+    "0111": 1,
+    "0011": 3
+  },
+  "run_time_seconds": 12.374,
+  "measurements_unique": [
+    "0000",
+    "0001",
+    "0010",
+    "0011",
+    "0100",
+    "0101",
+    "0111"
+  ],
+  "recovered_s_int": 8,
+  "recovered_s_bits": "1000",
+  "period_matches_observation": true,
+  "interpretation": "Simon's algorithm correctly recovered the key-change period s = 1000 for P007_ADHS. The hidden XOR structure corresponds to the diachronic substitution at pos 3 ('010?' → '010'). Quantum complexity O(n)=4 shots vs classical O(2^{n/2})=4 queries."
+}

@@ -1,0 +1,682 @@
+{
+  "backend": "ibmq",
+  "reps": 1,
+  "shots": 512,
+  "top_signs": 4,
+  "top_phonemes": 4,
+  "n_qubits": 16,
+  "qaoa_objective": -55.300327,
+  "qaoa_subproblem_lm_score": -13.094524,
+  "hybrid_lm_score": -10.910473,
+  "improvement_over_mcmc": 7687.402959,
+  "mcmc_best_lm_score": -7698.313432,
+  "qaoa_elapsed_seconds": 176.43,
+  "n_cobyla_evaluations": 26,
+  "optimal_params": {
+    "param_0": 2.579213,
+    "param_1": 3.086982
+  },
+  "sub_signs": [
+    "001",
+    "076",
+    "?",
+    "000!"
+  ],
+  "sub_phonemes": [
+    "e",
+    "i",
+    "ka",
+    "a"
+  ],
+  "ising_offset": 160.266815,
+  "circuit_stats": {
+    "n_qubits": 16,
+    "depth_pre_transpile": 2,
+    "depth_post_transpile": 291,
+    "n_parameters": 2,
+    "n_ising_z_terms": 16,
+    "n_ising_zz_terms": 48
+  },
+  "phoneme_assignments": [
+    {
+      "sign_code": "(10-20)!",
+      "phoneme": "ti",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "000!",
+      "phoneme": "ka",
+      "source": "qaoa"
+    },
+    {
+      "sign_code": "001",
+      "phoneme": "a",
+      "source": "qaoa"
+    },
+    {
+      "sign_code": "001?",
+      "phoneme": "ngo",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "002",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "002:042",
+      "phoneme": "u",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "003",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "003?",
+      "phoneme": "ka",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "004",
+      "phoneme": "pu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "005f",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "006",
+      "phoneme": "ka",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "006:700",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "007",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "007y",
+      "phoneme": "hu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "008",
+      "phoneme": "u",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "009",
+      "phoneme": "ha",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "009:042",
+      "phoneme": "nu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "010",
+      "phoneme": "me",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "010?",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "012",
+      "phoneme": "ha",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "013",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "015",
+      "phoneme": "ka",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "020",
+      "phoneme": "mo",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "020f",
+      "phoneme": "ke",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "022",
+      "phoneme": "mu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "025",
+      "phoneme": "ohua",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "034",
+      "phoneme": "ne",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "040",
+      "phoneme": "kokore",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "041",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "044",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "050",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "050V",
+      "phoneme": "hu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "052",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "052?",
+      "phoneme": "ho",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "052x",
+      "phoneme": "nu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "055?",
+      "phoneme": "re",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "056",
+      "phoneme": "ti",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "059f",
+      "phoneme": "ma",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "059f?",
+      "phoneme": "ki",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "060",
+      "phoneme": "he",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "061",
+      "phoneme": "huna",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "061.095x",
+      "phoneme": "mu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "061?",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "063",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "063y",
+      "phoneme": "na",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "064",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "069",
+      "phoneme": "mo",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "073",
+      "phoneme": "ni",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "074",
+      "phoneme": "na",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "076",
+      "phoneme": "a",
+      "source": "qaoa"
+    },
+    {
+      "sign_code": "077",
+      "phoneme": "he",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "078",
+      "phoneme": "maure",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "081",
+      "phoneme": "ku",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "083",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "090",
+      "phoneme": "ma",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "093",
+      "phoneme": "ne",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "093f",
+      "phoneme": "po",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "094a",
+      "phoneme": "mo",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "095",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "095?",
+      "phoneme": "pu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "095f",
+      "phoneme": "ni",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "173",
+      "phoneme": "no",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "200",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "200:042",
+      "phoneme": "nu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "202?",
+      "phoneme": "ko",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "204",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "204:042",
+      "phoneme": "ki",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "205",
+      "phoneme": "ohua",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "207",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "208",
+      "phoneme": "ta",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "240",
+      "phoneme": "pu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "240?",
+      "phoneme": "pu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "243?",
+      "phoneme": "e",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "244",
+      "phoneme": "ki",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "244?",
+      "phoneme": "ne",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "246?",
+      "phoneme": "ke",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "280?",
+      "phoneme": "ha",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "284",
+      "phoneme": "e",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "300y",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "301s",
+      "phoneme": "ka",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "306y",
+      "phoneme": "nu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "360",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "371",
+      "phoneme": "hi",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "379",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "380?",
+      "phoneme": "me",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "380y?",
+      "phoneme": "ha",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "381",
+      "phoneme": "u",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "383",
+      "phoneme": "ke",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "385?",
+      "phoneme": "ki",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "430",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "450",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "460",
+      "phoneme": "nu",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "470",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "522",
+      "phoneme": "ma",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "522f",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "522f?",
+      "phoneme": "po",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "524f",
+      "phoneme": "he",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "536?",
+      "phoneme": "he",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "590",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "594",
+      "phoneme": "u",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "600",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "600?",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "605s",
+      "phoneme": "no",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "606s",
+      "phoneme": "ke",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "607",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "608V",
+      "phoneme": "ha",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "610",
+      "phoneme": "no",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "622",
+      "phoneme": "hi",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "630",
+      "phoneme": "ni",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "656",
+      "phoneme": "pa",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "670",
+      "phoneme": "pe",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "678",
+      "phoneme": "mo",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "680",
+      "phoneme": "hi",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "680?",
+      "phoneme": "na",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "700",
+      "phoneme": "a",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "700?",
+      "phoneme": "u",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "730",
+      "phoneme": "na",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "734",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "739",
+      "phoneme": "i",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "741",
+      "phoneme": "o",
+      "source": "mcmc"
+    },
+    {
+      "sign_code": "?",
+      "phoneme": "a",
+      "source": "qaoa"
+    }
+  ],
+  "hardware_provenance": {
+    "run_timestamp": "2026-06-07T17:35:47.752825+00:00",
+    "job_ids": [
+      "d8iqmh5v8cos73f5uebg",
+      "d8iqmilv8cos73f5uedg",
+      "d8iqmk5v8cos73f5ueg0",
+      "d8iqmllv8cos73f5uei0",
+      "d8iqmn66983c73dsfkpg",
+      "d8iqmos2upec739miuj0",
+      "d8iqmqc2upec739mium0",
+      "d8iqms66983c73dsfkvg",
+      "d8iqmudv8cos73f5ues0",
+      "d8iqmvk2upec739miutg",
+      "d8iqn11e8nrc73bilr8g",
+      "d8iqn2lv8cos73f5uf2g",
+      "d8iqn45v8cos73f5uf50",
+      "d8iqn766983c73dsflb0",
+      "d8iqn8m6983c73dsfldg",
+      "d8iqna66983c73dsflfg",
+      "d8iqnbk2upec739miveg",
+      "d8iqnd42upec739mivh0",
+      "d8iqnh66983c73dsflog",
+      "d8iqnik2upec739mivo0",
+      "d8iqnk42upec739mivqg",
+      "d8iqnlk2upec739mivsg",
+      "d8iqnmtv8cos73f5ufp0",
+      "d8iqnodv8cos73f5ufrg",
+      "d8iqnq5v8cos73f5uftg",
+      "d8iqnrlv8cos73f5ug0g"
+    ],
+    "n_jobs_submitted": 26,
+    "backend_name": "ibm_marrakesh",
+    "backend_num_qubits": 156,
+    "calibration_timestamp": "2026-06-07T12:09:58-05:00"
+  }
+}

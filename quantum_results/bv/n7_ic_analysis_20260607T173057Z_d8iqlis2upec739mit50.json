@@ -1,0 +1,484 @@
+{
+  "corpus_dir": "/Users/sarahperkins/Projects/Prototyping/rongorongo/hackingrongo/data/corpus",
+  "n_top_signs": 64,
+  "n_bits": 7,
+  "domain_size": 128,
+  "corpus_stats": {
+    "n_tablets": 24,
+    "n_tokens": 15271,
+    "ic_total_raw": 0.0093299,
+    "vocabulary_size": 2097,
+    "top_n_ic_share": 0.9621
+  },
+  "top_signs": [
+    {
+      "rank": 0,
+      "barthel_code": "001",
+      "ic_norm": 1.0,
+      "ic_raw": 0.00178396
+    },
+    {
+      "rank": 1,
+      "barthel_code": "076",
+      "ic_norm": 0.921005,
+      "ic_raw": 0.00164303
+    },
+    {
+      "rank": 2,
+      "barthel_code": "?",
+      "ic_norm": 0.386518,
+      "ic_raw": 0.00068953
+    },
+    {
+      "rank": 3,
+      "barthel_code": "000!",
+      "ic_norm": 0.347095,
+      "ic_raw": 0.0006192
+    },
+    {
+      "rank": 4,
+      "barthel_code": "004",
+      "ic_norm": 0.330848,
+      "ic_raw": 0.00059022
+    },
+    {
+      "rank": 5,
+      "barthel_code": "002",
+      "ic_norm": 0.223604,
+      "ic_raw": 0.0003989
+    },
+    {
+      "rank": 6,
+      "barthel_code": "006",
+      "ic_norm": 0.203548,
+      "ic_raw": 0.00036312
+    },
+    {
+      "rank": 7,
+      "barthel_code": "200",
+      "ic_norm": 0.171357,
+      "ic_raw": 0.00030569
+    },
+    {
+      "rank": 8,
+      "barthel_code": "600",
+      "ic_norm": 0.171357,
+      "ic_raw": 0.00030569
+    },
+    {
+      "rank": 9,
+      "barthel_code": "010",
+      "ic_norm": 0.14077,
+      "ic_raw": 0.00025113
+    },
+    {
+      "rank": 10,
+      "barthel_code": "003",
+      "ic_norm": 0.111111,
+      "ic_raw": 0.00019822
+    },
+    {
+      "rank": 11,
+      "barthel_code": "700",
+      "ic_norm": 0.100032,
+      "ic_raw": 0.00017845
+    },
+    {
+      "rank": 12,
+      "barthel_code": "003a",
+      "ic_norm": 0.07788,
+      "ic_raw": 0.00013893
+    },
+    {
+      "rank": 13,
+      "barthel_code": "007",
+      "ic_norm": 0.065441,
+      "ic_raw": 0.00011674
+    },
+    {
+      "rank": 14,
+      "barthel_code": "380",
+      "ic_norm": 0.043807,
+      "ic_raw": 7.815e-05
+    },
+    {
+      "rank": 15,
+      "barthel_code": "040",
+      "ic_norm": 0.04,
+      "ic_raw": 7.136e-05
+    },
+    {
+      "rank": 16,
+      "barthel_code": "022",
+      "ic_norm": 0.039382,
+      "ic_raw": 7.026e-05
+    },
+    {
+      "rank": 17,
+      "barthel_code": "070",
+      "ic_norm": 0.037558,
+      "ic_raw": 6.7e-05
+    },
+    {
+      "rank": 18,
+      "barthel_code": "090",
+      "ic_norm": 0.037558,
+      "ic_raw": 6.7e-05
+    },
+    {
+      "rank": 19,
+      "barthel_code": "005",
+      "ic_norm": 0.035777,
+      "ic_raw": 6.382e-05
+    },
+    {
+      "rank": 20,
+      "barthel_code": "009",
+      "ic_norm": 0.031239,
+      "ic_raw": 5.573e-05
+    },
+    {
+      "rank": 21,
+      "barthel_code": "430",
+      "ic_norm": 0.030693,
+      "ic_raw": 5.475e-05
+    },
+    {
+      "rank": 22,
+      "barthel_code": "011",
+      "ic_norm": 0.028037,
+      "ic_raw": 5.002e-05
+    },
+    {
+      "rank": 23,
+      "barthel_code": "071",
+      "ic_norm": 0.02752,
+      "ic_raw": 4.909e-05
+    },
+    {
+      "rank": 24,
+      "barthel_code": "008",
+      "ic_norm": 0.026501,
+      "ic_raw": 4.728e-05
+    },
+    {
+      "rank": 25,
+      "barthel_code": "280",
+      "ic_norm": 0.025501,
+      "ic_raw": 4.549e-05
+    },
+    {
+      "rank": 26,
+      "barthel_code": "050",
+      "ic_norm": 0.025008,
+      "ic_raw": 4.461e-05
+    },
+    {
+      "rank": 27,
+      "barthel_code": "300",
+      "ic_norm": 0.023085,
+      "ic_raw": 4.118e-05
+    },
+    {
+      "rank": 28,
+      "barthel_code": "670",
+      "ic_norm": 0.020345,
+      "ic_raw": 3.629e-05
+    },
+    {
+      "rank": 29,
+      "barthel_code": "065",
+      "ic_norm": 0.01904,
+      "ic_raw": 3.397e-05
+    },
+    {
+      "rank": 30,
+      "barthel_code": "999",
+      "ic_norm": 0.018194,
+      "ic_raw": 3.246e-05
+    },
+    {
+      "rank": 31,
+      "barthel_code": "063",
+      "ic_norm": 0.017367,
+      "ic_raw": 3.098e-05
+    },
+    {
+      "rank": 32,
+      "barthel_code": "002a",
+      "ic_norm": 0.016162,
+      "ic_raw": 2.883e-05
+    },
+    {
+      "rank": 33,
+      "barthel_code": "064",
+      "ic_norm": 0.014252,
+      "ic_raw": 2.542e-05
+    },
+    {
+      "rank": 34,
+      "barthel_code": "067",
+      "ic_norm": 0.013521,
+      "ic_raw": 2.412e-05
+    },
+    {
+      "rank": 35,
+      "barthel_code": "048",
+      "ic_norm": 0.013521,
+      "ic_raw": 2.412e-05
+    },
+    {
+      "rank": 36,
+      "barthel_code": "027",
+      "ic_norm": 0.012117,
+      "ic_raw": 2.162e-05
+    },
+    {
+      "rank": 37,
+      "barthel_code": "069",
+      "ic_norm": 0.011778,
+      "ic_raw": 2.101e-05
+    },
+    {
+      "rank": 38,
+      "barthel_code": "062",
+      "ic_norm": 0.011115,
+      "ic_raw": 1.983e-05
+    },
+    {
+      "rank": 39,
+      "barthel_code": "022f",
+      "ic_norm": 0.01079,
+      "ic_raw": 1.925e-05
+    },
+    {
+      "rank": 40,
+      "barthel_code": "005j",
+      "ic_norm": 0.010156,
+      "ic_raw": 1.812e-05
+    },
+    {
+      "rank": 41,
+      "barthel_code": "020",
+      "ic_norm": 0.010156,
+      "ic_raw": 1.812e-05
+    },
+    {
+      "rank": 42,
+      "barthel_code": "061",
+      "ic_norm": 0.008653,
+      "ic_raw": 1.544e-05
+    },
+    {
+      "rank": 43,
+      "barthel_code": "381",
+      "ic_norm": 0.008653,
+      "ic_raw": 1.544e-05
+    },
+    {
+      "rank": 44,
+      "barthel_code": "052",
+      "ic_norm": 0.007271,
+      "ic_raw": 1.297e-05
+    },
+    {
+      "rank": 45,
+      "barthel_code": "400",
+      "ic_norm": 0.007009,
+      "ic_raw": 1.25e-05
+    },
+    {
+      "rank": 46,
+      "barthel_code": "607",
+      "ic_norm": 0.007009,
+      "ic_raw": 1.25e-05
+    },
+    {
+      "rank": 47,
+      "barthel_code": "073",
+      "ic_norm": 0.006752,
+      "ic_raw": 1.205e-05
+    },
+    {
+      "rank": 48,
+      "barthel_code": "450",
+      "ic_norm": 0.006752,
+      "ic_raw": 1.205e-05
+    },
+    {
+      "rank": 49,
+      "barthel_code": "053",
+      "ic_norm": 0.006752,
+      "ic_raw": 1.205e-05
+    },
+    {
+      "rank": 50,
+      "barthel_code": "091",
+      "ic_norm": 0.0065,
+      "ic_raw": 1.16e-05
+    },
+    {
+      "rank": 51,
+      "barthel_code": "059f",
+      "ic_norm": 0.0065,
+      "ic_raw": 1.16e-05
+    },
+    {
+      "rank": 52,
+      "barthel_code": "041",
+      "ic_norm": 0.006252,
+      "ic_raw": 1.115e-05
+    },
+    {
+      "rank": 53,
+      "barthel_code": "290",
+      "ic_norm": 0.005771,
+      "ic_raw": 1.03e-05
+    },
+    {
+      "rank": 54,
+      "barthel_code": "755",
+      "ic_norm": 0.005771,
+      "ic_raw": 1.03e-05
+    },
+    {
+      "rank": 55,
+      "barthel_code": "074f",
+      "ic_norm": 0.005771,
+      "ic_raw": 1.03e-05
+    },
+    {
+      "rank": 56,
+      "barthel_code": "711",
+      "ic_norm": 0.00531,
+      "ic_raw": 9.47e-06
+    },
+    {
+      "rank": 57,
+      "barthel_code": "205",
+      "ic_norm": 0.004867,
+      "ic_raw": 8.68e-06
+    },
+    {
+      "rank": 58,
+      "barthel_code": "060a",
+      "ic_norm": 0.004444,
+      "ic_raw": 7.93e-06
+    },
+    {
+      "rank": 59,
+      "barthel_code": "739",
+      "ic_norm": 0.004444,
+      "ic_raw": 7.93e-06
+    },
+    {
+      "rank": 60,
+      "barthel_code": "306",
+      "ic_norm": 0.004444,
+      "ic_raw": 7.93e-06
+    },
+    {
+      "rank": 61,
+      "barthel_code": "066",
+      "ic_norm": 0.00424,
+      "ic_raw": 7.56e-06
+    },
+    {
+      "rank": 62,
+      "barthel_code": "074",
+      "ic_norm": 0.004041,
+      "ic_raw": 7.21e-06
+    },
+    {
+      "rank": 63,
+      "barthel_code": "045",
+      "ic_norm": 0.003656,
+      "ic_raw": 6.52e-06
+    }
+  ],
+  "truth_table": {
+    "median_threshold": 0.00182802,
+    "n_ones": 64,
+    "n_zeros": 64,
+    "balance": 0.5
+  },
+  "linearity": {
+    "linear_fraction": 0.0,
+    "affine_fraction": 1.0,
+    "is_exactly_linear": false,
+    "is_exactly_affine": true,
+    "bv_applicable": true,
+    "threshold": 0.9,
+    "passes_threshold": true,
+    "wht_max_coeff": 128.0,
+    "wht_max_s": 64,
+    "best_approx_s": 64,
+    "best_approx_s_bits": "1000000",
+    "best_approx_type": "affine (1⊕s·x)",
+    "best_approx_agree": 1.0
+  },
+  "classical_search": {
+    "n_queries": 16384,
+    "elapsed_seconds": 0.0054,
+    "s_exact": 64,
+    "s_exact_is_affine": true,
+    "best_agree": 1.0,
+    "description": "Exhaustive search checked all 128 candidate s values (both linear and affine variants) at 128 inputs each = 16384 oracle queries total."
+  },
+  "bv_circuit": {
+    "num_qubits": 8,
+    "depth": 5,
+    "num_gates": 24,
+    "oracle_type": "cnot_linear"
+  },
+  "hardware_provenance": {
+    "run_timestamp": "2026-06-07T17:30:57.080405+00:00",
+    "job_id": "d8iqlis2upec739mit50",
+    "status": "DONE",
+    "backend_name": "ibm_marrakesh",
+    "backend_num_qubits": 156,
+    "calibration_timestamp": "2026-06-07T12:09:58-05:00"
+  },
+  "quantum_result": {
+    "backend": "ibmq",
+    "shots": 1,
+    "counts": {
+      "1000000": 1
+    },
+    "elapsed_seconds": 13.329929,
+    "recovered_s_int": 64,
+    "recovered_s_bits": "1000000",
+    "matches_exact_s": true,
+    "f_type": "affine f(x) = 1 ⊕ s·x",
+    "interpretation": {
+      "s_int": 64,
+      "s_bits": "1000000",
+      "set_bits": [
+        6
+      ],
+      "contributing_signs": [
+        {
+          "bit_position": 6,
+          "ic_rank": 6,
+          "barthel_code": "006",
+          "ic_norm": 0.203548
+        }
+      ],
+      "interpretation": "s = 1000000 (64) has 1 bit(s) set at positions [6].  These correspond to IC-ranked signs ['006'].  A nonzero s means the IC distribution's linear structure couples the parities of these sign ranks."
+    }
+  },
+  "verdict": {
+    "is_null_result": false,
+    "is_exactly_linear": false,
+    "is_exactly_affine": true,
+    "affine_fraction": 1.0,
+    "f_type": "affine f(x) = 1 ⊕ s·x",
+    "message": "IC distribution has affine f(x) = 1 ⊕ s·x structure with hidden slope s = 1000000 (64).  BV recovered s in 1 quantum query vs 16384 classical exhaustive queries (7 with the basis-vector BV classical method).  Note: the affine structure is a tautological artefact of the rank-based index encoding (occupied vs unoccupied indices).",
+    "query_comparison": {
+      "quantum_queries": 1,
+      "classical_bv_queries": 7,
+      "classical_exhaustive_queries": 16384,
+      "quantum_speedup_vs_exhaustive": "16384x"
+    }
+  }
+}

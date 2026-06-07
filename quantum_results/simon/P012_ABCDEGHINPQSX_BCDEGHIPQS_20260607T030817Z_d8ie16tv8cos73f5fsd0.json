@@ -1,0 +1,106 @@
+{
+  "passage_id": "P012_ABCDEGHINPQSX",
+  "canonical_form": [
+    "205",
+    "711v"
+  ],
+  "n": 2,
+  "s_int": 2,
+  "s_bits": "10",
+  "s_positions": [
+    1
+  ],
+  "changes": [
+    {
+      "position": 1,
+      "pre_sign": "678",
+      "post_sign": "076",
+      "n_tablets_consistent": 7,
+      "is_holy_grail": true
+    }
+  ],
+  "tablet_vectors": {
+    "B": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "C": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "D": {
+      "x_int": 0,
+      "x_bits": "00",
+      "stratum": "pre_contact"
+    },
+    "E": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "G": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "H": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "I": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "P": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "Q": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    },
+    "S": {
+      "x_int": 2,
+      "x_bits": "10",
+      "stratum": "post_contact"
+    }
+  },
+  "precondition_holds": true,
+  "precondition_message": "Simon precondition HOLDS for P012_ABCDEGHINPQSX: 1 pre-contact tablet(s) and 9 post-contact tablet(s) all satisfy f(x) = f(x ⊕ s) with period s = 10 (= 2).",
+  "precondition_conflicts": [],
+  "classical_query_complexity": "O(2^(n/2)) = O(2)",
+  "quantum_query_complexity": "O(n) = O(2)",
+  "simon_circuit": {
+    "num_qubits": 4,
+    "depth": 4,
+    "num_gates": 8,
+    "shots": 12
+  },
+  "hardware_provenance": {
+    "run_timestamp": "2026-06-07T03:08:17.762791+00:00",
+    "job_id": "d8ie16tv8cos73f5fsd0",
+    "status": "DONE",
+    "backend_name": "ibm_marrakesh",
+    "backend_num_qubits": 156,
+    "calibration_timestamp": "2026-06-06T21:45:24-05:00"
+  },
+  "counts": {
+    "01": 5,
+    "00": 7
+  },
+  "run_time_seconds": 11.41,
+  "measurements_unique": [
+    "00",
+    "01"
+  ],
+  "recovered_s_int": 2,
+  "recovered_s_bits": "10",
+  "period_matches_observation": true,
+  "interpretation": "Simon's algorithm correctly recovered the key-change period s = 10 for P012_ABCDEGHINPQSX. The hidden XOR structure corresponds to the diachronic substitution at pos 1 ('678' → '076'). Quantum complexity O(n)=2 shots vs classical O(2^{n/2})=2 queries."
+}
