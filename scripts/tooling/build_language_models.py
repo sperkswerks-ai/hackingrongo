@@ -77,7 +77,7 @@ logger = logging.getLogger(__name__)
 _SEED: int = 20260606
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
+@hydra.main(version_base=None, config_path="../../conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Entry point — builds all configured language models."""
     from hackingrongo.repro import set_global_seed

@@ -1380,10 +1380,17 @@ def main() -> None:
     print(_bold("  Pipeline summary"))
     print(_bold("─" * 60))
     for r in results:
-        sym  = "✓" if r["status"] == "ok" else ("─" if r["status"] == "skipped" else "✗")
+        status = r["status"]
+        if status == "ok":
+            sym, col, note = "✓", _green, ""
+        elif status == "cached":
+            sym, col, note = "✓", _dim, "  (cached)"
+        elif status == "skipped":
+            sym, col, note = "─", _dim, ""
+        else:
+            sym, col, note = "✗", _red, ""
         secs = f"  {r['elapsed_s']:.1f}s" if "elapsed_s" in r else ""
-        col  = _green if r["status"] == "ok" else (_dim if r["status"] == "skipped" else _red)
-        print(col(f"  [{r['step']}]  {sym}  {r['label']}{secs}"))
+        print(col(f"  [{r['step']}]  {sym}  {r['label']}{secs}{note}"))
     print()
     total_str = f"{total:.1f}s"
     if any_failed:

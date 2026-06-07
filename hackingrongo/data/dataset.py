@@ -124,6 +124,23 @@ def build_sign_groups(
 
 
 # ---------------------------------------------------------------------------
+# Picklable transform helpers (lambdas can't survive multiprocessing spawn)
+# ---------------------------------------------------------------------------
+
+class _ConvertToRGB:
+    def __call__(self, img: Any) -> Any:
+        return img.convert("RGB")
+
+
+class _GaussianNoise:
+    def __init__(self, std: float) -> None:
+        self.std = std
+
+    def __call__(self, t: "torch.Tensor") -> "torch.Tensor":
+        return t + torch.randn_like(t) * self.std
+
+
+# ---------------------------------------------------------------------------
 # Image transform factory
 # ---------------------------------------------------------------------------
 
@@ -176,7 +193,7 @@ def _make_transform(cfg: DictConfig, training: bool) -> transforms.Compose:
         transforms.Resize((size, size)),
         transforms.Grayscale(num_output_channels=channels)
         if channels == 1
-        else transforms.Lambda(lambda img: img.convert("RGB")),
+        else _ConvertToRGB(),
         transforms.ToTensor(),                       # → float in [0, 1]
         transforms.Normalize(
             mean=[0.5] * channels,
@@ -186,11 +203,7 @@ def _make_transform(cfg: DictConfig, training: bool) -> transforms.Compose:
 
     if training and bool(aug.use_augmentation):
         noise_std = float(aug.gaussian_noise_std)
-        step_list.append(
-            transforms.Lambda(
-                lambda t: t + torch.randn_like(t) * noise_std
-            )
-        )
+        step_list.append(_GaussianNoise(noise_std))
 
     return transforms.Compose(step_list)
 
