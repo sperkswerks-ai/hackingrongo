@@ -1,0 +1,254 @@
+{
+  "_schema_version": "2.0",
+  "_provenance": "ci-fixture \u2014 P007_ADHS only",
+  "_description": "CI fixture: single passage for Simon statevector test",
+  "_method": "Index-based search with Levenshtein distance matching (threshold=1)",
+  "_discovery_stats": {
+    "multi_tablet_passages_found": 13,
+    "unique_sequences": 13,
+    "total_horley_passages": 146,
+    "passages_with_matches": 97
+  },
+  "passages": [
+    {
+      "passage_id": "P007_ADHS",
+      "canonical_form": [
+        "007",
+        "600",
+        "007",
+        "010"
+      ],
+      "n_tablets": 4,
+      "attestations": [
+        {
+          "form": [
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "A",
+          "stratum": "excluded",
+          "side": "a",
+          "start_position": 401
+        },
+        {
+          "form": [
+            "004",
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "A",
+          "stratum": "excluded",
+          "side": "a",
+          "start_position": 400
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007"
+          ],
+          "tablet": "D",
+          "stratum": "pre_contact",
+          "side": "a",
+          "start_position": 246
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007"
+          ],
+          "tablet": "D",
+          "stratum": "pre_contact",
+          "side": "a",
+          "start_position": 276
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "010?"
+          ],
+          "tablet": "D",
+          "stratum": "pre_contact",
+          "side": "a",
+          "start_position": 246
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "680"
+          ],
+          "tablet": "D",
+          "stratum": "pre_contact",
+          "side": "a",
+          "start_position": 276
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007"
+          ],
+          "tablet": "H",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 1515
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "040"
+          ],
+          "tablet": "H",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 1515
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 730
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 739
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 730
+        },
+        {
+          "form": [
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 731
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 739
+        },
+        {
+          "form": [
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 740
+        },
+        {
+          "form": [
+            "065V",
+            "007",
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 729
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "010",
+            "400"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 730
+        },
+        {
+          "form": [
+            "065V",
+            "007",
+            "600",
+            "007",
+            "010"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 738
+        },
+        {
+          "form": [
+            "007",
+            "600",
+            "007",
+            "010",
+            "202s"
+          ],
+          "tablet": "S",
+          "stratum": "post_contact",
+          "side": "a",
+          "start_position": 739
+        }
+      ],
+      "diachronic_changes": [
+        {
+          "position": 3,
+          "pre_contact_sign": "010?",
+          "post_contact_sign": "010",
+          "change_type": "substitution",
+          "n_tablets_consistent": 4,
+          "is_holy_grail_candidate": true,
+          "crosses_barthel_family": false
+        }
+      ],
+      "interest_score": 1.0
+    }
+  ],
+  "_parameters": {
+    "levenshtein_threshold": 1,
+    "length_tolerance": 2
+  }
+}

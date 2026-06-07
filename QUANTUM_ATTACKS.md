@@ -3,7 +3,7 @@
 **Venue:** DEF CON 34 Crypto Village  
 **Thesis:** Rongorongo's structural properties as an unknown substitution cipher
 map onto the exact algebraic weaknesses that quantum algorithms are designed to
-exploit.  The attacks below are not analogies — they use the mathematical
+exploit.  The attacks below are not analogies in that they use the mathematical
 definitions from cryptanalysis (hidden linearity, period-finding, S-box
 weakness) applied directly to the corpus statistics.
 

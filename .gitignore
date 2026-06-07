@@ -1,6 +1,9 @@
 # Data — tracked separately (use zip for Colab, DVC or similar for versioning)
 data/*
 !data/README.md
+
+# CI fixtures are small and committed so CI runs without the full corpus.
+!tests/ci-fixtures/
 # Small reference image sets committed directly so Kaggle git clone has them
 # without needing network fetches (fetch_indus_glyphs.py, render_linearb_glyphs.py).
 !data/glyphs/

@@ -1,0 +1,10 @@
+{
+  "passage_id": "P007_ADHS",
+  "n": 4,
+  "s_int": 8,
+  "s_bits": "1000",
+  "recovered_s_int": 8,
+  "recovered_s_bits": "1000",
+  "period_matches_observation": true,
+  "precondition_holds": true
+}
