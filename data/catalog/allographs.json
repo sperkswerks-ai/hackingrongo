@@ -1,0 +1,5 @@
+{
+  "_schema": "allograph-catalog-v1",
+  "_description": "Maps variant Barthel sign codes to their canonical sign IDs. Empty until populated from comparative sign tables.",
+  "_source": "Horley (2021), Fischer (1997) — to be encoded"
+}

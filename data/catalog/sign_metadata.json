@@ -1,0 +1,50 @@
+{
+  "_schema_version": "1.0",
+  "_description": "Per-sign scholarly metadata. Keys are Barthel code strings. Keys starting with '_' are schema metadata.",
+  "_note": "Populate from Horley (2021) and Fischer (1997). The 'is_taxogram_candidate' field for sign 200 is consensus; all others require sign_classifier.py to compute from corpus statistics.",
+  "_fields": {
+    "barthel_code": "string — Barthel (1958) code",
+    "horley_code": "string — Horley (2021) code (may be empty)",
+    "known_as": "string — informal name if one exists",
+    "scholarly_readings": "list[string] — proposed phoneme/morpheme readings from literature",
+    "is_taxogram_candidate": "bool — true if scholarly consensus flags this as a taxogram",
+    "frequency_note": "string — qualitative frequency note from Barthel (1958)",
+    "notes": "string — free-text provenance or commentary"
+  },
+  "001": {
+    "barthel_code": "001",
+    "horley_code": "H001",
+    "known_as": "ragi",
+    "scholarly_readings": [],
+    "is_taxogram_candidate": false,
+    "frequency_note": "",
+    "notes": "One of the most frequent signs in the corpus."
+  },
+  "200": {
+    "barthel_code": "200",
+    "horley_code": "H200",
+    "known_as": "taxogram",
+    "scholarly_readings": [],
+    "is_taxogram_candidate": true,
+    "frequency_note": "Very high frequency; appears in virtually all tablets.",
+    "notes": "The primary rongorongo taxogram (Horley 2021, §3.2). Marks the boundary between syntactic units. Must be retained and tagged rather than silently stripped — see parallels.py tag_taxogram_positions()."
+  },
+  "380": {
+    "barthel_code": "380",
+    "horley_code": "H380",
+    "known_as": "",
+    "scholarly_readings": [],
+    "is_taxogram_candidate": false,
+    "frequency_note": "",
+    "notes": ""
+  },
+  "700": {
+    "barthel_code": "700",
+    "horley_code": "H700",
+    "known_as": "",
+    "scholarly_readings": [],
+    "is_taxogram_candidate": false,
+    "frequency_note": "",
+    "notes": ""
+  }
+}
