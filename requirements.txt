@@ -50,7 +50,6 @@ dimod>=0.12                         # QUBO framework + TabuSampler
 # ── Quantum gate computing (Layer 4P / 4Q-SVM) ───────────────────────────────
 qiskit>=2.0                         # core circuit primitives + ZZFeatureMap
 qiskit-ibm-runtime>=0.20            # SamplerV2, Session, FakeBrisbane noise models
-qiskit-machine-learning>=0.7        # FidelityStatevectorKernel, FidelityQuantumKernel
 
 # ── Testing ──────────────────────────────────────────────────────────────────
 pytest>=8.1,<9.0
