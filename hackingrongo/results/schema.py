@@ -468,6 +468,7 @@ class HypothesisRanking:
         hypotheses = [
             DecryptionHypothesis.from_dict(h) for h in data.pop("hypotheses", [])
         ]
+        data = {k: v for k, v in data.items() if not k.startswith("_")}
         return cls(hypotheses=hypotheses, **data)
 
 

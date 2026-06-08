@@ -33,7 +33,7 @@ mlflow==2.22.5
 networkx==3.6.1
 numpy==1.26.4
 omegaconf==2.3.0
-opencv-python-headless==4.13.0.92
+opencv-python-headless==4.10.0.84
 packaging==24.2
 pandas==2.3.3
 pillow==10.4.0
