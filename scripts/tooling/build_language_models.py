@@ -65,7 +65,7 @@ import time
 from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 
 # Ensure the project package is importable when run from the repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -86,6 +86,29 @@ def main(cfg: DictConfig) -> None:
     from hackingrongo.data.rapa_nui_corpus import build_all_lms
 
     project_root = Path(hydra.utils.get_original_cwd())
+
+    # Inject the kohaumotu.org Rapa Nui dictionary into the rapanui LM sources
+    # when the file is present.  The path is relative to polynesian_texts_dir
+    # (where build_all_lms resolves all source specs).
+    _dict_path = project_root / "data" / "lm_sources" / "rapanui_kohaumotu_dictionary.txt"
+    _dict_spec = "../lm_sources/rapanui_kohaumotu_dictionary.txt"
+    if _dict_path.exists():
+        with open_dict(cfg):
+            for _era in ("pre_contact", "post_contact"):
+                if _era in cfg.zone_c.lm_scoring.lm_sources:
+                    _sources = list(cfg.zone_c.lm_scoring.lm_sources[_era])
+                    if _dict_spec not in _sources:
+                        cfg.zone_c.lm_scoring.lm_sources[_era] = _sources + [_dict_spec]
+        logger.info(
+            "Kohaumotu dictionary (%d headwords) injected into pre_contact and post_contact LM sources.",
+            sum(1 for ln in _dict_path.read_text(encoding="utf-8").splitlines() if ln.strip()),
+        )
+    else:
+        logger.warning(
+            "Kohaumotu dictionary not found at %s; run scripts/fetch_kohaumotu_dictionary.py first.",
+            _dict_path,
+        )
+
     orders = list(cfg.zone_c.lm_scoring.ngram_orders)
     eras = list(cfg.zone_c.lm_scoring.lms)
     max_order = max(int(o) for o in orders)

@@ -45,7 +45,10 @@ import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hackingrongo.data.catalog import SignCatalog
 
 import numpy as np
 from omegaconf import DictConfig
@@ -311,6 +314,9 @@ def _build_glyph_tokens(
     raw_glyphs: list[dict[str, Any]],
     tablet_id: str,
     stratum: str,
+    *,
+    catalog: "SignCatalog | None" = None,
+    raw: bool = False,
 ) -> list[GlyphToken]:
     """Parse raw glyph dicts from a corpus JSON into ``GlyphToken`` objects.
 
@@ -323,6 +329,12 @@ def _build_glyph_tokens(
         Parent tablet identifier; injected into each token.
     stratum : str
         Parent tablet stratum label; injected into each token.
+    catalog : SignCatalog or None
+        When supplied and ``raw=False``, each token's ``barthel_code`` is
+        normalised through ``catalog.get_canonical_id()`` before storage.
+    raw : bool
+        When ``True``, normalisation is skipped even if ``catalog`` is
+        supplied.  Preserves original CEIPP codes for backward compatibility.
 
     Returns
     -------
@@ -348,6 +360,8 @@ def _build_glyph_tokens(
         except (ValueError, TypeError):
             line_num = 0
         side: str = str(g.get("side", "a"))
+        if not raw and catalog is not None:
+            code = catalog.get_canonical_id(code)
         tokens.append(
             GlyphToken(position=pos, barthel_code=code,
                        tablet_id=tablet_id, stratum=stratum,
@@ -397,7 +411,13 @@ def load_tablet_metadata(tablets_json_path: Path) -> dict[str, dict[str, Any]]:
     return data
 
 
-def load_corpus(cfg: DictConfig, project_root: Path) -> list[TabletRecord]:
+def load_corpus(
+    cfg: DictConfig,
+    project_root: Path,
+    *,
+    catalog: "SignCatalog | None" = None,
+    raw: bool = False,
+) -> list[TabletRecord]:
     """Load the full rongorongo tablet corpus from disk.
 
     Reads all ``<tablet_id>.json`` files from the corpus directory,
@@ -416,6 +436,13 @@ def load_corpus(cfg: DictConfig, project_root: Path) -> list[TabletRecord]:
         ``pipeline.py`` via ``hydra.utils.get_original_cwd()``.
         All relative paths in ``cfg.paths`` are resolved against this
         root.  Do **not** pass ``os.getcwd()`` here.
+    catalog : SignCatalog or None
+        When supplied and ``raw=False``, all glyph codes are normalised
+        to their canonical Barthel base via ``catalog.get_canonical_id()``.
+        Pass ``None`` to skip normalisation (default).
+    raw : bool
+        When ``True``, normalisation is skipped even if ``catalog`` is
+        supplied.  Preserves original CEIPP codes for backward compatibility.
 
     Returns
     -------
@@ -457,6 +484,7 @@ def load_corpus(cfg: DictConfig, project_root: Path) -> list[TabletRecord]:
         logger.warning("No JSON files found in corpus directory: %s", corpus_dir)
 
     records: list[TabletRecord] = []
+    all_raw_codes: set[str] = set()
     skipped_no_meta: int = 0
     skipped_too_short: int = 0
 
@@ -476,10 +504,15 @@ def load_corpus(cfg: DictConfig, project_root: Path) -> list[TabletRecord]:
         stratum: str = assign_cluster(tablet_id, cfg)
 
         with corpus_file.open("r", encoding="utf-8") as fh:
-            raw: dict[str, Any] = json.load(fh)
+            tablet_json: dict[str, Any] = json.load(fh)
 
-        raw_glyphs: list[dict[str, Any]] = raw.get("glyphs", [])
-        tokens = _build_glyph_tokens(raw_glyphs, tablet_id, stratum)
+        raw_glyphs: list[dict[str, Any]] = tablet_json.get("glyphs", [])
+        all_raw_codes.update(
+            str(g.get("barthel_code", "")).strip()
+            for g in raw_glyphs
+            if str(g.get("barthel_code", "")).strip()
+        )
+        tokens = _build_glyph_tokens(raw_glyphs, tablet_id, stratum, catalog=catalog, raw=raw)
 
         if len(tokens) < min_tokens:
             logger.warning(
@@ -499,6 +532,15 @@ def load_corpus(cfg: DictConfig, project_root: Path) -> list[TabletRecord]:
                 tokens=tokens,
                 metadata=meta,
             )
+        )
+
+    if not raw and catalog is not None and all_raw_codes:
+        normalized_types = {catalog.get_canonical_id(c) for c in all_raw_codes}
+        logger.info(
+            "Sign normalization: %d raw types → %d canonical types (%.1f%% reduction).",
+            len(all_raw_codes),
+            len(normalized_types),
+            100.0 * (1.0 - len(normalized_types) / len(all_raw_codes)),
         )
 
     # Log metadata-only entries (present in tablets.json but no corpus file).
