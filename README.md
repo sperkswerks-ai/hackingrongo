@@ -1,27 +1,35 @@
 # Hacking Rongorongo Project by SperksWerks
 
-The Rongorongo script is the only known indigenous "writing" system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 25 inscribed wooden objects (Barthel's tablets A–Y; the Poike palimpsest Z is excluded as effaced and of disputed legibility).
+The Rongorongo script is the only known indigenous writing system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 25 inscribed wooden objects (Barthel's tablets A–Y; the Poike palimpsest Z is excluded as effaced and of disputed legibility).
 
 This project treats decipherment as a cryptanalysis problem and applies a six-layer adversarial attack pipeline with visual embeddings, statistical analysis, oracle inversion, differentiable projection learning, adversarial validation, and quantum hardness analysis.
 
 > The first computational pipeline to apply diachronic stratification, differential oracle attacks, and quantum complexity analysis to the Rongorongo corpus.
 
 ---
+## Data Pipeline Status (June 2026)
+
+The data layer was overhauled in June 2026: language models are now built with structural (C)V phonotactic validation (removing tokenizer artifacts that previously made up 40–92% of LM vocabularies), the sign→phoneme search space is a single canonical 50-syllable Rapa Nui inventory shared by MCMC, QUBO, QAOA, and the quantum hardness analysis (`hackingrongo/data/phoneme_inventory.py`), and the CEIPP corpus parser now resolves variant-letter and modifier codes — recovering 563 previously unidentified tokens and collapsing spurious sign-type fragmentation (1,330 → 639 base signs; top-120 coverage 71% → 83%).
+
+**Consequence:** the findings below marked ⏳ were computed against the pre-overhaul corpus and language models and are being regenerated on the corrected data. They are retained as the working hypotheses of record, not final values.
+
+---
 ## Key Findings So Far
 
 | Finding | Value | Method |
 |:--------|:------|:-------|
-| Visual clusters recovered | 695 at 94.6% mean purity | Zone A autoencoder |
-| IC_pre ≠ IC_post | Statistically significant | Zone B, 3 sensitivity scenarios |
-| Multi-tablet parallel passages | 13 found (3 pre-contact) | Zone B Kasiski cross-reference |
-| H125 attestations | 18 tablets, 356 matches | Zone B |
-| Sign 152 (full moon) | Calendar-exclusive, score 1.0 | Zone B astronomical analysis |
-| Sign 040 (night-count) | Calendar-dominant, score 0.62 | Zone B astronomical analysis |
-| Phoneme assignments produced | 120 signs mapped | Zone C MCMC + beam search |
-| Sign 600 (bird) → *ha* | Breath/life in Polynesian | Zone C top hypothesis |
-| Quantum speedup estimate | Varies by p_good threshold | `scripts/measure_pgood.py` |
+| No hidden linear structure in IC distribution | Null result: affine fraction 0.52 (chance level) under the corpus-honest Barthel-bits encoding | BV analysis, `--encoding barthel_bits` (post-overhaul data) |
+| Visual clusters recovered ⏳ | 695 at 94.6% mean purity | Zone A autoencoder |
+| IC_pre ≠ IC_post ⏳ | Statistically significant | Zone B, 3 sensitivity scenarios |
+| Multi-tablet parallel passages ⏳ | 13 found (3 pre-contact) | Zone B Kasiski cross-reference |
+| H125 attestations ⏳ | 18 tablets, 356 matches | Zone B |
+| Sign 152 (full moon) ⏳ | Calendar-exclusive, score 1.0 | Zone B astronomical analysis |
+| Sign 040 (night-count) ⏳ | Calendar-dominant, score 0.62 | Zone B astronomical analysis |
+| Phoneme assignments produced ⏳ | 120 signs mapped | Zone C MCMC + beam search |
+| Sign 600 (bird) → *ha* ⏳ | Breath/life in Polynesian | Zone C top hypothesis |
+| Quantum hardness (p_good) | Recomputed over the canonical 50-syllable inventory; varies by threshold | `scripts/measure_pgood.py` |
 
-The IC divergence finding holds under all three sensitivity scenarios (`conservative_all_late`, `optimistic_distributed`, `probabilistic_weighted`) and has not been reported in prior computational work on Rongorongo.
+The IC divergence finding holds under all three sensitivity scenarios (`conservative_all_late`, `optimistic_distributed`, `probabilistic_weighted`) and has not been reported in prior computational work on Rongorongo. The BV null result is itself informative: it rules out an entire class of linear-algebraic models for the sign-frequency distribution (see `QUANTUM_ATTACKS.md`).
 
 ---
 
@@ -58,6 +66,8 @@ The language models are stratified by era:
 
 This stratification means the decipherment search scores pre-contact tablet sequences against a language model appropriate to their era, not against modern Rapa Nui.
 
+All LM tokens pass structural (C)V phonotactic validation per language — Rapa Nui admits no codas or consonant clusters, so syllabification artifacts from the historical wordlists are rejected rather than absorbed into the probability mass. The velar nasal is canonicalised to the IDS spelling `g` (*nga* → *ga*), `v` is included as phonemic, and the glottal stop is unrepresented because the source wordlists do not mark it consistently (conventions documented in `hackingrongo/data/phoneme_inventory.py`).
+
 
 ---
 
@@ -69,7 +79,7 @@ This stratification means the decipherment search scores pre-contact tablet sequ
 
 **Zone C** runs Metropolis-Hastings with Gelman-Rubin R-hat and Geweke Z convergence diagnostics. Incremental delta scoring reduces per-iteration cost from O(N) to O(k).
 
-**Quantum analysis** (scripts/measure_pgood.py, scripts/run_qubo_decipherment.py) follows the methodology of Di Santo & Lanziani (2025) in computing p_good (the fraction of random assignments scoring above threshold) to derive Grover oracle call estimates and compare classical vs quantum search complexity. The QUBO formulation follows Zhang & Feng (2022) for cryptanalytic applications of D-Wave annealing.
+**Quantum analysis** (scripts/measure_pgood.py, scripts/run_qubo_decipherment.py) follows the methodology of Di Santo & Lanziani (2025) in computing p_good (the fraction of random assignments scoring above threshold) to derive Grover oracle call estimates and compare classical vs quantum search complexity. The QUBO formulation follows Zhang & Feng (2022) for cryptanalytic applications of D-Wave annealing. All search layers — MCMC, QUBO, QAOA, and p_good — draw from the same canonical 50-syllable inventory, so classical and quantum complexities are measured over the same space; p_good sampling is verified bit-identical between its vectorised and reference scorers and parallelises across cores for large runs.
 
 ---
 
@@ -78,6 +88,8 @@ This stratification means the decipherment search scores pre-contact tablet sequ
 **p_good measurement** (scripts/measure_pgood.py) samples 10,000 random sign→phoneme assignments and measures what fraction score above threshold under the Rapa Nui language model. This produces a Grover oracle call estimate as a theoretical quantum speedup and characterises the hardness of the problem in information-theoretic terms. Runs in minutes on CPU.
 
 **QUBO key search** (scripts/run_qubo_decipherment.py) reformulates the sign→phoneme assignment problem as a Quadratic Unconstrained Binary Optimisation problem, following Zhang & Feng (2022). The --solver neal flag runs classical simulated annealing via the D-Wave neal library (no account required). The --solver dwave flag submits to real D-Wave Advantage QPU hardware via D-Wave Leap (free research tier: cloud.dwavesys.com).
+
+**Hardware runs** (Bernstein–Vazirani and Simon's algorithm on `ibm_marrakesh`, 156 qubits, job IDs in `RESULTS.md`) are framed as hardware-executed demonstrations, not discoveries: the oracles encode structure first extracted classically from the corpus, so no quantum advantage is claimed. The honest-encoding BV run (`--encoding barthel_bits`) yields a genuine null result — no linear Boolean structure in the IC distribution. The full attack map, evidence tiers, and oracle-construction caveat are in `QUANTUM_ATTACKS.md`.
 
 The quantum analysis does not promise to solve Rongorongo. It provides the first empirical quantum complexity characterisation of the decipherment problem — measuring how hard it is in quantum computational terms and what that hardness implies about the script's mathematical structure.
 
@@ -89,12 +101,12 @@ The quantum analysis does not promise to solve Rongorongo. It provides the first
 |:-------|:-------------|:-------------|
 | **Temporal model** | Flat corpus | Diachronic: Tablet D pre-contact anchor (Ferrara 2024); B/C/O/Q post-contact; A excluded |
 | **Robustness testing** | None | Three sensitivity scenarios; finding reported only if holds within 10% across all three |
-| **Visual embeddings** | None | Convolutional autoencoder; 695 clusters at 94.6% purity |
+| **Visual embeddings** | None | Convolutional autoencoder; unsupervised UMAP + HDBSCAN clustering validated against Barthel's taxonomy |
 | **Compound detection** | None | 3-method cross-validated detector |
 | **Parallel passages** | In-memory only | Algorithmic cross-reference; permutation test; diachronic variant analysis |
 | **Astronomical analysis** | None | 5-test candidate detector; Mamari calendar anchor; Dietrich correspondence |
 | **Sequence completion** | None | N-gram completion; damaged glyph reconstruction |
-| **Quantum analysis** | None | p_good measurement; QUBO key search; D-Wave integration |
+| **Quantum analysis** | None | p_good measurement; QUBO key search; D-Wave integration; BV + Simon circuits executed on IBM Quantum hardware |
 | **Results format** | Untyped CSV | Typed dataclasses; CSV; JSON; HTML |
 
 ---
