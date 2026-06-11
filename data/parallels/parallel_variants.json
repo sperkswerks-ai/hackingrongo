@@ -1,0 +1,44 @@
+{
+  "_schema_version": "1.0",
+  "_provenance": "Parallel passage groupings from Horley (2021) Appendix; variant attestations collated from Barthel (1958) corpus. Adapted from Souza (2022) rongorongo/horley_parallels.csv (MIT licence). CRITICAL: This structure documents MULTI-TABLET attestations of the SAME passage — the primary signal for Zone C alignment scoring.",
+  "_description": "Structured parallel passage groups with full tablet provenance. Each passage has a canonical form and multiple variant attestations from DIFFERENT tablets. This enables cross-tablet passage alignment in Zone C.",
+  "_critical_note": "For Zone C's parallel passage scoring to function, this must contain passages with n_variants >= 2 (the same passage attested on at least 2 tablets). Currently empty — needs population from Horley (2021) Appendix using cross-tablet passage matching.",
+  "_example_entry": {
+    "passage_id": "P001_parallel_group",
+    "canonical_form": ["041", "430", "040", "320", "009"],
+    "variants": [
+      {
+        "form": ["041", "430", "040", "320", "009"],
+        "tablet_id": "B",
+        "stratum": "post_contact",
+        "side": "a",
+        "start_position": 1
+      },
+      {
+        "form": ["041", "430", "040", "320", "009"],
+        "tablet_id": "C",
+        "stratum": "post_contact",
+        "side": "b",
+        "start_position": 5
+      }
+    ]
+  },
+  "_variant_schema": {
+    "form": "list[string] — ordered Barthel codes; glyph 200 retained and tagged",
+    "tablet_id": "string — Barthel tablet identifier (A-Z)",
+    "stratum": "string — 'pre_contact' | 'post_contact' | 'excluded'",
+    "side": "string — tablet side, 'a' | 'b' | '' if unknown",
+    "start_position": "int — 1-based start position on tablet, -1 if unknown"
+  },
+  "_population_steps": [
+    "1. Start with horley_parallels.csv (146 passages, one tablet per passage)",
+    "2. Cross-reference Horley (2021) Appendix to identify same passage across different tablets",
+    "3. Group variant attestations under single passage_id with n_variants >= 2",
+    "4. Convert Horley/CEIPP codes to Barthel codes using SignCatalog.horley_to_barthel()",
+    "5. Assign temporal stratum from temporal_model (cfg.corpus.temporal_model)",
+    "6. Validate that each passage has >= 2 variants on different tablets",
+    "7. Use load_parallel_variants_json() to test loading into ParallelPassage objects"
+  ],
+  "passages": []
+}
+

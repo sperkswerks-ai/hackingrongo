@@ -1,0 +1,22 @@
+{
+  "sources": [
+    {
+      "file": "ids.txt",
+      "citation": "Key, M.R. & Comrie, B. (eds.) 2015. The Intercontinental Dictionary Series. Leipzig: Max Planck Institute for Evolutionary Anthropology. https://ids.clld.org (CC-BY 4.0). Rapa Nui contribution 238: de Agüera (1770), Thomson (1891), Roussel (1908), Fuentes (1960), Englert (1978).",
+      "genre": "wordlist",
+      "notes": "All sources combined. See ids_pre_contact.txt and ids_post_contact.txt for stratified versions."
+    },
+    {
+      "file": "ids_pre_contact.txt",
+      "citation": "Key, M.R. & Comrie, B. (eds.) 2015. The Intercontinental Dictionary Series. Leipzig: Max Planck Institute for Evolutionary Anthropology. https://ids.clld.org (CC-BY 4.0). Rapa Nui contribution 238: de Agüera (1770), Thomson (1891), Roussel (1908), Fuentes (1960), Englert (1978).",
+      "genre": "wordlist",
+      "tier": "pre_contact"
+    },
+    {
+      "file": "ids_post_contact.txt",
+      "citation": "Key, M.R. & Comrie, B. (eds.) 2015. The Intercontinental Dictionary Series. Leipzig: Max Planck Institute for Evolutionary Anthropology. https://ids.clld.org (CC-BY 4.0). Rapa Nui contribution 238: de Agüera (1770), Thomson (1891), Roussel (1908), Fuentes (1960), Englert (1978).",
+      "genre": "wordlist",
+      "tier": "post_contact"
+    }
+  ]
+}

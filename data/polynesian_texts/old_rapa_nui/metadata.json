@@ -1,0 +1,25 @@
+{
+  "_schema_version": "1.0",
+  "_description": "Metadata for Old Rapa Nui text sources. One entry per source file in this directory.",
+  "_note": "Populate text files as plain .txt with one utterance per line. Bracketed text in [square brackets] denotes scholarly reconstructions (controlled by data.include_reconstructions in config.yaml).",
+  "sources": [
+    {
+      "file": "kaikai_blixen_1979.txt",
+      "genre": "kaikai",
+      "description": "String-figure chant texts",
+      "citation": "Blixen, O. (1979). Algunas consideraciones acerca de los textos del kai-kai pascuense. Moana, 2(1).",
+      "language": "old_rapa_nui",
+      "contains_reconstructions": false,
+      "notes": "Kaikai are string-figure chants that preserve archaic vocabulary."
+    },
+    {
+      "file": "recitations_barthel_1960.txt",
+      "genre": "recitation",
+      "description": "General recitations collected by Barthel",
+      "citation": "Barthel, T. S. (1960). Grundlagen zur Entzifferung der Osterinselschrift. Hamburg: de Gruyter.",
+      "language": "old_rapa_nui",
+      "contains_reconstructions": true,
+      "notes": "Some lines contain bracketed reconstructions by Barthel."
+    }
+  ]
+}

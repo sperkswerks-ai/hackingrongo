@@ -1,0 +1,10 @@
+{
+  "sources": [
+    {
+      "file": "haw_unigrams.txt",
+      "citation": "dohliam. Hawaiian Corpus Project. https://dohliam.github.io/corpus/haw. Derived from Ulukau Hawaiian Electronic Library. 10.7M words. CC0.",
+      "genre": "newspaper",
+      "notes": "Unigram frequency list used for smoothing LM backoff only. Not scored directly in ensemble."
+    }
+  ]
+}
