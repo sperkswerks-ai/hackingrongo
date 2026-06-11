@@ -113,13 +113,17 @@ def _load_lms(lm_dir: Path) -> list[NGramLM]:
 
 
 def _phoneme_inventory(lms: list[NGramLM]) -> list[str]:
-    phonemes: set[str] = set()
-    for lm in lms:
-        vocab = lm._vocab if hasattr(lm, "_vocab") else set()
-        for tok in vocab:
-            if tok and not tok.startswith("<") and 1 <= len(tok) <= 6:
-                phonemes.add(tok)
-    return sorted(phonemes)
+    """Canonical Rapa Nui syllable inventory (shared with MCMC and p_good).
+
+    The QUBO search space must match the inventory Zone C MCMC explores
+    and measure_pgood.py characterises, or the classical-vs-quantum
+    complexity comparison is over different problems.  The *lms*
+    argument is kept for signature compatibility but is no longer
+    consulted: deriving the inventory from LM vocabularies let tokenizer
+    artifacts (phonotactically impossible syllables) inflate the space.
+    """
+    from hackingrongo.data.phoneme_inventory import RAPA_NUI_SYLLABLES
+    return list(RAPA_NUI_SYLLABLES)
 
 
 # ---------------------------------------------------------------------------

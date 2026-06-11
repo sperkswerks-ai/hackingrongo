@@ -9,7 +9,7 @@ State
 A **phoneme map** π : {sign_id → phoneme} is a complete bijective-ish
 assignment of every distinct sign in the corpus to a phoneme/syllable
 token.  Because the sign inventory (~120 signs) is larger than the
-Polynesian phoneme inventory (~45 syllables), the map is many-to-one
+Polynesian phoneme inventory (50 syllables), the map is many-to-one
 (multiple signs may map to the same phoneme).  This deliberately mimics
 the syllabic redundancy observed in Linear B.
 
@@ -91,12 +91,17 @@ def _run_chain_worker(
 # Polynesian syllable inventory (Rapa Nui phonotactics)
 # ---------------------------------------------------------------------------
 
-_RAPA_NUI_CONSONANTS: tuple[str, ...] = ("h", "k", "m", "n", "ng", "p", "r", "t")
-_VOWELS: tuple[str, ...] = ("a", "e", "i", "o", "u")
+# Canonical inventory shared with measure_pgood.py and
+# run_qubo_decipherment.py so classical and quantum search complexities
+# are measured over the same space.  5 bare vowels + 45 CV syllables =
+# 50 tokens; "g" = /ŋ/ per the IDS orthography (see phoneme_inventory).
+from hackingrongo.data.phoneme_inventory import (
+    RAPA_NUI_CONSONANTS as _RAPA_NUI_CONSONANTS,
+    RAPA_NUI_SYLLABLES,
+    VOWELS as _VOWELS,
+)
 
-_DEFAULT_PHONEME_INVENTORY: list[str] = [v for v in _VOWELS] + [
-    c + v for c in _RAPA_NUI_CONSONANTS for v in _VOWELS
-]  # 5 bare vowels + 40 CV syllables = 45 tokens
+_DEFAULT_PHONEME_INVENTORY: list[str] = list(RAPA_NUI_SYLLABLES)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +189,7 @@ class MCMCSampler:
         ``corpus_sequences``.  Every sign must appear in the initial
         map produced by :meth:`_random_initial_map`.
     phoneme_inventory : list[str] | None
-        Candidate phonemes to assign.  If ``None``, the default 45-token
+        Candidate phonemes to assign.  If ``None``, the default 50-token
         Rapa Nui inventory is used.
     phoneme_priors : list[float] | None
         Sampling weights over ``phoneme_inventory`` used in the

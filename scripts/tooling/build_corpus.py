@@ -39,7 +39,7 @@ import re
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from omegaconf import OmegaConf
@@ -57,9 +57,16 @@ log = logging.getLogger(__name__)
 # CEIPP code parsing
 # ---------------------------------------------------------------------------
 
-# A *simple* sign code: 1–3 digits, optional lowercase variant letter,
-# optional diacritic (! = inverted, ? = uncertain).
-_SIMPLE = re.compile(r"^(\d{1,3}[a-z]?)([!?])?$")
+# A *simple* sign code after diacritic stripping: 1–3 digits followed by
+# an optional letter tail.  The first letter, when lowercase, is the
+# Barthel variant letter and is kept in the base; any further letters
+# (CEIPP positional/ligature markers like "fy", "x", or uppercase "V")
+# are modifiers and are stripped for catalog lookup but preserved in the
+# glyph record.  Examples:
+#   "022bfy" → base "022b", modifiers "fy"
+#   "001V"   → base "001",  modifiers "V"
+#   "044ax"  → base "044a", modifiers "x"
+_SIMPLE = re.compile(r"^(\d{1,3})([a-zA-Z]*)$")
 
 # Characters that signal a compound token (multiple signs in one <ceipp>).
 _COMPOUND_CHARS = frozenset("-.;:")
@@ -75,34 +82,41 @@ _COMPONENT_MODIFIER = re.compile(r"[!?]+$")
 _COMPONENT_ZERO_PAD = re.compile(r"^0+(?=\d)")
 
 
-def parse_ceipp(code: str) -> tuple[str | None, bool, bool]:
-    """Return ``(barthel_base, inverted, uncertain)`` for a CEIPP token.
+def parse_ceipp(code: str) -> tuple[str | None, bool, bool, str]:
+    """Return ``(barthel_base, inverted, uncertain, modifiers)`` for a CEIPP token.
 
     ``barthel_base`` is the stripped code suitable for catalog lookup, or
     ``None`` for compound tokens, range estimates, and the bare ``"?"``
-    illegible placeholder.
+    illegible placeholder.  ``modifiers`` holds any CEIPP letter markers
+    stripped from the tail (e.g. ``"fy"``, ``"V"``) so no transcription
+    information is silently discarded.
     """
     # Bare illegible placeholder
     if code == "?":
-        return None, False, False
+        return None, False, False, ""
 
     # Range estimate: "(N-M)" or "(N-M)!"
     if code.startswith("("):
-        return None, "!" in code, "?" in code
+        return None, "!" in code, "?" in code, ""
 
     # Compound token — connection characters embedded in the code string
     if _COMPOUND_CHARS & set(code):
-        return None, "!" in code, "?" in code
+        return None, "!" in code, "?" in code, ""
 
-    # Simple single-sign token
-    m = _SIMPLE.fullmatch(code)
+    inverted = "!" in code
+    uncertain = "?" in code
+    stripped = code.replace("!", "").replace("?", "")
+
+    # Simple single-sign token: digits + variant letter + modifier tail
+    m = _SIMPLE.fullmatch(stripped)
     if m:
-        base = m.group(1)
-        diacritic = m.group(2) or ""
-        return base, diacritic == "!", diacritic == "?"
+        digits, letters = m.group(1), m.group(2)
+        variant = letters[:1] if letters[:1].islower() else ""
+        modifiers = letters[len(variant):]
+        return digits + variant, inverted, uncertain, modifiers
 
     # Fallback — unrecognised format
-    return None, False, False
+    return None, inverted, uncertain, ""
 
 
 def decompose_compound(code: str) -> list[str]:
@@ -137,6 +151,27 @@ def load_catalog(cfg, project_root: Path) -> SignCatalog:
     return SignCatalog.load(cfg, project_root)
 
 
+_LEADING_DIGITS = re.compile(r"^\d+")
+
+
+def _arbitrate_variant(
+    base: str, modifiers: str, catalog: SignCatalog
+) -> tuple[str, str]:
+    """Decide whether a parsed variant letter is genuine or a CEIPP marker.
+
+    The first lowercase letter after the digits is *usually* a Barthel
+    variant ("003a"), but some CEIPP markers are also lowercase ("522f").
+    The catalog arbitrates: when ``base`` with its variant letter does not
+    resolve but the bare digits do, the letter is demoted to a modifier.
+    """
+    if catalog.barthel_to_horley(base) is not None:
+        return base, modifiers
+    m = _LEADING_DIGITS.match(base)
+    if m and m.group(0) != base and catalog.barthel_to_horley(m.group(0)) is not None:
+        return m.group(0), base[len(m.group(0)):] + modifiers
+    return base, modifiers
+
+
 def enrich_tablet(data: dict, cluster: str, catalog: SignCatalog) -> dict:
     """Return *data* with cluster and per-glyph enrichment fields added.
 
@@ -153,25 +188,35 @@ def enrich_tablet(data: dict, cluster: str, catalog: SignCatalog) -> dict:
     for glyph in data.get("glyphs", []):
         g = dict(glyph)
         code = g.get("barthel_code", "")
-        base, inverted, uncertain = parse_ceipp(code)
+        base, inverted, uncertain, modifiers = parse_ceipp(code)
+        if base is not None:
+            base, modifiers = _arbitrate_variant(base, modifiers, catalog)
         g["barthel_base"] = base
         g["inverted"] = inverted
         g["uncertain"] = uncertain
+        g["code_modifiers"] = modifiers or None
 
         if base is not None:
             # Simple token — direct Horley lookup (catalog normalises zero-padding)
             g["horley_code"] = catalog.barthel_to_horley(base)
             g["horley_components"] = None
+            g["barthel_components"] = None
         elif not code.startswith("(") and code != "?":
-            # Compound token — decompose and look up each component
-            components = decompose_compound(code)
+            # Compound token — decompose, arbitrate each component's variant
+            # letter against the catalog, and look up Horley equivalents.
+            components = [
+                _arbitrate_variant(c, "", catalog)[0]
+                for c in decompose_compound(code)
+            ]
             resolved = [catalog.barthel_to_horley(c) for c in components]
             resolved = [h for h in resolved if h is not None]
             g["horley_code"] = None  # compound: no single canonical code
             g["horley_components"] = resolved if resolved else None
+            g["barthel_components"] = components if components else None
         else:
             g["horley_code"] = None
             g["horley_components"] = None
+            g["barthel_components"] = None
 
         enriched.append(g)
 

@@ -29,6 +29,11 @@ Derived from de Souza (2023) rongopy (GPL-3.0); original catalogue: Horley, P. (
 `data/catalog/horley_encoding.json` — Barthel→Horley mapping.
 Source: de Souza (2023) rongopy (GPL-3.0); encoding revision: Horley (2021).
 
+### Data Curation Notes (June 2026)
+
+- Language-model syllable validation is now structural (single (C)V onset+nucleus per `hackingrongo/data/phoneme_inventory.py`) rather than character-set based; this removes phonotactically impossible tokens ("gra", "nta", "tto") that the CV-greedy tokenizer produced from source-text artifacts. The velar nasal is canonicalised to the IDS spelling `g` (`nga` → `ga`), and `v` — phonemic in Rapa Nui but previously absent from the character filter — is included.
+- CEIPP corpus codes with multi-letter tails (`022bfy`), uppercase markers (`001V`), and compound connectors (`009:005`) are now parsed: the variant letter is arbitrated against the sign catalog, stripped modifiers are preserved in `code_modifiers`, and compound components in `barthel_components`. This recovered 563 previously unidentified tokens and collapsed spurious sign-type fragmentation (1,330 → 639 base signs).
+
 ### Data Curation Notes (May 2026)
 
 - Barthel reference images were manually reviewed to remove non-glyph artifacts (notably Arabic numeral labels captured during PDF extraction).

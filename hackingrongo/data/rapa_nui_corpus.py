@@ -87,19 +87,18 @@ _FREQ_TABLE_NORMALISE_MAP: dict[str, str] = {
 _FREQ_TABLE_RE: re.Pattern[str] = re.compile(r"^\d+\t\S")
 
 # ---------------------------------------------------------------------------
-# Per-language phonological inventories for syllable-token filtering
+# Per-language phonological validation for syllable-token filtering
 # ---------------------------------------------------------------------------
 
-# Valid characters for each Polynesian language after ASCII normalisation.
-# Only syllables whose every character is in the relevant set are accepted.
-# This rejects English glosses ("fro", "spa", "wbo") and OCR artifacts.
-_LANG_VALID_SYLLABLE_CHARS: dict[str, frozenset[str]] = {
-    "rapanui":    frozenset("aehikmngoprtu"),
-    "old_rapa_nui": frozenset("aehikmngoprtu"),
-    "maori":      frozenset("aefhikmngoprtuw"),
-    "hawaiian":   frozenset("aehiklmnopuw"),
-    "tahitian":   frozenset("aefhimnoprtuv"),
-}
+# Structural (C)V validation lives in hackingrongo.data.phoneme_inventory —
+# the single source of truth for the sign→phoneme search space.  The old
+# character-set membership check admitted consonant clusters ("gra", "nta",
+# "tto") whose characters are individually legal; structural validation
+# rejects them.
+from hackingrongo.data.phoneme_inventory import (  # noqa: E402
+    clean_syllables,
+    is_valid_syllable as _is_valid_syllable,
+)
 
 # Maps LM era names (from config) to the language whose inventory to use.
 _ERA_LANGUAGE: dict[str, str] = {
@@ -107,12 +106,6 @@ _ERA_LANGUAGE: dict[str, str] = {
     "post_contact": "old_rapa_nui",
     "smoothing":    "hawaiian",
 }
-
-
-def _is_valid_syllable(syllable: str, language: str) -> bool:
-    """Return True iff every character in *syllable* is in the language's inventory."""
-    valid = _LANG_VALID_SYLLABLE_CHARS.get(language, frozenset("aehiklmnoprtuvw"))
-    return bool(syllable) and all(c in valid for c in syllable)
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +242,7 @@ class NGramLM:
 
         # Inference-time log_prob result cache.  Populated lazily on first call;
         # never persisted (not included in save/load).  Bounded in practice by
-        # vocab^order — for the 45-phoneme MCMC inventory at order 5 this is at
+        # vocab^order — for the 50-phoneme MCMC inventory at order 5 this is at
         # most ~184 M entries but in practice only the n-grams that actually
         # appear in generated sequences accumulate, which is much smaller.
         self._lp_cache: dict[tuple[str, ...], float] = {}
@@ -261,6 +254,19 @@ class NGramLM:
         self._backoff_from_order: int = 4
         self._backoff_alpha: float = 0.15
         self._backoff_lm_path: "str | None" = None
+
+        # Permanent memo for backoff-LM probabilities, keyed by
+        # (word, truncated_context).  Unlike _lp_cache this is never
+        # cleared between scoring passes: the backoff LM is immutable
+        # after finalise() and its probabilities do not depend on any
+        # sign→phoneme mapping, so entries stay valid for the process
+        # lifetime.  Bounded by (backoff vocab)^(backoff order) — tens of
+        # thousands of entries for syllable alphabets.  This matters in
+        # hot loops (measure_pgood samples 10K+ assignments): for k ≥
+        # _backoff_from_order the same (word, 2-token-context) backoff
+        # walk would otherwise be recomputed at every order level of
+        # every window.
+        self._backoff_memo: dict[tuple, float] = {}
 
     # ------------------------------------------------------------------
     # Training
@@ -518,6 +524,7 @@ class NGramLM:
         self._backoff_alpha = alpha
         self._backoff_lm_path = str(lm_path) if lm_path is not None else None
         self._lp_cache.clear()  # invalidate cached values computed without backoff
+        self._backoff_memo.clear()  # memo entries belong to the previous backoff LM
         logger.info(
             "NGramLM[%s, order=%d]: backoff LM attached (language=%s, from_order=%d, alpha=%.2f).",
             self.language, self.order, lm.language, from_order, alpha,
@@ -613,7 +620,11 @@ class NGramLM:
                 ):
                     # Truncate context to what the backoff LM can handle.
                     bo_ctx = ctx[-(self._backoff_lm.order - 1):]
-                    bo_prob = self._backoff_lm._kn_prob(word, bo_ctx)
+                    memo_key = (word, bo_ctx)
+                    bo_prob = self._backoff_memo.get(memo_key)
+                    if bo_prob is None:
+                        bo_prob = self._backoff_lm._kn_prob(word, bo_ctx)
+                        self._backoff_memo[memo_key] = bo_prob
                     prob = (1.0 - self._backoff_alpha) * prob + self._backoff_alpha * bo_prob
                 continue
             ctx_total, n1_types, n2_types, n3plus_types = ctx_stat
@@ -860,6 +871,20 @@ _VOWELS: frozenset[str] = frozenset("aeiouāēīōū")
 _CV_RE: re.Pattern[str] = re.compile(r"[^aeiouāēīōū]*[aeiouāēīōū]", re.IGNORECASE)
 
 
+def _normalize_for_syllables(text: str) -> str:
+    """Fold a source line to plain ASCII before CV syllable splitting.
+
+    Decomposes to NFD and drops combining marks (so ``hā`` → ``ha``
+    instead of leaving a combining macron stranded inside a "consonant"
+    cluster), then applies the same diacritic/okina map used for
+    pre-built frequency tables.  Vowel length is deliberately folded:
+    the historical wordlists mark it too inconsistently to model.
+    """
+    decomposed = unicodedata.normalize("NFD", text.lower())
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return "".join(_FREQ_TABLE_NORMALISE_MAP.get(ch, ch) for ch in stripped)
+
+
 def tokenize_text(text: str, level: str) -> list[str]:
     """Split a text string into tokens at the requested granularity.
 
@@ -899,7 +924,7 @@ def tokenize_text(text: str, level: str) -> list[str]:
         # like "rakau jf rau" would produce the token " jf ra" (space + jf
         # treated as onset consonants of the 'ra' nucleus).
         syllables: list[str] = []
-        for word in text.lower().split():
+        for word in _normalize_for_syllables(text).split():
             syllables.extend(_CV_RE.findall(word))
         return syllables
     raise ValueError(
@@ -944,7 +969,7 @@ def build_ngram_lm(
         for line in record.lines:
             raw_tokens = tokenize_text(line, tokenization_level)
             if tokenization_level == "syllable":
-                tokens = [t for t in raw_tokens if _is_valid_syllable(t, language)]
+                tokens = clean_syllables(raw_tokens, language)
                 n_tokens_rejected += len(raw_tokens) - len(tokens)
             else:
                 tokens = raw_tokens
@@ -1071,10 +1096,7 @@ def build_all_lms(cfg: DictConfig, project_root: Path) -> None:
                         continue
                     raw_tokens = tokenize_text(line, tokenization_level)
                     if tokenization_level == "syllable":
-                        tokens = [
-                            t for t in raw_tokens
-                            if _is_valid_syllable(t, era_language)
-                        ]
+                        tokens = clean_syllables(raw_tokens, era_language)
                         n_tokens_rejected += len(raw_tokens) - len(tokens)
                     else:
                         tokens = raw_tokens

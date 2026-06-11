@@ -114,15 +114,17 @@ def select_top_k_signs(corpus_seqs: list[list[str]], k: int) -> list[str]:
 
 
 def _phoneme_unigram_lp(lms) -> dict[str, float]:
-    """Average unigram log-prob (log₂) for each phoneme across all LMs."""
-    vocab: set[str] = set()
-    for lm in lms:
-        for tok in lm._vocab:
-            if tok and not tok.startswith("<") and 1 <= len(tok) <= 6:
-                vocab.add(tok)
+    """Average unigram log-prob (log₂) for each canonical phoneme across all LMs.
+
+    Candidates come from the shared inventory
+    (hackingrongo.data.phoneme_inventory), not the LM vocabularies, so the
+    oracle's phoneme register encodes the same search space as MCMC, QUBO,
+    and measure_pgood.
+    """
+    from hackingrongo.data.phoneme_inventory import RAPA_NUI_SYLLABLES
 
     scores: dict[str, float] = {}
-    for ph in vocab:
+    for ph in RAPA_NUI_SYLLABLES:
         lps = [lm._unigram_log_prob.get(ph, -20.0) for lm in lms]
         scores[ph] = float(np.mean(lps))
     return scores

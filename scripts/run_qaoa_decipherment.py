@@ -92,13 +92,15 @@ def _load_lms(lm_dir: Path) -> list[NGramLM]:
 
 
 def _phoneme_inventory(lms: list[NGramLM]) -> list[str]:
-    phonemes: set[str] = set()
-    for lm in lms:
-        vocab = lm._vocab if hasattr(lm, "_vocab") else set()
-        for tok in vocab:
-            if tok and not tok.startswith("<") and 1 <= len(tok) <= 6:
-                phonemes.add(tok)
-    return sorted(phonemes)
+    """Canonical Rapa Nui syllable inventory (shared with MCMC and p_good).
+
+    See hackingrongo.data.phoneme_inventory — the QAOA search space must
+    match the inventory the classical solvers explore for the comparison
+    to be meaningful.  The *lms* argument is kept for signature
+    compatibility but is no longer consulted.
+    """
+    from hackingrongo.data.phoneme_inventory import RAPA_NUI_SYLLABLES
+    return list(RAPA_NUI_SYLLABLES)
 
 
 def _unigram_score(phoneme: str, lms: list[NGramLM]) -> float:

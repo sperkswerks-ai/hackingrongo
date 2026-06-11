@@ -1,6 +1,6 @@
 # Hacking Rongorongo Project by SperksWerks
 
-The Rongorongo script is the only known indigenous "writing" system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 26 wooden objects.
+The Rongorongo script is the only known indigenous "writing" system of Oceania. It has never been deciphered. No bilingual text exists. No key. No known plaintext. And there are only 15,273 glyphs across 25 inscribed wooden objects (Barthel's tablets A–Y; the Poike palimpsest Z is excluded as effaced and of disputed legibility).
 
 This project treats decipherment as a cryptanalysis problem and applies a six-layer adversarial attack pipeline with visual embeddings, statistical analysis, oracle inversion, differentiable projection learning, adversarial validation, and quantum hardness analysis.
 
@@ -31,8 +31,8 @@ This project demonstrates classical and quantum approaches to ciphertext-only at
 
 | Rongorongo concept | Cryptanalytic equivalent |
 |---|---|
-| Sign inventory (~120 signs) | Ciphertext alphabet |
-| Phoneme map π | Substitution key |
+| Sign inventory (639 base signs; the top 120 cover 83% of identified tokens) | Ciphertext alphabet |
+| Phoneme map π (canonical 50-syllable Rapa Nui inventory) | Substitution key |
 | MCMC over phoneme assignments | Key search / simulated annealing |
 | QUBO annealing | Quantum key search |
 | Parallel passages | Identical plaintext attack material |
@@ -101,7 +101,9 @@ The quantum analysis does not promise to solve Rongorongo. It provides the first
 
 ## Limitations and Honest Caveats
 
-The Rongorongo glyphs included for computational analysis are only from wooden objects and reimiro ornaments, however, cave petroglyphs have not been included. The IC finding is evidence of structure, not proof of language. Zone C has not yet produced a validated decipherment hypothesis. The Barthel family labels are an arithmetic function of the sign code, not a faithful representation of Barthel's iconographic taxonomy. Some corpus tokens still have no resolvable image file; these tokens are excluded from image-model training (not replaced with zero tensors). Running `scripts/extract_barthel_glyphs.py --source both` with the Barthel (1958) PDFs in `data/barthel_pdfs/` can close part of this gap.
+The Rongorongo glyphs included for computational analysis are only from wooden objects and reimiro ornaments, however, cave petroglyphs have not been included. The IC finding is evidence of structure, not proof of language. Zone C has not yet produced a validated decipherment hypothesis. The Barthel family labels are an arithmetic function of the sign code, not a faithful representation of Barthel's iconographic taxonomy. Some corpus tokens still have no resolvable image file; these tokens are excluded from image-model training (not replaced with zero tensors). Running `scripts/tooling/extract_barthel_glyphs.py --source both` with the Barthel (1958) PDFs in `data/barthel_pdfs/` can close part of this gap.
+
+Of the 15,273 corpus tokens, 677 have no single resolvable Barthel base sign: 401 are recorded as illegible (`?`) in the source transcription, and 276 are compound/ligature tokens (their decomposed components are preserved in `barthel_components`). CEIPP variant-letter and modifier conventions are resolved against the sign catalog; unresolvable letter tails are preserved in `code_modifiers` rather than silently dropped. The phoneme search space is the canonical 50-syllable Rapa Nui inventory (`hackingrongo/data/phoneme_inventory.py`): the glottal stop is unrepresented because the historical wordlists do not mark it consistently, and /ŋ/ is written `g` per the IDS orthography. The corpus transcription follows kohaumotu.org's encoding of Barthel (1958); cross-validation against newer critical transcriptions (e.g. the INSCRIBE project's) is an open task beyond Tablet D.
 
 ---
 

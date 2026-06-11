@@ -214,6 +214,47 @@ class TestPgoodMonotone:
 
 
 # ---------------------------------------------------------------------------
+# Test 2b: vectorised _AssignmentScorer matches the reference implementation
+# ---------------------------------------------------------------------------
+
+class TestAssignmentScorerEquivalence:
+    def test_scorer_matches_reference(self, tmp_path):
+        """_AssignmentScorer.score == _score_assignment for random mappings."""
+        import numpy as np
+
+        spec = importlib.util.spec_from_file_location("mpg", str(_SCRIPT_PGOOD))
+        mpg  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mpg)
+
+        lm_path = tmp_path / "lm.json"
+        _build_synthetic_lm(lm_path)
+        from hackingrongo.data.rapa_nui_corpus import NGramLM
+        lm = NGramLM.load(lm_path)
+
+        signs    = _SYNTHETIC_SIGNS
+        phonemes = _SYNTHETIC_PHONEMES
+        # Corpus in sign space, with one sequence shorter than lm.order
+        # to exercise the skip condition.
+        corpus_seqs = [
+            [signs[i % len(signs)] for i in range(12)],
+            [signs[(3 * i + 1) % len(signs)] for i in range(7)],
+            [signs[0]],
+        ]
+
+        scorer = mpg._AssignmentScorer(corpus_seqs, [lm], signs, phonemes)
+        rng = np.random.default_rng(7)
+        for _ in range(10):
+            idx = rng.integers(0, len(phonemes), size=len(signs))
+            phone_map = {s: phonemes[k] for s, k in zip(signs, idx)}
+            lm._lp_cache.clear()
+            expected = mpg._score_assignment(phone_map, corpus_seqs, [lm])
+            actual = scorer.score(idx)
+            assert actual == pytest.approx(expected, abs=1e-9), (
+                f"Vectorised score {actual} != reference {expected}"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Test 3: QUBO matrix structural properties (no solver, no data files)
 # ---------------------------------------------------------------------------
 
@@ -235,7 +276,7 @@ class TestQuboBuildMatrix:
         n_s = len(signs)
         n_p = len(phonemes)
 
-        Q = rqd.build_qubo(
+        Q, _bigram_meta = rqd.build_qubo(
             signs, phonemes, [lm], _SYNTHETIC_SEQUENCES,
             lambda1=10.0, lambda2=5.0, max_per_phoneme=5,
         )
@@ -347,7 +388,10 @@ class TestQuboNealSolves:
         )
 
         qs = result["qubo_size"]
-        assert qs["variables"] == len(_SYNTHETIC_SIGNS) * len(_SYNTHETIC_PHONEMES)
+        # The QUBO searches the canonical shared inventory (not the LM
+        # vocabulary) so its complexity matches MCMC and measure_pgood.
+        from hackingrongo.data.phoneme_inventory import RAPA_NUI_SYLLABLES
+        assert qs["variables"] == len(_SYNTHETIC_SIGNS) * len(RAPA_NUI_SYLLABLES)
         assert qs["couplings"] > 0
 
         # Phoneme assignments schema

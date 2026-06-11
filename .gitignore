@@ -2,6 +2,10 @@
 data/*
 !data/README.md
 
+# Packaged data bundles (36+ MB) must never land in git history
+hackingrongo_data*.zip
+*.json.bak
+
 # CI fixtures are small and committed so CI runs without the full corpus.
 !tests/ci-fixtures/
 # Static sign catalog — committed so CI and Colab run without the full corpus zip.

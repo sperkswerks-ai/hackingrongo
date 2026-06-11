@@ -12,14 +12,19 @@ weakness) applied directly to the corpus statistics.
 ## Canonical Attack Table
 
 Evidence levels:
-- **CONFIRMED** — executed on IBM Quantum hardware; job IDs in `RESULTS.md`
+- **HARDWARE-EXECUTED** — quantum circuit executed on IBM Quantum hardware;
+  job IDs in `RESULTS.md`.  In each case the oracle *encodes structure that
+  was first extracted classically from the corpus*: the hardware runs verify
+  the quantum encoding and the algorithm's query complexity on real qubits.
+  They are demonstrations, not discoveries unavailable to classical analysis
+  (see "Oracle-construction caveat" below).
 - **DEMONSTRATIVE** — correct quantum algorithm, run on simulator or fake
   backend; no quantum advantage claimed over a classical computer
 
 | # | Cipher vulnerability | Rongorongo instance | Classical attack | Quantum algorithm | Quantum complexity | Classical complexity | Hardware result |
 |---|---|---|---|---|---|---|---|
-| 1 | **Hidden linear structure** (affine IC distribution) | Sign-frequency IC function f: {0,1}⁷ → {0,1} satisfies f(x) = s·x ⊕ c for a hidden slope s with >90% linearity fraction | Exhaustive search over all 2⁷ = 128 candidate slopes | Bernstein–Vazirani | **1 oracle query** | 128 exhaustive / 7 classical BV queries | **CONFIRMED** · ibm\_marrakesh · 1 quantum query vs 128 classical · job ID in `RESULTS.md` |
-| 2 | **Key reuse / periodic function** (XOR-periodic sign substitution) | Passages P007 (tablets A,D,H,S) and P012 (11 tablets) encode f(x) = f(x ⊕ s) for a hidden period s ∈ {0,1}ⁿ — the pre→post-contact sign-substitution pattern | Baby-step giant-step / Kasiski: O(2^{n/2}) | Simon's algorithm | **O(n) oracle queries** | O(2^{n/2}) | **CONFIRMED** · ibm\_marrakesh · period s recovered on P007 and P012 · job IDs in `RESULTS.md` |
+| 1 | **Hidden linear structure** (affine IC distribution) | Sign-frequency IC function f: {0,1}⁷ → {0,1} tested for f(x) = s·x ⊕ c. Under the corpus-honest Barthel-bits encoding the result is a **null**: affine fraction ≈ 0.52, best linear approximation agrees on only 64% of inputs — no hidden linear structure. (The earlier IC-rank encoding produced affine f *by construction*; that run is retained as a hardware verification of the BV circuit, not a corpus finding.) | Exhaustive search over all 2⁷ = 128 candidate slopes | Bernstein–Vazirani | **1 oracle query** (when f is affine) | 128 exhaustive / 7 classical BV queries | **HARDWARE-EXECUTED** · ibm\_marrakesh · BV circuit verified in 1 query on the rank encoding · job ID in `RESULTS.md` · `--encoding barthel_bits` yields the null result |
+| 2 | **Key reuse / periodic function** (XOR-periodic sign substitution) | Passages P007 (tablets A,D,H,S) and P012 (11 tablets): every pre-contact instance differs from every post-contact instance at the same canonical positions — a fixed bitstring s extracted classically by the Kasiski cross-reference and embedded in the Simon oracle | Reading s off the parallel-passage table: O(n). (The O(2^{n/2}) baseline applies only to black-box oracle access, which is not this situation.) | Simon's algorithm | **O(n) oracle queries** | O(n) with corpus access / O(2^{n/2}) black-box | **HARDWARE-EXECUTED** · ibm\_marrakesh · Simon circuit recovers the embedded period s on P007 and P012, matching the classical extraction · job IDs in `RESULTS.md` |
 | 3 | **Weak S-box** (low-complexity sign→phoneme substitution) | ≈120 sign types map to ≈20 phonemes; PMI coupling matrix has low algebraic rank; assignment is NP-hard classically (QUBO) | Simulated annealing / exhaustive QUBO (O(2ᴺ) worst case) | QAOA (Quantum Approximate Optimization) | O(poly(N)) variational | O(2ᴺ) | **DEMONSTRATIVE** · FakeBrisbane simulator · hybrid QAOA+MCMC assignment; no hardware advantage claimed |
 | 4 | **Related-key / IC sensitivity** (entropy leaks under key perturbation) | IC varies predictably across pre/post-contact strata and dating scenarios; sign substitutions shift entropy by a measurable Δ | Classical sensitivity analysis (O(N·S) parameter sweeps) | Grover-amplified sensitivity search | O(√(N·S)) | O(N·S) | **DEMONSTRATIVE** · FakeBrisbane / statevector · Grover oracle identifies high-Δ sign pairs; no hardware run |
 | 5 | **Structural leakage via high-betweenness signs** (determinative function) | High-betweenness, low-frequency signs in the PMI bigram graph control information flow — consistent with grammatical determinatives invisible to frequency analysis | Classical PageRank + betweenness (O(VE)) | Szegedy quantum walk PageRank | O(1/δ) mixing time speedup | O(VE) | **DEMONSTRATIVE** · numpy/scipy statevector · L₁ divergence between quantum and classical PageRank reported; no hardware run |
@@ -28,33 +33,73 @@ Evidence levels:
 
 ---
 
-## Confirmed Results — Detail
+## Oracle-construction caveat
 
-### 1 · BV: Hidden linear structure in IC distribution
+Both hardware-executed attacks share the standard limitation of quantum
+algorithm demonstrations on real data: **the oracle is built by us, from
+structure the classical pipeline already extracted**.  BV's query complexity
+is measured against an oracle whose truth table we computed classically;
+Simon's period s is XOR-composed from the diachronic substitution table
+before the circuit is constructed.  A query-complexity separation only
+translates into a real-world advantage when the oracle is given (black-box
+access), not when constructing the oracle requires reading all the data
+classically first.
+
+What the hardware runs *do* establish:
+
+1. The rongorongo structures in question (IC distribution, diachronic
+   substitution pattern) map exactly onto the algebraic forms (Boolean
+   linearity, XOR-periodicity) that BV and Simon consume — the encodings
+   are lossless and the circuits are correct.
+2. The circuits execute within coherence on 156-qubit hardware
+   (`ibm_marrakesh`) and return the theoretically expected measurement
+   statistics, with full calibration provenance.
+3. At scale — a hypothetical sign system with thousands of signs and an
+   oracle implementable from a compact specification — these are the
+   attacks that would apply.
+
+What they do not establish: a quantum speedup over classical analysis of
+this corpus.  We state this up front because it is true, and because the
+distinction is exactly what the Crypto Village audience should be
+calibrating.
+
+---
+
+## Hardware-Executed Results — Detail
+
+### 1 · BV: Testing the IC distribution for hidden linear structure
 
 **Setup.** The index of coincidence (IC) of the top-64 rongorongo signs is
 computed over a 7-bit index encoding (2⁷ = 128 domain elements).  The Boolean
 function f: {0,1}⁷ → {0,1} maps each sign index to its IC above/below the
-corpus median.
+corpus median.  Two encodings are available (`--encoding`):
 
-**Classical baseline.** Exhaustive search tests all 128 candidate slopes.
-The classical BV method (probing each basis vector) uses 7 queries.
+- **ic_rank** — signs indexed by IC rank.  With a median threshold this makes
+  f affine *by construction* (f(x) = 1 iff rank(x) < 64; the slope is the top
+  rank bit), so a recovered slope is an artefact of the encoding, not a
+  corpus property.
+- **barthel_bits** — signs indexed by the low 7 bits of their Barthel
+  catalogue number, which is independent of the IC value being thresholded.
+  Linearity is then a falsifiable corpus property.
 
-**Quantum result.** BV recovers the hidden slope s in exactly **1 oracle
-query** against the corpus IC truth table.  Verified: linearity fraction > 90%
-before submitting.
+**Result under the honest encoding.** `--encoding barthel_bits` yields a
+**null result**: affine fraction ≈ 0.52 (chance level), best linear
+approximation agrees on only ~64% of inputs.  The IC distribution has **no
+hidden linear Boolean structure** over Barthel code bits.  This rules out an
+entire class of algebraic models for the sign-frequency distribution — a
+genuine, falsifiable corpus measurement.
 
-**Hardware evidence.**
-- Backend: `ibm_marrakesh`
-- Shots: 1 (single-shot BV is deterministic for linear f)
-- Query comparison: **1 quantum** vs **128 classical exhaustive** vs **7 classical BV**
-- Job ID and calibration timestamp: see `RESULTS.md` and `quantum_results/bv/`
+**Hardware evidence.** The `ibm_marrakesh` run (rank encoding, affine by
+construction) verified single-query BV slope recovery on real hardware:
+**1 quantum query** vs 128 classical exhaustive vs 7 classical BV queries.
+Job ID and calibration timestamp: see `RESULTS.md` and `quantum_results/bv/`.
+Shots: 1 (single-shot BV is deterministic for affine f).
 
-**What this means cryptanalytically.** The IC structure is not random — it has
-a hidden linear slope, which is the fingerprint of a substitution cipher whose
-key biases sign frequencies in an algebraically predictable way.  In classical
-terms this is the "index of coincidence attack" on a polyalphabetic cipher.
-BV makes this a one-shot measurement.
+**What this means cryptanalytically.** The one-query hardware run is a
+circuit verification, not a corpus discovery — the slope it recovers is the
+tautology of the rank encoding.  The corpus finding is the null: rongorongo
+sign frequencies are not linearly separable over catalogue-code bits, which
+constrains what algebraic key structure could explain them.
 
 ---
 
@@ -63,27 +108,35 @@ BV makes this a one-shot measurement.
 **Setup.** Passages P007 (tablets A, D, H, S) and P012 (11 tablets spanning
 both strata) show that every pre-contact instance differs from every
 post-contact instance at the same canonical positions — a fixed bitstring s.
-This is exactly Simon's hidden-period condition: f(x) = f(x ⊕ s) for all x.
+This satisfies Simon's hidden-period condition f(x) = f(x ⊕ s), and the
+oracle is constructed to encode exactly that substitution pattern.
 
-**Classical baseline.** Baby-step giant-step / Kasiski-style analysis is
-O(2^{n/2}) where n = |passage|.
+**Classical baseline — stated honestly.** With access to the parallel-passage
+table, s is read off directly in O(n): it is the XOR of changed positions
+that the Kasiski cross-reference already computed.  The textbook O(2^{n/2})
+classical bound applies only to black-box oracle access, which is not the
+situation here.  Simon's exponential separation is therefore *illustrated*,
+not *exploited*.
 
 **Quantum result.** Simon's algorithm recovers s in O(n) shots.  The circuit
-runs the Simon oracle (encoding the pre→post substitution pattern), measures in
-the Hadamard basis, solves the resulting system of linear equations over GF(2).
+runs the Simon oracle, measures in the Hadamard basis, and solves the
+resulting system of linear equations over GF(2).  The recovered period
+matches the classically extracted substitution pattern on both passages.
 
 **Hardware evidence.**
 - Backend: `ibm_marrakesh`
 - Passages: P007 (n = |canonical form|, s = XOR of changed positions),
   P012 (larger passage, more tablets)
-- Period s recovered on both passages
+- Period s recovered on both passages, matching the classical extraction
 - Job IDs and calibration timestamps: see `RESULTS.md` and `quantum_results/simon/`
 
-**What this means cryptanalytically.** The pre→post-contact sign substitutions
-are not a full replacement (new cipher) — they are a structured XOR of the
-original.  This is the cryptanalytic equivalent of a related-key attack: the
-"post-contact key" is the "pre-contact key" XORed with a fixed s.  Simon's
-algorithm recovers s with an exponential improvement over classical.
+**What this means cryptanalytically.** The substantive finding is classical
+and diachronic: the pre→post-contact sign substitutions are not a full
+replacement (new cipher) but a *structured XOR* of the original — the
+cryptanalytic signature of a related-key event at the contact boundary.  The
+hardware run establishes that this structure is losslessly expressible as a
+Simon-class periodic function and that the recovery circuit executes
+correctly on 156-qubit hardware.
 
 ---
 
@@ -109,8 +162,15 @@ cryptanalysis stack compiles and runs, and that the corpus structure
 
 Throughout this project "quantum advantage" means a **proven asymptotic or
 empirical improvement over the best known classical algorithm on the same
-problem instance**.  "Demonstrative" means the quantum circuit is correct and
-produces a valid result, but the problem instance is too small to distinguish
-quantum from classical performance.  This distinction is applied consistently
-and conservatively: the BV and Simon results are hardware-confirmed advantages;
-everything else is demonstrative.
+problem instance, including the cost of constructing the oracle**.
+"Hardware-executed" means the circuit ran on real IBM Quantum hardware and
+returned the theoretically expected result; because the oracles encode
+classically extracted structure (see "Oracle-construction caveat"), the BV
+and Simon runs are hardware verifications of the quantum encoding, not
+quantum advantages.  "Demonstrative" means the quantum circuit is correct
+and produces a valid result on a simulator, but the problem instance is too
+small to distinguish quantum from classical performance.  Under these
+definitions, **no analysis in this project claims a quantum advantage** —
+the contribution is the first empirical quantum-complexity characterisation
+of the rongorongo decipherment problem, applied consistently and
+conservatively.

@@ -43,10 +43,11 @@ jobs:
       # ── Full test suite (step 2) ───────────────────────────────────────────
       # Corpus-dependent tests are skipped automatically when data/corpus/ is
       # absent (each such test guards itself with pytest.mark.skipif).
+      # test_pgood.py is included: its synthetic-data tests (QUBO matrix,
+      # scorer equivalence, neal solve) run without the corpus.
       - name: Run pytest
         run: |
-          pytest tests/ -q --tb=short \
-            --ignore=tests/test_pgood.py
+          pytest tests/ -q --tb=short
 
       # ── Pipeline argument smoke test (step 3) ─────────────────────────────
       # --dry-run validates ring filtering, step selection, and command

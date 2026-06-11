@@ -27,9 +27,28 @@ Query-complexity comparison
     Classical (BV-like)         : n = 7 queries (evaluate on basis vectors)
     Classical (exhaustive)      : 2^n = 128 queries (try every candidate s)
 
+Encodings
+---------
+Two sign→index encodings are available (``--encoding``):
+
+``ic_rank`` (default)
+    Signs indexed by descending IC rank.  With the median threshold this
+    makes f affine BY CONSTRUCTION (f(x) = 1 iff rank < n_top — the slope
+    is the top bit of the rank).  The hardware run then demonstrates BV
+    oracle execution, not a corpus discovery.  Kept as default for
+    reproducibility of earlier runs and the CI golden files.
+
+``barthel_bits``
+    Signs indexed by the low bits of their Barthel catalogue number, which
+    is independent of the IC value being thresholded.  Linearity is then a
+    falsifiable property of how IC mass distributes over Barthel codes —
+    either outcome (structure found, or null result) is a genuine corpus
+    measurement.
+
 Usage
 -----
     python scripts/run_bv_ic_analysis.py
+    python scripts/run_bv_ic_analysis.py --encoding barthel_bits
     python scripts/run_bv_ic_analysis.py --n-bits 6 --n-top 48
     python scripts/run_bv_ic_analysis.py --draw
     python scripts/run_bv_ic_analysis.py --backend ibmq --ibmq-token <TOKEN>
@@ -41,6 +60,7 @@ import argparse
 import json
 import logging
 import math
+import re
 import sys
 import time
 from collections import Counter
@@ -105,11 +125,53 @@ def build_sign_index(
 
     Returns (index_to_sign, sign_to_index).
     Domain: {0, …, 2^n_bits − 1}.  Indices ≥ n_top are unoccupied (IC = 0).
+
+    CAUTION — with this encoding plus a median threshold, f(x) = 1 iff
+    rank(x) < n_top is affine *by construction* (the recovered slope is
+    the top bit of the rank).  Use ``--encoding barthel_bits`` for an
+    encoding under which linearity is a falsifiable corpus property.
     """
     ranked = sorted(ic_norm.items(), key=lambda kv: -kv[1])[:n_top]
     idx_to_sign = {i: sign for i, (sign, _) in enumerate(ranked)}
     sign_to_idx = {sign: i for i, sign in idx_to_sign.items()}
     return idx_to_sign, sign_to_idx
+
+
+_BARTHEL_DIGITS = re.compile(r"\d+")
+
+
+def build_sign_index_barthel(
+    ic_norm: dict[str, float],
+    n_top: int,
+    n_bits: int,
+) -> tuple[dict[int, str], dict[str, int], int]:
+    """Index the top-IC signs by the low ``n_bits`` of their Barthel code.
+
+    Unlike the IC-rank encoding, the index here is *independent of the
+    quantity being thresholded*: which domain points hold high-IC signs is
+    determined by Barthel's catalogue numbering, so any linear/affine
+    structure that survives is a genuine property of how IC mass
+    distributes over the sign codes — not an artefact of rank ordering.
+
+    Collisions (two signs whose codes share low bits) are resolved by
+    keeping the higher-IC sign.  Returns
+    (index_to_sign, sign_to_index, n_collisions).
+    """
+    domain_size = 1 << n_bits
+    ranked = sorted(ic_norm.items(), key=lambda kv: -kv[1])[:n_top]
+    idx_to_sign: dict[int, str] = {}
+    n_collisions = 0
+    for sign, _ic in ranked:  # descending IC: first claim wins
+        m = _BARTHEL_DIGITS.search(sign)
+        if not m:
+            continue
+        idx = int(m.group(0)) % domain_size
+        if idx in idx_to_sign:
+            n_collisions += 1
+            continue
+        idx_to_sign[idx] = sign
+    sign_to_idx = {sign: i for i, sign in idx_to_sign.items()}
+    return idx_to_sign, sign_to_idx, n_collisions
 
 
 # ── Truth table ───────────────────────────────────────────────────────────────
@@ -452,6 +514,7 @@ def run_analysis(
     ibmq_backend_name: str | None,
     linearity_threshold: float,
     draw: bool,
+    encoding: str = "ic_rank",
 ) -> dict[str, Any]:
 
     result: dict[str, Any] = {
@@ -459,6 +522,7 @@ def run_analysis(
         "n_top_signs":  n_top,
         "n_bits":       n_bits,
         "domain_size":  1 << n_bits,
+        "encoding":     encoding,
     }
 
     # ── Step 1: Load IC contributions ─────────────────────────────────────────
@@ -474,7 +538,17 @@ def run_analysis(
     ic_total = sum(ic_raw.values())
     log.info("  IC (raw) total = %.6f  (|vocabulary| = %d)", ic_total, len(ic_raw))
 
-    idx_to_sign, sign_to_idx = build_sign_index(ic_norm, n_top, n_bits)
+    if encoding == "barthel_bits":
+        idx_to_sign, sign_to_idx, n_collisions = build_sign_index_barthel(
+            ic_norm, n_top, n_bits
+        )
+        result["encoding_collisions"] = n_collisions
+        log.info(
+            "  Barthel-bits encoding: %d signs placed, %d collisions dropped",
+            len(idx_to_sign), n_collisions,
+        )
+    else:
+        idx_to_sign, sign_to_idx = build_sign_index(ic_norm, n_top, n_bits)
     top_n_ic_share = sum(ic_raw.get(sign, 0) for sign in idx_to_sign.values()) / ic_total
     log.info(
         "  Top %d signs cover %.1f%% of total IC",
@@ -490,12 +564,12 @@ def run_analysis(
     }
     result["top_signs"] = [
         {
-            "rank":         i,
+            "index":        i,
             "barthel_code": idx_to_sign[i],
             "ic_norm":      round(ic_norm[idx_to_sign[i]], 6),
             "ic_raw":       round(ic_raw.get(idx_to_sign[i], 0), 8),
         }
-        for i in range(min(n_top, len(idx_to_sign)))
+        for i in sorted(idx_to_sign)
     ]
 
     # ── Step 2: Build truth table ──────────────────────────────────────────────
@@ -766,6 +840,15 @@ def _parse_args() -> argparse.Namespace:
                    help=f"Number of top signs to include (default: {N_TOP_DEFAULT})")
     p.add_argument("--linearity-threshold", type=float, default=0.9, metavar="T",
                    help="Min linearity fraction to run BV (default: 0.9)")
+    p.add_argument("--encoding", choices=["ic_rank", "barthel_bits"],
+                   default="ic_rank",
+                   help="Sign→index encoding.  'ic_rank' (default) indexes by "
+                        "IC rank — with a median threshold the resulting f is "
+                        "affine BY CONSTRUCTION (kept as default for "
+                        "reproducibility of earlier runs and CI golden files). "
+                        "'barthel_bits' indexes by the low bits of the Barthel "
+                        "catalogue number, making linearity a falsifiable "
+                        "property of the corpus.")
     p.add_argument("--backend",     choices=["statevector", "ibmq"], default="statevector")
     p.add_argument("--ibmq-token",  default=None,                    metavar="TOKEN")
     p.add_argument("--ibmq-instance", default=None,                   metavar="INST",
@@ -790,6 +873,7 @@ def main() -> dict:
         ibmq_backend_name=args.ibmq_backend,
         linearity_threshold=args.linearity_threshold,
         draw=args.draw,
+        encoding=args.encoding,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

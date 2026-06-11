@@ -83,15 +83,18 @@ def _load_lms(lm_dir: Path) -> list[NGramLM]:
     return lms
 
 
-def _phoneme_inventory(lms: list[NGramLM]) -> list[str]:
-    """Collect CV syllable tokens from LM vocabularies."""
-    phonemes: set[str] = set()
-    for lm in lms:
-        vocab = lm._vocab if hasattr(lm, "_vocab") else set()
-        for tok in vocab:
-            if tok and not tok.startswith("<") and 1 <= len(tok) <= 6:
-                phonemes.add(tok)
-    return sorted(phonemes)
+def _phoneme_inventory() -> list[str]:
+    """Canonical Rapa Nui syllable inventory.
+
+    Shared with Zone C MCMC and the QUBO formulation
+    (hackingrongo.data.phoneme_inventory) so the p_good hardness
+    measurement characterises the *same* search space those solvers
+    explore.  Deriving the inventory from LM vocabularies — the old
+    behaviour — let tokenizer artifacts inflate the space and made the
+    classical-vs-quantum comparison apples-to-oranges.
+    """
+    from hackingrongo.data.phoneme_inventory import RAPA_NUI_SYLLABLES
+    return list(RAPA_NUI_SYLLABLES)
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +106,12 @@ def _score_assignment(
     corpus_seqs: list[list[str]],
     lms: list[NGramLM],
 ) -> float:
-    """Mean per-token log-prob of the translated corpus under all LMs."""
+    """Mean per-token log-prob of the translated corpus under all LMs.
+
+    Reference implementation.  Hot paths use :class:`_AssignmentScorer`,
+    which computes the identical quantity from a precomputed unique
+    n-gram count table (tests assert equivalence).
+    """
     total_lp = 0.0
     total_n = 0
     for seq in corpus_seqs:
@@ -115,6 +123,96 @@ def _score_assignment(
     return total_lp / total_n if total_n > 0 else -math.inf
 
 
+class _AssignmentScorer:
+    """Vectorised scorer for repeated assignment evaluations.
+
+    ``_score_assignment`` walks all ~15K corpus tokens through Python
+    loops for every sample.  This class precomputes, once per LM order,
+    the table of unique sign n-gram windows (with ``<s>``/``</s>``
+    padding) and their corpus counts.  Each sample is then scored as
+
+        Σ_window  count(window) · log₂P(translate(window))
+
+    Because the sign alphabet (~1.7K codes) collapses onto ~50 phonemes,
+    the translated windows deduplicate heavily, so far fewer LM lookups
+    are needed per sample than token positions in the corpus.
+    """
+
+    def __init__(
+        self,
+        corpus_seqs: list[list[str]],
+        lms: list[NGramLM],
+        signs: list[str],
+        phonemes: list[str],
+    ) -> None:
+        sign_to_id = {s: i for i, s in enumerate(signs)}
+        n_signs = len(signs)
+        bos_sign, eos_sign = n_signs, n_signs + 1  # padding ids in sign space
+
+        # Phoneme-space lookup table: real phonemes first, then the
+        # padding tokens, which translate to themselves.
+        self._phoneme_table: list[str] = list(phonemes) + ["<s>", "</s>"]
+        self._pad_pids = np.array(
+            [len(phonemes), len(phonemes) + 1], dtype=np.int64
+        )
+
+        self._per_lm: list[tuple[NGramLM, int, np.ndarray, np.ndarray]] = []
+        total_n = 0
+        for lm in lms:
+            order = lm.order
+            windows: dict[tuple[int, ...], int] = {}
+            for seq in corpus_seqs:
+                if len(seq) < order:
+                    continue
+                ids = (
+                    [bos_sign] * (order - 1)
+                    + [sign_to_id[s] for s in seq]
+                    + [eos_sign]
+                )
+                total_n += len(seq)
+                for i in range(order - 1, len(ids)):
+                    w = tuple(ids[i - order + 1 : i + 1])
+                    windows[w] = windows.get(w, 0) + 1
+            win_arr = (
+                np.array(list(windows.keys()), dtype=np.int64)
+                if windows else np.empty((0, order), dtype=np.int64)
+            )
+            cnt_arr = np.array(list(windows.values()), dtype=np.float64)
+            self._per_lm.append((lm, order, win_arr, cnt_arr))
+        self._total_n = total_n
+
+    def score(self, assignment: np.ndarray) -> float:
+        """Score a (n_signs,) integer array of phoneme indices."""
+        if self._total_n == 0:
+            return -math.inf
+        mapping = np.concatenate([assignment.astype(np.int64), self._pad_pids])
+        n_pt = len(self._phoneme_table)
+
+        total_lp = 0.0
+        for lm, order, win_arr, cnt_arr in self._per_lm:
+            if win_arr.size == 0:
+                continue
+            # Clear the per-mapping n-gram cache (same rationale as in
+            # _sample_scores: entries never carry over between mappings).
+            lm._lp_cache.clear()
+            translated = mapping[win_arr]  # (n_windows, order)
+            # Encode each row to one integer key for fast deduplication.
+            keys = translated[:, 0].copy()
+            for k in range(1, order):
+                keys *= n_pt
+                keys += translated[:, k]
+            uniq, inverse = np.unique(keys, return_inverse=True)
+            weights = np.bincount(inverse, weights=cnt_arr)
+            for key, weight in zip(uniq.tolist(), weights.tolist()):
+                toks = []
+                for _ in range(order):
+                    toks.append(self._phoneme_table[key % n_pt])
+                    key //= n_pt
+                toks.reverse()
+                total_lp += weight * lm.log_prob(tuple(toks))
+        return total_lp / self._total_n
+
+
 def _sample_scores(
     corpus_seqs: list[list[str]],
     lms: list[NGramLM],
@@ -122,34 +220,81 @@ def _sample_scores(
     phonemes: list[str],
     n_samples: int,
     seed: int = 42,
+    workers: int = 1,
+    corpus_dir: Path | None = None,
+    lm_dir: Path | None = None,
 ) -> list[float]:
+    """Score *n_samples* random assignments.
+
+    With ``workers > 1`` (requires *corpus_dir* and *lm_dir* so each
+    worker process can load its own LM copies), all assignments are
+    pre-drawn from the seeded RNG and scored in parallel — results are
+    bit-identical to the serial path, in the same order.
+    """
     rng = np.random.default_rng(seed)
-    phonemes_arr = np.array(phonemes)
     n_phonemes = len(phonemes)
     n_signs = len(signs)
+
+    # Pre-draw every assignment so serial and parallel paths consume the
+    # RNG stream identically.
+    idxs = [rng.integers(0, n_phonemes, size=n_signs) for _ in range(n_samples)]
+
+    if workers > 1 and corpus_dir is not None and lm_dir is not None:
+        from concurrent.futures import ProcessPoolExecutor
+
+        chunk_size = max(1, n_samples // (workers * 4))
+        chunks = [idxs[i:i + chunk_size] for i in range(0, n_samples, chunk_size)]
+        log.info(
+            "Scoring %d samples across %d workers (%d chunks) …",
+            n_samples, workers, len(chunks),
+        )
+        scores: list[float] = []
+        t0 = time.perf_counter()
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_init_score_worker,
+            initargs=(str(corpus_dir), str(lm_dir), list(signs), list(phonemes)),
+        ) as pool:
+            for j, chunk_scores in enumerate(pool.map(_score_chunk, chunks)):
+                scores.extend(chunk_scores)
+                elapsed = time.perf_counter() - t0
+                done = len(scores)
+                eta = elapsed / done * (n_samples - done) if done else 0.0
+                log.info("  %d/%d  (%.0fs elapsed, ETA %.0fs)",
+                         done, n_samples, elapsed, eta)
+        return scores
+
     log_interval = max(100, n_samples // 20)
-
-    scores: list[float] = []
+    scorer = _AssignmentScorer(corpus_seqs, lms, signs, phonemes)
+    scores = []
     t0 = time.perf_counter()
-
-    for i in range(n_samples):
+    for i, idx in enumerate(idxs):
         if i > 0 and i % log_interval == 0:
             elapsed = time.perf_counter() - t0
             eta = elapsed / i * (n_samples - i)
             log.info("  %d/%d  (%.0fs elapsed, ETA %.0fs)", i, n_samples, elapsed, eta)
-
-        # Clear LM n-gram caches between samples: each sample uses a different
-        # phoneme mapping so cached n-gram lookups from prior samples are never
-        # reused and would otherwise accumulate to hundreds of millions of entries
-        # (up to V^order, e.g. 45^5 ≈ 184 M for order-5 LMs), exhausting RAM.
-        for lm in lms:
-            lm._lp_cache.clear()
-
-        idx = rng.integers(0, n_phonemes, size=n_signs)
-        phone_map = {sign: phonemes_arr[k] for sign, k in zip(signs, idx)}
-        scores.append(_score_assignment(phone_map, corpus_seqs, lms))
-
+        scores.append(scorer.score(idx))
     return scores
+
+
+# Worker-process state for parallel sampling: one scorer per process,
+# built once in the initializer (loading LMs from disk avoids pickling
+# multi-megabyte count tables per task).
+_WORKER_SCORER: "_AssignmentScorer | None" = None
+
+
+def _init_score_worker(
+    corpus_dir: str, lm_dir: str, signs: list[str], phonemes: list[str]
+) -> None:
+    global _WORKER_SCORER
+    corpus_seqs = _load_barthel_sequences(Path(corpus_dir))
+    lms = _load_lms(Path(lm_dir))
+    _WORKER_SCORER = _AssignmentScorer(corpus_seqs, lms, signs, phonemes)
+
+
+def _score_chunk(idx_chunk: list[np.ndarray]) -> list[float]:
+    assert _WORKER_SCORER is not None, "worker initializer did not run"
+    return [_WORKER_SCORER.score(idx) for idx in idx_chunk]
 
 
 # ---------------------------------------------------------------------------
@@ -324,9 +469,9 @@ def _iqae_estimate(
         ``iqae_vs_mc_speedup``.
     """
     rng = np.random.default_rng(seed)
-    phonemes_arr = np.array(phonemes)
     n_ph = len(phonemes)
     n_sg = len(signs)
+    scorer = _AssignmentScorer(corpus_seqs, lms, signs, phonemes)
 
     total_calls: int = 0
     total_n: int = 0
@@ -339,10 +484,7 @@ def _iqae_estimate(
         # Sample a batch of random assignments.
         idxs = rng.integers(0, n_ph, size=(batch_size, n_sg))
         for row in idxs:
-            for lm in lms:
-                lm._lp_cache.clear()
-            phone_map = {sign: phonemes_arr[k] for sign, k in zip(signs, row)}
-            score = _score_assignment(phone_map, corpus_seqs, lms)
+            score = scorer.score(row)
             if math.isfinite(score) and score >= cutoff:
                 total_k += 1
             total_n += 1
@@ -404,6 +546,12 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--output",     type=Path, default=None, metavar="JSON")
     p.add_argument("--seed",       type=int,  default=42)
+    p.add_argument(
+        "--workers", type=int, default=0, metavar="N",
+        help="Parallel scoring processes. 0 (default) auto-selects: all "
+             "cores for runs of ≥2000 samples, serial otherwise. Results "
+             "are bit-identical regardless of worker count.",
+    )
     p.add_argument(
         "--smoke-test", action="store_true",
         help="Run 100 samples (fast end-to-end wiring check).",
@@ -482,7 +630,7 @@ def main() -> None:
 
     lms = _load_lms(lm_dir)
     signs    = sorted({code for seq in corpus_seqs for code in seq})
-    phonemes = _phoneme_inventory(lms)
+    phonemes = _phoneme_inventory()
 
     log.info("  Sign inventory  : %d signs", len(signs))
     log.info("  Phoneme inventory: %d phonemes", len(phonemes))
@@ -492,9 +640,16 @@ def main() -> None:
         sys.exit(1)
 
     # ── Sample ────────────────────────────────────────────────────────────────
-    log.info("Sampling %d random assignments …", args.n_samples)
+    workers = args.workers
+    if workers <= 0:
+        import os as _os
+        workers = (_os.cpu_count() or 1) if args.n_samples >= 2000 else 1
+    log.info("Sampling %d random assignments (workers=%d) …", args.n_samples, workers)
     t0 = time.perf_counter()
-    scores = _sample_scores(corpus_seqs, lms, signs, phonemes, args.n_samples, args.seed)
+    scores = _sample_scores(
+        corpus_seqs, lms, signs, phonemes, args.n_samples, args.seed,
+        workers=workers, corpus_dir=corpus_dir, lm_dir=lm_dir,
+    )
     elapsed = time.perf_counter() - t0
     log.info("Sampling complete in %.1f s.", elapsed)
 

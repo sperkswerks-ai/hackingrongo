@@ -7,14 +7,16 @@ cd hackingrongo
 pip install -e .
 
 # Fetch corpora and build language models
-python scripts/parse_ids.py --stratify --cache-dir data/cache
-python scripts/fetch_abvd_corpus.py --with-cognates --cache-dir data/cache
-python scripts/build_language_models.py
+python scripts/tooling/parse_ids.py --stratify --cache-dir data/cache
+python scripts/tooling/fetch_abvd_corpus.py --with-cognates --cache-dir data/cache
+python scripts/tooling/build_language_models.py
 
 # Run full pipeline
 python -m hackingrongo.pipeline
 
-# Quantum hardness analysis (no quantum hardware required)
+# Quantum hardness analysis (no quantum hardware required).
+# Runs of ≥2000 samples parallelise across all cores automatically
+# (override with --workers N); results are bit-identical at any worker count.
 python scripts/measure_pgood.py \
   --corpus-dir data/corpus \
   --lm-dir data/language_models \
@@ -119,13 +121,13 @@ outputs/                         Generated at runtime (gitignored)
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/build_corpus.py` | Kohaumotu XML → per-tablet JSON corpus |
-| `scripts/parse_ids.py` | IDS Rapa Nui vocabulary → stratified LM sources |
-| `scripts/fetch_abvd_corpus.py` | ABVD cognate neighbours for pre-contact LM |
-| `scripts/fetch_hawaiian_corpus.py` | Hawaiian newspaper corpus for smoothing LM |
-| `scripts/build_language_models.py` | Build all NGramLM JSON files (step 1) |
-| `scripts/scrape_glyphs.py` | Scrape SVG glyph images from kohaumotu.org |
-| `scripts/extract_barthel_glyphs.py` | Extract glyph PNG crops from Barthel (1958) PDFs |
+| `scripts/tooling/build_corpus.py` | Kohaumotu XML → per-tablet JSON corpus |
+| `scripts/tooling/parse_ids.py` | IDS Rapa Nui vocabulary → stratified LM sources |
+| `scripts/tooling/fetch_abvd_corpus.py` | ABVD cognate neighbours for pre-contact LM |
+| `scripts/tooling/fetch_hawaiian_corpus.py` | Hawaiian newspaper corpus for smoothing LM |
+| `scripts/tooling/build_language_models.py` | Build all NGramLM JSON files (step 1) |
+| `scripts/tooling/scrape_glyphs.py` | Scrape SVG glyph images from kohaumotu.org |
+| `scripts/tooling/extract_barthel_glyphs.py` | Extract glyph PNG crops from Barthel (1958) PDFs |
 | `scripts/transform_parallels.py` | Convert horley_parallels.csv to pipeline schema |
 
 **Training and analysis**
@@ -149,7 +151,7 @@ outputs/                         Generated at runtime (gitignored)
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/reconstruct_glyph.py` | Fill-the-gap: mask a damaged glyph, decode via autoencoder + KNN fallback |
+| `scripts/exploratory/reconstruct_glyph.py` | Fill-the-gap: mask a damaged glyph, decode via autoencoder + KNN fallback |
 
 ---
 

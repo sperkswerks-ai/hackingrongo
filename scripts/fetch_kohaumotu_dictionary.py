@@ -44,10 +44,8 @@ DICT_URL = "https://kohaumotu.org/Rongorongo/Dictionary/dictionary_complete.html
 _DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "lm_sources" / "rapanui_kohaumotu_dictionary.txt"
 
 # Characters valid in a Rapa Nui word after ASCII normalisation.
-# Includes 'v' which is phonemic in modern Rapa Nui (and present in IDS corpus)
-# even though the current _LANG_VALID_SYLLABLE_CHARS["rapanui"] filter in
-# rapa_nui_corpus.py does not yet list it.  Words with 'v' are preserved in
-# the output file so they become available if that filter is extended.
+# Includes 'v', which is phonemic in Rapa Nui and accepted by the
+# structural syllable validation in hackingrongo.data.phoneme_inventory.
 _RAPANUI_CHARS: frozenset[str] = frozenset("aehikmngoprtuv ")
 
 # Characters that represent glottal stops / okina in various encodings.
