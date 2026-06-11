@@ -410,7 +410,7 @@ def step4a_entropy_report(dry_run: bool = False, seed: int = 20260606) -> tuple[
         "entropy_report",
         [
             sys.executable, "-m", "hackingrongo.results.entropy_report",
-            "--input",  str(sensitivity_json),
+            "--sensitivity", str(sensitivity_json),
             "--output", str(out),
             "--seed", str(seed),
         ],
