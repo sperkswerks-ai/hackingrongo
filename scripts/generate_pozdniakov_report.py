@@ -1072,12 +1072,24 @@ def main() -> int:
     from hackingrongo.repro import set_global_seed
     set_global_seed(_args.seed)
 
-    # 1. Paradigmatic analysis (new primary output)
+    # 1. Paradigmatic analysis (new primary output).  Needs only the
+    # corpus and parallel passages — both Ring-1 data.
     compute_paradigmatic(seed=_args.seed)
     primary_html = OUTPUT_DIR / "pozdniakov_report.html"
     print(str(primary_html))
 
-    # 2. Legacy statistical hypothesis tests (backward compat)
+    # 2. Legacy statistical hypothesis tests (backward compat).  These
+    # score a sign→phoneme assignment, so they need Zone C's
+    # ranking.json (Step 5, which in turn needs the Ring-2 embeddings).
+    # In a Ring-1 run that artifact legitimately doesn't exist yet —
+    # skip the legacy tests instead of failing the whole step.
+    if not RANKING_PATH.exists():
+        print(
+            f"ranking.json not found ({RANKING_PATH}) — phoneme-map "
+            "hypothesis tests skipped (run Step 5 / Zone C decipherment "
+            "to enable them). Paradigmatic report generated above."
+        )
+        return 0
     results_path = compute_results()
     module = _load_report_module()
     html_path = OUTPUT_DIR / "pozdniakov_hypothesis_report.html"
