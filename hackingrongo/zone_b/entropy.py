@@ -1320,10 +1320,22 @@ def frequency_language_match(
         chisquare = None  # type: ignore[assignment]
 
     # ── Load sign frequencies from corpus ───────────────────────────────────
+    # Prefer the per-tablet corpus files ([A-Z].json, real schema: a
+    # "glyphs" list of dicts) so alternative transcriptions like
+    # D_ferrara2022.json don't double-count; fall back to a recursive
+    # glob for synthetic/test corpora using flat token-list keys.
     sign_counts: Counter[str] = Counter()
-    for path in sorted(corpus_dir.glob("**/*.json")):
+    paths = sorted(corpus_dir.glob("[A-Z].json")) or sorted(corpus_dir.glob("**/*.json"))
+    for path in paths:
         try:
             data = json.loads(path.read_text())
+            glyphs = data.get("glyphs")
+            if isinstance(glyphs, list):
+                sign_counts.update(
+                    str(g["barthel_base"]) for g in glyphs
+                    if isinstance(g, dict) and g.get("barthel_base")
+                )
+                continue
             tokens_key = None
             for k in ("tokens", "signs", "sequence", "text"):
                 if k in data:

@@ -219,12 +219,29 @@ def segment_sequences(
 # ---------------------------------------------------------------------------
 
 def _load_sequences(corpus_dir: Path) -> list[list[str]]:
-    """Load sign sequences from JSON corpus files under *corpus_dir*."""
+    """Load sign sequences from JSON corpus files under *corpus_dir*.
+
+    Handles the real per-tablet corpus schema (a ``glyphs`` list of
+    dicts, one sequence per tablet using ``barthel_base``) as well as
+    synthetic/test corpora using flat token-list keys.  Per-tablet files
+    ([A-Z].json) are preferred so alternative transcriptions like
+    D_ferrara2022.json don't duplicate Tablet D.
+    """
     sequences: list[list[str]] = []
-    for path in sorted(corpus_dir.glob("**/*.json")):
+    paths = sorted(corpus_dir.glob("[A-Z].json")) or sorted(corpus_dir.glob("**/*.json"))
+    for path in paths:
         try:
             data = json.loads(path.read_text())
         except Exception:
+            continue
+        glyphs = data.get("glyphs")
+        if isinstance(glyphs, list):
+            seq = [
+                str(g["barthel_base"]) for g in glyphs
+                if isinstance(g, dict) and g.get("barthel_base")
+            ]
+            if len(seq) >= 2:
+                sequences.append(seq)
             continue
         for key in ("tokens", "signs", "sequence", "text"):
             val = data.get(key)
