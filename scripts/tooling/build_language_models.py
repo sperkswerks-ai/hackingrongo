@@ -87,26 +87,41 @@ def main(cfg: DictConfig) -> None:
 
     project_root = Path(hydra.utils.get_original_cwd())
 
-    # Inject the kohaumotu.org Rapa Nui dictionary into the rapanui LM sources
-    # when the file is present.  The path is relative to polynesian_texts_dir
-    # (where build_all_lms resolves all source specs).
-    _dict_path = project_root / "data" / "lm_sources" / "rapanui_kohaumotu_dictionary.txt"
-    _dict_spec = "../lm_sources/rapanui_kohaumotu_dictionary.txt"
-    if _dict_path.exists():
+    # Auto-ingest every Rapa Nui source under data/lm_sources/ into the
+    # pre_contact and post_contact LM sources.  Source specs are resolved
+    # relative to polynesian_texts_dir by build_all_lms, hence the "../"
+    # prefix.  Files are populated by scripts/fetch_lm_sources_extended.py
+    # (kohaumotu dictionary, Kieviet examples, ASJP, …); the leading-underscore
+    # report file is skipped.  Adding a new source is now drop-a-file, not a
+    # code change.
+    _lm_sources_dir = project_root / "data" / "lm_sources"
+    _src_files = sorted(
+        p for p in _lm_sources_dir.glob("*.txt") if not p.name.startswith("_")
+    )
+    if _src_files:
         with open_dict(cfg):
             for _era in ("pre_contact", "post_contact"):
-                if _era in cfg.zone_c.lm_scoring.lm_sources:
-                    _sources = list(cfg.zone_c.lm_scoring.lm_sources[_era])
-                    if _dict_spec not in _sources:
-                        cfg.zone_c.lm_scoring.lm_sources[_era] = _sources + [_dict_spec]
+                if _era not in cfg.zone_c.lm_scoring.lm_sources:
+                    continue
+                _sources = list(cfg.zone_c.lm_scoring.lm_sources[_era])
+                for _f in _src_files:
+                    _spec = f"../lm_sources/{_f.name}"
+                    if _spec not in _sources:
+                        _sources.append(_spec)
+                cfg.zone_c.lm_scoring.lm_sources[_era] = _sources
+        _total = sum(
+            sum(1 for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip())
+            for f in _src_files
+        )
         logger.info(
-            "Kohaumotu dictionary (%d headwords) injected into pre_contact and post_contact LM sources.",
-            sum(1 for ln in _dict_path.read_text(encoding="utf-8").splitlines() if ln.strip()),
+            "Auto-ingested %d data/lm_sources/ file(s) (%d non-empty lines) "
+            "into pre_contact and post_contact LM sources: %s",
+            len(_src_files), _total, ", ".join(f.name for f in _src_files),
         )
     else:
         logger.warning(
-            "Kohaumotu dictionary not found at %s; run scripts/fetch_kohaumotu_dictionary.py first.",
-            _dict_path,
+            "No data/lm_sources/*.txt files found; run "
+            "scripts/fetch_lm_sources_extended.py --all to populate them.",
         )
 
     orders = list(cfg.zone_c.lm_scoring.ngram_orders)
