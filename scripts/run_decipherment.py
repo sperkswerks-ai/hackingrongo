@@ -25,6 +25,7 @@ cross-tablet alignment directly constrains sign→phoneme mapping.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import logging
 import math
@@ -103,6 +104,7 @@ import hydra  # noqa: E402
 import numpy as np  # noqa: E402
 from omegaconf import DictConfig  # noqa: E402
 
+from hackingrongo.data.catalog import SignCatalog  # noqa: E402
 from hackingrongo.data.corpus import load_corpus, split_by_cluster  # noqa: E402
 from hackingrongo.results.schema import (  # noqa: E402
     DecryptionHypothesis,
@@ -734,6 +736,28 @@ def _run(
         log.error("Corpus is empty — cannot run decipherment.")
         sys.exit(1)
 
+    # ── Allograph normalisation ───────────────────────────────────────────────
+    # Collapse variant glyph codes to their canonical sign id BEFORE anything
+    # downstream reads tokens, so the MCMC searches the canonical sign space
+    # (matching the Zone B IC/sensitivity path) rather than the variant-inflated
+    # raw inventory.  GlyphToken is frozen, so we rebuild each tablet's token
+    # list with dataclasses.replace.  Doing it here — once, at the single load
+    # site — guarantees the sequence builder, the LM scorer, sign_ids, and the
+    # anchor checks all see the same canonical codes (no per-call-site drift).
+    _catalog = SignCatalog.load(cfg, project_root)
+    _canon = _catalog.get_canonical_id
+    _n_raw = len({tok.barthel_code for t in all_tablets for tok in t.tokens})
+    for _t in all_tablets:
+        _t.tokens = [
+            dataclasses.replace(tok, barthel_code=_canon(tok.barthel_code))
+            for tok in _t.tokens
+        ]
+    _n_canon = len({tok.barthel_code for t in all_tablets for tok in t.tokens})
+    log.info(
+        "Allograph normalisation (get_canonical_id): sign keyspace %d → %d canonical signs.",
+        _n_raw, _n_canon,
+    )
+
     tablets_by_stratum = split_by_cluster(all_tablets)
     for stratum, tabs in sorted(tablets_by_stratum.items()):
         log.info("  Stratum '%s': %d tablet(s).", stratum, len(tabs))
@@ -749,7 +773,11 @@ def _run(
     if _FOCUS_PASSAGE:
         result = _load_focus_passage_sequences(variants_path, _FOCUS_PASSAGE)
         if result is not None:
-            corpus_sequences, sign_ids = result
+            _fp_seqs, _ = result
+            # Focus-passage sequences come from the variants JSON (raw codes),
+            # so canonicalise them to match the normalised corpus sign space.
+            corpus_sequences = [[_canon(c) for c in seq] for seq in _fp_seqs]
+            sign_ids = sorted({c for seq in corpus_sequences for c in seq})
             log.info(
                 "FOCUS MODE: MCMC restricted to passage %s "
                 "(%d sequences, %d signs).",
@@ -892,10 +920,14 @@ def _run(
 
                 # Aggregate per sign_id: mean fused-embedding norm across all tokens.
                 _fused_cpu = _fused.cpu().numpy()
+                # Embedding codes are raw barthel_codes; canonicalise to align
+                # with the now-canonical sign_ids (else the join silently misses
+                # and every weight collapses to the 1.0 default).
                 _norms: dict[str, list] = {s: [] for s in sign_ids}
                 for _i, _code in enumerate(_all_codes):
-                    if _code in _norms:
-                        _norms[_code].append(float(np.linalg.norm(_fused_cpu[_i])))
+                    _cc = _canon(_code)
+                    if _cc in _norms:
+                        _norms[_cc].append(float(np.linalg.norm(_fused_cpu[_i])))
                 _sign_ic_weights = {
                     s: float(np.mean(v)) + 1.0 if v else 1.0
                     for s, v in _norms.items()
@@ -922,8 +954,14 @@ def _run(
             _raw_entropy: dict[str, float] = json.loads(
                 _seq_entropy_path.read_text(encoding="utf-8")
             )
+            # sequential_entropy.json is keyed by raw codes; fold onto canonical
+            # signs (max over the group) so the lookup aligns with sign_ids.
+            _canon_entropy: dict[str, float] = {}
+            for _rc, _ent in _raw_entropy.items():
+                _cc = _canon(_rc)
+                _canon_entropy[_cc] = max(_canon_entropy.get(_cc, 0.0), float(_ent))
             # Shift by +1 so zero-entropy signs still get a small (non-zero) weight.
-            _sign_ic_weights = {s: _raw_entropy.get(s, 0.0) + 1.0 for s in sign_ids}
+            _sign_ic_weights = {s: _canon_entropy.get(s, 0.0) + 1.0 for s in sign_ids}
             log.info(
                 "Sequential entropy proposal weights loaded from %s (%d signs).",
                 _seq_entropy_path, len(_raw_entropy),
