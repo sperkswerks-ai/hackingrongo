@@ -378,7 +378,11 @@ def step3_analyze_embeddings(dry_run: bool = False) -> tuple[int, float]:
 
     return _run(
         "analyze_embeddings",
-        [sys.executable, "scripts/analyze_embeddings.py"],
+        # hydra.job.chdir=false keeps cwd at PROJECT_ROOT so the relative
+        # cfg.paths.embeddings_cache ("outputs/embeddings_cache.pt") resolves
+        # correctly; without it Hydra cd's into its run dir and the cache (and
+        # the analysis outputs) land/look in the wrong place.
+        [sys.executable, "scripts/analyze_embeddings.py", "hydra.job.chdir=false"],
         dry_run=dry_run,
     )
 
