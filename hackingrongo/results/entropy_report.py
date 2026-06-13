@@ -595,10 +595,18 @@ def _section_language_likeness(sensitivity: dict, zipf: dict, boust: dict) -> st
                "typical language corpora. Some scripts (e.g. Chinese characters) also show α > 1.") +
         _score("Stratum divergence (pre ≠ post contact)",
                f"Δ IC range: {_fmt(robustness.get('delta_range'),5)}; robust: {robust_val}",
-               "confirmed" if all_pos else "partial", "ok" if all_pos else "warn",
-               "Pre-contact and post-contact rongorongo have statistically distinguishable IC values "
-               "in all three dating scenarios (direction IC_pre &gt; IC_post holds throughout). "
-               "This is the headline finding: the script evolved measurably across the contact boundary.") +
+               "dating-dependent", "warn",
+               "(1) <b>Raw IC is higher pre-contact in all three dating scenarios</b> "
+               "(IC<sub>pre</sub> &gt; IC<sub>post</sub>, with non-overlapping bootstrap CIs). "
+               "(2) But that comparison is <b>confounded by sign-inventory size</b>: the pre-contact "
+               "stratum has fewer sign types, and raw IC rises mechanically as the inventory shrinks "
+               "(for a uniform distribution IC = 1/k), so a smaller inventory looks more "
+               "&ldquo;structured&rdquo; even when usage is identical. "
+               "(3) <b>Normalized IC (IC × k) reverses direction depending on dating assumptions</b> — "
+               "post-contact can show higher normalized IC when undated tablets are treated "
+               "conservatively. The honest finding: both strata are measurably structured, and the "
+               "direction of their IC difference is dating-dependent, not an intrinsic property of "
+               "the scripts.") +
         _score("Boustrophedon voice-split",
                f"CIs {'non-overlapping' if boust_split else 'overlap (marginal)'}",
                "marginal", "warn",
@@ -1249,16 +1257,21 @@ def _section_ic(sensitivity: dict) -> str:
     rob_badge = '<span class="badge badge-ok">robust</span>' if is_robust \
         else '<span class="badge badge-fail">not robust</span>'
 
-    interp_cls = "positive" if is_robust and all_pos else "neutral"
+    interp_cls = "neutral"
     if is_robust and all_pos:
         interp_body = (
-            "<b>IC<sub>pre</sub> &gt; IC<sub>post</sub> consistently across all three "
-            "tablet-dating scenarios</b>, with non-overlapping 95% bootstrap CIs in "
-            f"{'all' if robustness.get('all_ci_non_overlapping') else 'most'} scenarios. "
-            f"Relative variation in Δ IC across scenarios: {_pct(var_pct)}. "
-            "This is the headline cryptanalytic finding: pre-contact and post-contact "
-            "rongorongo have statistically distinguishable sign-frequency distributions, "
-            "consistent with a scribal tradition that evolved across the contact boundary."
+            "<b>Raw IC<sub>pre</sub> &gt; IC<sub>post</sub> across all three tablet-dating "
+            "scenarios</b>, with non-overlapping 95% bootstrap CIs in "
+            f"{'all' if robustness.get('all_ci_non_overlapping') else 'most'} scenarios "
+            f"(relative variation in Δ IC: {_pct(var_pct)}). "
+            "Read this as raw IC only: it is confounded by sign-inventory size — the pre-contact "
+            "stratum has fewer sign types, and raw IC rises mechanically as the inventory shrinks "
+            "(IC = 1/k for a uniform distribution). The normalized columns (IC × k) above are the "
+            "fuller story, and their direction is <b>dating-dependent</b> — post-contact can exceed "
+            "pre-contact when undated tablets are assigned conservatively. "
+            "The honest finding: both strata are measurably structured, and the direction of their "
+            "IC difference depends on dating assumptions rather than evidencing, on its own, a "
+            "specific evolution across the contact boundary."
         )
     else:
         interp_body = (
