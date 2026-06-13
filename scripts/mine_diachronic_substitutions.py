@@ -85,13 +85,39 @@ def _normalize_code(code: str) -> str:
 
 
 def load_contact_bias(path: Path) -> dict[str, dict[str, Any]]:
-    """Load contact_partition.json into {normalized_code: record}."""
+    """Load contact_partition.json into {normalized_code: record}.
+
+    contact_analysis.py normally writes a flat list of record dicts, but be
+    tolerant of other shapes (a dict wrapping that list under some key, or a
+    ``sign -> record`` mapping) and skip anything that isn't a record dict —
+    corroboration is advisory, so a bad/empty file must not abort the miner.
+    """
     if not path.exists():
         log.warning("contact_partition.json not found at %s — corroboration disabled.", path)
         return {}
-    records = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, list):
+        records: list[Any] = data
+    elif isinstance(data, dict):
+        # Prefer a wrapped list (e.g. {"signs": [...]}); else treat as sign->record.
+        wrapped = next((v for v in data.values() if isinstance(v, list)), None)
+        if wrapped is not None:
+            records = wrapped
+        else:
+            records = [
+                {**v, "sign": v.get("sign", k)}
+                for k, v in data.items()
+                if isinstance(v, dict)
+            ]
+    else:
+        log.warning("contact_partition.json has unexpected shape %s — corroboration disabled.",
+                    type(data).__name__)
+        return {}
+
     bias: dict[str, dict[str, Any]] = {}
     for rec in records:
+        if not isinstance(rec, dict):
+            continue
         key = _normalize_code(str(rec.get("sign", "")).replace(" ", "."))
         if key:
             bias[key] = rec
