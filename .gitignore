@@ -4,6 +4,11 @@ data/*
 
 # Packaged data bundles (36+ MB) must never land in git history
 hackingrongo_data*.zip
+# Transient transfer bundles, checkpoint archives, and per-run output snapshots
+# (created during Azure/Colab round-trips — must never land in git history)
+azure_rerun_bundle*
+hackingrongo_checkpoints*.zip
+outputs_run*/
 *.json.bak
 
 # CI fixtures are small and committed so CI runs without the full corpus.
