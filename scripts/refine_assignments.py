@@ -10,7 +10,7 @@ Design
 ------
 * P matrix [n_signs × n_phonemes]: row-stochastic via softmax over logits.
   Warm-started from the MCMC hard assignment (near-one-hot logits).
-* Calendar anchors (sign 040 = kokore, sign 152 = omotohi) plus any
+* Calendar anchors (CALENDAR_ANCHORS_HARD from run_decipherment.py) plus any
   assignment with confidence ≥ 1.0 and evidence_count ≥ 2 are frozen:
   their logit rows are clamped to a sharp one-hot and receive zero gradient.
 * Differentiable scorer uses add-α smoothed bigram log-probs:
@@ -52,13 +52,18 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCRIPTS_DIR.parent))
+sys.path.insert(0, str(_SCRIPTS_DIR))
+
 # ---------------------------------------------------------------------------
-# Hard-pinned calendar anchors (Mamari calendar evidence, see run_decipherment.py)
+# Hard-pinned calendar anchors (Mamari calendar evidence) — single source of
+# truth is run_decipherment.CALENDAR_ANCHORS_HARD; importing it here prevents
+# the refinement step from drifting off anchors that MCMC pinned as cribs.
 # ---------------------------------------------------------------------------
-ALWAYS_FROZEN: dict[str, str] = {
-    "152": "omotohi",  # full moon — score 1.0, calendar-exclusive
-    "040": "kokore",   # night count — score 0.62, calendar-dominant
-}
+from run_decipherment import CALENDAR_ANCHORS_HARD  # noqa: E402
+
+ALWAYS_FROZEN: dict[str, str] = dict(CALENDAR_ANCHORS_HARD)
 
 logging.basicConfig(
     level=logging.INFO,

@@ -199,6 +199,23 @@ class MCMCSampler:
     seed : int | None
         Global random seed for reproducibility.  Individual chain seeds
         are derived as ``seed + chain_id``.
+    tied_signs : list[list[str]] | None
+        Equivalence-tie classes: each inner list names signs constrained to
+        share a single phoneme (evidence: paradigmatic substitution in
+        parallel passages).  Overlapping classes are merged (union-find);
+        members absent from ``sign_ids`` are dropped; classes reduced to a
+        single member are discarded.  If any member is crib-pinned, the
+        pin propagates to the entire class (conflicting pins within one
+        class raise ``ValueError``).  Proposals move whole classes jointly.
+    soft_cribs : dict[str, tuple[str, float]] | None
+        Sign-specific soft priors ``{sign: (phoneme, boost)}``: when the
+        random-reassignment proposal selects ``sign``, the proposal weight
+        of ``phoneme`` is multiplied by ``boost`` (≥ 1.0).  The sign also
+        starts at ``phoneme`` in the initial map.  Unlike cribs, the chain
+        is free to move away.  Like the global ``phoneme_priors``, the
+        asymmetric-proposal Hastings correction is deliberately omitted —
+        this sampler is used as a guided stochastic search, not an exact
+        posterior integrator (established convention in this codebase).
     """
 
     def __init__(
@@ -212,6 +229,8 @@ class MCMCSampler:
         seed: int | None = None,
         cribs: dict[str, str] | None = None,
         sign_ic_weights: dict[str, float] | None = None,
+        tied_signs: list[list[str]] | None = None,
+        soft_cribs: dict[str, tuple[str, float]] | None = None,
     ) -> None:
         self._scorer = lm_scorer
         self._corpus_sequences = corpus_sequences
@@ -240,6 +259,71 @@ class MCMCSampler:
         # Crib signs are never modified by proposals and always initialised
         # to their crib phoneme.
         self._cribs: dict[str, str] = dict(cribs) if cribs else {}
+
+        # ── Equivalence-tie classes ────────────────────────────────────────
+        # Signs in one class must share a phoneme.  Resolution order matters:
+        # ties are resolved BEFORE the crib set is frozen so that a crib pin
+        # on any class member propagates to the whole class (anchor
+        # multiplication), and conflicting pins are caught at construction.
+        self._tie_classes: list[list[str]] = []
+        self._tie_class_of: dict[str, int] = {}
+        if tied_signs:
+            known = set(self._sign_ids)
+            # Union-find over signs so overlapping input classes merge.
+            parent: dict[str, str] = {}
+
+            def _find(x: str) -> str:
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+
+            for cls in tied_signs:
+                members = [s for s in dict.fromkeys(cls) if s in known]
+                for s in members:
+                    parent.setdefault(s, s)
+                for a, b in zip(members, members[1:]):
+                    ra, rb = _find(a), _find(b)
+                    if ra != rb:
+                        parent[ra] = rb
+            groups: dict[str, list[str]] = {}
+            for s in parent:
+                groups.setdefault(_find(s), []).append(s)
+            for members in groups.values():
+                if len(members) < 2:
+                    continue
+                members = sorted(members)
+                # Crib propagation: one pinned member pins the whole class.
+                pins = {self._cribs[s] for s in members if s in self._cribs}
+                if len(pins) > 1:
+                    raise ValueError(
+                        f"Equivalence-tie class {members} contains conflicting "
+                        f"crib pins {sorted(pins)} — fix the tie source or the cribs."
+                    )
+                if pins:
+                    pin = next(iter(pins))
+                    propagated = [s for s in members if s not in self._cribs]
+                    for s in members:
+                        self._cribs[s] = pin
+                    if propagated:
+                        logger.info(
+                            "MCMCSampler: crib '%s' propagated to tied sign(s) %s",
+                            pin, propagated,
+                        )
+                    continue  # fully pinned class — no tie machinery needed
+                idx = len(self._tie_classes)
+                self._tie_classes.append(members)
+                for s in members:
+                    self._tie_class_of[s] = idx
+            if self._tie_classes:
+                logger.info(
+                    "MCMCSampler: %d equivalence-tie class(es) active "
+                    "(%d signs move jointly): %s",
+                    len(self._tie_classes),
+                    sum(len(c) for c in self._tie_classes),
+                    self._tie_classes,
+                )
+
         self._crib_signs: frozenset[str] = frozenset(self._cribs)
         # Free signs are those not pinned by a crib — only these are proposed.
         self._free_sign_ids: list[str] = [
@@ -251,6 +335,40 @@ class MCMCSampler:
                 len(self._cribs),
                 self._cribs,
             )
+
+        # ── Sign-specific soft priors ──────────────────────────────────────
+        # {sign: (phoneme, boost)} — boost multiplies the phoneme's proposal
+        # weight when this sign is reassigned; the sign starts at the
+        # preferred phoneme.  Crib-pinned signs cannot also be soft cribs.
+        self._soft_cribs: dict[str, tuple[str, float]] = {}
+        if soft_cribs:
+            for sign, (ph, boost) in soft_cribs.items():
+                if sign in self._crib_signs:
+                    logger.warning(
+                        "MCMCSampler: soft crib %s → %s ignored (sign is hard-pinned).",
+                        sign, ph,
+                    )
+                    continue
+                if sign not in self._sign_ids:
+                    logger.warning(
+                        "MCMCSampler: soft crib %s → %s ignored (sign not in corpus).",
+                        sign, ph,
+                    )
+                    continue
+                if ph not in self._phoneme_inventory:
+                    raise ValueError(
+                        f"Soft crib {sign} → '{ph}': phoneme not in inventory."
+                    )
+                if boost < 1.0:
+                    raise ValueError(
+                        f"Soft crib {sign} → '{ph}': boost {boost} must be >= 1.0."
+                    )
+                self._soft_cribs[sign] = (ph, float(boost))
+            if self._soft_cribs:
+                logger.info(
+                    "MCMCSampler: %d sign-specific soft crib(s): %s",
+                    len(self._soft_cribs), self._soft_cribs,
+                )
 
         # IC-weighted proposal: signs with higher IC contribution receive
         # proportionally more proposal attempts, so their assignments are
@@ -1045,7 +1163,13 @@ class MCMCSampler:
             for new_ph in phonemes_dedup:
                 if new_ph == old_ph:
                     continue
-                delta = self._compute_delta(phoneme_seqs, {sign: (old_ph, new_ph)})
+                # Tie classes move jointly — evaluate the whole-class delta.
+                candidate = {
+                    m: (current[m], new_ph)
+                    for m in self._class_members(sign)
+                    if current[m] != new_ph
+                }
+                delta = self._compute_delta(phoneme_seqs, candidate)
                 if delta > best_delta:
                     best_delta = delta
                     best_sign = sign
@@ -1055,8 +1179,7 @@ class MCMCSampler:
         proposal = dict(current)
         changes: dict[str, tuple[str, str]] = {}
         if best_new_ph != best_old_ph:
-            proposal[best_sign] = best_new_ph
-            changes[best_sign] = (best_old_ph, best_new_ph)
+            self._apply_change(proposal, changes, best_sign, best_new_ph)
         return proposal, changes
 
     def _sample_sign(
@@ -1082,6 +1205,44 @@ class MCMCSampler:
             return [s1, s2]
         return rng.sample(sign_ids, n)
 
+    def _class_members(self, sign: str) -> list[str]:
+        """All signs tied to ``sign`` (including itself); singleton if untied."""
+        ci = self._tie_class_of.get(sign)
+        return self._tie_classes[ci] if ci is not None else [sign]
+
+    def _phoneme_weights_for(self, sign: str) -> list[float]:
+        """Proposal weights over the inventory for reassigning ``sign``.
+
+        Global ``phoneme_priors`` with the sign's soft-crib phoneme (if any,
+        from any member of its tie class) boosted multiplicatively.
+        """
+        boosts: dict[str, float] = {}
+        for member in self._class_members(sign):
+            sc = self._soft_cribs.get(member)
+            if sc is not None:
+                ph, boost = sc
+                boosts[ph] = max(boosts.get(ph, 1.0), boost)
+        if not boosts:
+            return self._phoneme_priors
+        return [
+            w * boosts.get(ph, 1.0)
+            for ph, w in zip(self._phoneme_inventory, self._phoneme_priors)
+        ]
+
+    def _apply_change(
+        self,
+        proposal: PhonemeMap,
+        changes: dict[str, tuple[str, str]],
+        sign: str,
+        new_ph: str,
+    ) -> None:
+        """Assign ``new_ph`` to ``sign`` and every sign tied to it."""
+        for member in self._class_members(sign):
+            old_ph = proposal[member]
+            proposal[member] = new_ph
+            if old_ph != new_ph:
+                changes[member] = (old_ph, new_ph)
+
     def _propose(
         self,
         current: PhonemeMap,
@@ -1093,28 +1254,34 @@ class MCMCSampler:
         Sign selection is weighted by IC contribution when ``sign_ic_weights``
         was supplied at construction — high-IC signs are proposed more often,
         focusing search budget where it matters most for LM scoring.
-        Crib signs are never included in proposals.
+        Crib signs are never included in proposals.  Equivalence-tied signs
+        change jointly: reassignments and swaps move whole tie classes.
         """
         proposal = dict(current)
         changes: dict[str, tuple[str, str]] = {}
         sign_ids = self._free_sign_ids if self._free_sign_ids else self._sign_ids
 
-        if len(sign_ids) < 2 or rng.random() < reassign_prob:
-            # Random reassignment: pick one free sign (IC-weighted), assign a random phoneme.
-            sign = self._sample_sign(sign_ids, rng, n=1)[0]
-            old_ph = proposal[sign]
-            new_ph = rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
-            proposal[sign] = new_ph
-            if old_ph != new_ph:
-                changes[sign] = (old_ph, new_ph)
-        else:
-            # Swap: pick two free signs (IC-weighted), exchange their phoneme assignments.
+        do_swap = len(sign_ids) >= 2 and rng.random() >= reassign_prob
+        if do_swap:
             s1, s2 = self._sample_sign(sign_ids, rng, n=2)
-            old_ph1, old_ph2 = proposal[s1], proposal[s2]
-            proposal[s1], proposal[s2] = old_ph2, old_ph1
-            if old_ph1 != old_ph2:
-                changes[s1] = (old_ph1, old_ph2)
-                changes[s2] = (old_ph2, old_ph1)
+            # A swap inside one tie class is a no-op; degrade to reassignment.
+            c1 = self._tie_class_of.get(s1)
+            if c1 is not None and c1 == self._tie_class_of.get(s2):
+                do_swap = False
+            else:
+                # Swap: exchange phoneme assignments class-wise.
+                old_ph1, old_ph2 = proposal[s1], proposal[s2]
+                self._apply_change(proposal, changes, s1, old_ph2)
+                self._apply_change(proposal, changes, s2, old_ph1)
+
+        if not do_swap:
+            # Random reassignment: pick one free sign (IC-weighted), assign a
+            # random phoneme (soft-crib-boosted weights for this sign).
+            sign = self._sample_sign(sign_ids, rng, n=1)[0]
+            new_ph = rng.choices(
+                self._phoneme_inventory, weights=self._phoneme_weights_for(sign)
+            )[0]
+            self._apply_change(proposal, changes, sign, new_ph)
 
         return proposal, changes
 
@@ -1123,11 +1290,22 @@ class MCMCSampler:
     # ------------------------------------------------------------------
 
     def _random_initial_map(self, rng: random.Random) -> PhonemeMap:
-        """Build a random initial phoneme map; crib signs are pre-set."""
+        """Build a random initial phoneme map.
+
+        Tie classes start coherent (one draw per class), soft-crib signs
+        start at their preferred phoneme, and crib pins override everything.
+        """
         m = {
             sign: rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
             for sign in self._sign_ids
         }
+        for members in self._tie_classes:
+            shared = rng.choices(self._phoneme_inventory, weights=self._phoneme_priors)[0]
+            for sign in members:
+                m[sign] = shared
+        for sign, (phoneme, _boost) in self._soft_cribs.items():
+            for member in self._class_members(sign):
+                m[member] = phoneme
         for sign, phoneme in self._cribs.items():
             if sign in m:
                 m[sign] = phoneme

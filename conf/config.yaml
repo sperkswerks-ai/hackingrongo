@@ -515,6 +515,23 @@ zone_c:
     lm_log_prob_weight: 1.0          # multiplicative weight on LM log-probability in acceptance ratio
     prior_weight: 0.1                # weight on structural prior in acceptance ratio
 
+    # Equivalence-tie constraints
+    # Signs that substitute for each other at the same slot of the same
+    # parallel passage (Pozdniakov paradigmatic classes; diachronic pre↔post
+    # substitutions) are constrained to share one phoneme.  Proposals move
+    # whole tie classes jointly, and crib pins propagate across a class —
+    # every anchor multiplies through its equivalence class.
+    # Sources: outputs/analysis/pozdniakov_paradigmatic.json (equivalence_classes)
+    #          outputs/analysis/diachronic_substitutions.json (tie_pairs)
+    equivalence_ties:
+      enabled: true
+      max_class_size: 6              # drop over-chained classes (union-find runaway)
+      # Drop any class claiming >1 distinct anchored phoneme (hard or soft):
+      # syntagmatic interchangeability (two lunar markers valid in one formula
+      # slot) is NOT same-phoneme evidence — e.g. the recovered class chaining
+      # 040 (kokore) with 010 (oike) must never become a tie.
+      drop_anchor_conflicts: true
+
   # ---  Beam Search Decipherment  ---
   beam_search:
     beam_width: 20                   # number of hypotheses retained at each expansion step

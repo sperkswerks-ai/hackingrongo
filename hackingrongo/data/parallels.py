@@ -457,7 +457,11 @@ def load_parallel_variants_json(
                 unknown_codes.add(code)
 
         variants: list[PassageVariant] = []
-        for v_num, v in enumerate(entry.get("variants", []), start=1):
+        # Two schemas in the wild: curated parallel_variants.json uses
+        # "variants" + "tablet_id"; cross_reference_parallels.py writes
+        # parallel_variants_auto.json with "attestations" + "tablet".
+        raw_variants = entry.get("variants") or entry.get("attestations", [])
+        for v_num, v in enumerate(raw_variants, start=1):
             if "form" not in v:
                 raise ValueError(
                     f"Variant #{v_num} of passage {passage_id!r} in {json_path} "
@@ -466,7 +470,7 @@ def load_parallel_variants_json(
             variants.append(
                 PassageVariant(
                     form=tuple(v["form"]),
-                    tablet_id=str(v.get("tablet_id", "")),
+                    tablet_id=str(v.get("tablet_id", v.get("tablet", ""))),
                     stratum=str(v.get("stratum", "")),
                     side=str(v.get("side", "")),
                     start_position=int(v.get("start_position", -1)),

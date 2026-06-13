@@ -153,7 +153,20 @@ CALENDAR_ANCHORS_SOFT: dict[str, tuple[str, float]] = {
     "074": ("ohua", 0.85),   # first-quarter anchor (Ōhua context); weight increased
     "280": ("honu", 0.85),   # dark-moon turtle metaphor; Metoro recitation
     "010": ("oike", 0.85),   # lunar marker; late Ca9 dark-moon period
+    "008": ("ma", 0.85),     # syllable-level: window-initial in the Mā- nights
+                             # (Māuri conf 0.95, Māure conf 1.0, Rākaumātohi
+                             # slot 1) of the rebuilt Mamari Ca6–Ca9 alignment.
 }
+
+# Soft anchors split by phoneme type for proposal handling:
+#   * Rare logographic phonemes (ohua, honu, oike) are essentially unique to
+#     their one sign, so a GLOBAL proposal boost (_CALENDAR_SOFT_BOOST) is safe.
+#   * Common CV syllables (ma) would flood every free sign if boosted globally,
+#     so they are applied as SIGN-SPECIFIC soft cribs (see _build_soft_cribs):
+#     the boost and the warm-start only touch the anchored sign.
+# Boost magnitude for sign-specific soft cribs, derived from alignment confidence.
+_SOFT_CRIB_BOOST_BASE: float = 1.0
+_SOFT_CRIB_BOOST_GAIN: float = 3.0   # boost = base + gain * confidence
 
 # Backward-compatible alias consumed by the mixed-model path below.
 CALENDAR_ANCHORS: dict[str, str] = dict(CALENDAR_ANCHORS_HARD)
@@ -231,25 +244,33 @@ def _check_anchors_in_corpus(
     anchors: dict[str, str],
     sign_ids: list[str],
     label: str,
+    strict: bool = False,
 ) -> None:
-    """Warn if any hard anchor sign is absent from the corpus sign_ids.
+    """Warn (or raise, when *strict*) if any hard anchor sign is absent
+    from the corpus sign_ids.
 
     A sign absent from sign_ids never enters MCMC and will be silently
     dropped even if it appears in CALENDAR_ANCHORS_HARD.  Low corpus
     frequency is the usual cause; lowering min_glyph_frequency or
     explicitly injecting the sign into sign_ids fixes it.
+
+    Smoke-test and focus-passage runs use reduced corpora where missing
+    anchor signs are expected, so they stay non-strict.  A full-scale run
+    losing a hard anchor is a silent result-poisoning bug and must abort.
     """
     missing = [(s, p) for s, p in anchors.items() if s not in sign_ids]
-    if missing:
-        log.warning(
-            "%s: %d anchor sign(s) NOT in corpus sign_ids and will be silently ignored: %s",
-            label, len(missing), missing,
-        )
-        log.warning(
-            "These signs have too few corpus occurrences to enter MCMC. "
-            "Consider lowering zone_b.sign_classifier.min_glyph_frequency or "
-            "explicitly adding them to sign_ids."
-        )
+    if not missing:
+        return
+    msg = (
+        f"{label}: {len(missing)} anchor sign(s) NOT in corpus sign_ids "
+        f"and would be silently ignored: {missing}. "
+        "These signs have too few corpus occurrences to enter MCMC. "
+        "Consider lowering zone_b.sign_classifier.min_glyph_frequency or "
+        "explicitly adding them to sign_ids."
+    )
+    if strict:
+        raise ValueError(msg)
+    log.warning(msg)
 
 
 def _build_anchored_initial_map(
@@ -265,9 +286,149 @@ def _build_anchored_initial_map(
     return m
 
 
-def _build_calendar_phoneme_priors(phoneme_inventory: list[str]) -> list[float]:
-    """Proposal weight vector with calendar phonemes boosted above baseline."""
-    return [_CALENDAR_SOFT_BOOST.get(ph, 1.0) for ph in phoneme_inventory]
+def _build_calendar_phoneme_priors(
+    phoneme_inventory: list[str],
+    default_inventory: set[str],
+) -> list[float]:
+    """Global proposal weight vector with calendar phonemes boosted.
+
+    Only rare logographic phonemes (those NOT in the default CV inventory)
+    are boosted globally — a common-syllable phoneme boosted here would pull
+    every free sign toward it.  Common-syllable soft anchors are instead
+    handled per-sign by :func:`_build_soft_cribs`.
+    """
+    return [
+        _CALENDAR_SOFT_BOOST.get(ph, 1.0) if ph not in default_inventory else 1.0
+        for ph in phoneme_inventory
+    ]
+
+
+def _build_soft_cribs(
+    sign_ids: list[str],
+    phoneme_inventory: list[str],
+    default_inventory: set[str],
+) -> dict[str, tuple[str, float]]:
+    """Build sign-specific soft cribs for common-syllable soft anchors.
+
+    Returns ``{sign: (phoneme, boost)}`` for every CALENDAR_ANCHORS_SOFT entry
+    whose phoneme is a common CV syllable (in the default inventory) and whose
+    sign is present in the corpus.  These get a per-sign proposal boost plus a
+    warm-start in the initial map, without flooding the global proposal
+    distribution.  Rare logographic soft anchors are excluded here (they ride
+    the global boost in :func:`_build_calendar_phoneme_priors`).
+    """
+    soft: dict[str, tuple[str, float]] = {}
+    sign_set = set(sign_ids)
+    for sign, (phoneme, conf) in CALENDAR_ANCHORS_SOFT.items():
+        if phoneme not in default_inventory:
+            continue  # rare logogram → global boost path
+        if sign not in sign_set or phoneme not in phoneme_inventory:
+            continue
+        boost = _SOFT_CRIB_BOOST_BASE + _SOFT_CRIB_BOOST_GAIN * conf
+        soft[sign] = (phoneme, boost)
+    return soft
+
+
+def _build_equivalence_ties(
+    cfg: "DictConfig",
+    project_root: Path,
+    sign_ids: list[str],
+    anchored_phonemes: dict[str, str] | None = None,
+) -> list[list[str]] | None:
+    """Assemble equivalence-tie classes for the MCMC sampler.
+
+    Sources (both optional; absent files are skipped):
+      * Pozdniakov paradigmatic ``equivalence_classes`` — signs that
+        substitute for each other at the same slot of the same parallel
+        passage (outputs/analysis/pozdniakov_paradigmatic.json).
+      * Diachronic ``tie_pairs`` — pre↔post-contact substitutions corroborated
+        by the contact partition (outputs/analysis/diachronic_substitutions.json).
+
+    Config gates (``cfg.zone_c.mcmc.equivalence_ties``):
+      * ``enabled``               — master switch (default off when key absent).
+      * ``max_class_size``        — drop union-find runaways above this size.
+      * ``drop_anchor_conflicts`` — drop any class whose members are pinned to
+        more than one distinct anchored phoneme.  Syntagmatic interchange
+        (two different lunar markers valid in one slot) is NOT same-phoneme
+        evidence and must not collapse two anchors together.
+
+    Returns a list of sign-code classes (each length ≥ 2) restricted to
+    ``sign_ids``, or ``None`` when ties are disabled or none survive.
+    """
+    from omegaconf import OmegaConf
+
+    et_cfg = OmegaConf.select(cfg, "zone_c.mcmc.equivalence_ties", default=None)
+    if et_cfg is None or not bool(OmegaConf.select(et_cfg, "enabled", default=False)):
+        return None
+    max_class_size = int(OmegaConf.select(et_cfg, "max_class_size", default=6))
+    drop_anchor_conflicts = bool(
+        OmegaConf.select(et_cfg, "drop_anchor_conflicts", default=True)
+    )
+    anchored = anchored_phonemes or {}
+    sign_set = set(sign_ids)
+
+    raw_classes: list[list[str]] = []
+
+    pozd_path = project_root / "outputs" / "analysis" / "pozdniakov_paradigmatic.json"
+    if pozd_path.exists():
+        try:
+            pozd = json.loads(pozd_path.read_text(encoding="utf-8"))
+            for cls in pozd.get("equivalence_classes", []):
+                raw_classes.append([str(s) for s in cls])
+            log.info(
+                "Equivalence ties: loaded %d Pozdniakov class(es) from %s.",
+                len(pozd.get("equivalence_classes", [])), pozd_path.name,
+            )
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("Could not read %s: %s", pozd_path.name, exc)
+
+    diac_path = project_root / "outputs" / "analysis" / "diachronic_substitutions.json"
+    if diac_path.exists():
+        try:
+            diac = json.loads(diac_path.read_text(encoding="utf-8"))
+            tie_pairs = diac.get("tie_pairs", [])
+            for pair in tie_pairs:
+                raw_classes.append([str(s) for s in pair])
+            log.info(
+                "Equivalence ties: loaded %d diachronic tie pair(s) from %s.",
+                len(tie_pairs), diac_path.name,
+            )
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("Could not read %s: %s", diac_path.name, exc)
+
+    classes: list[list[str]] = []
+    n_unknown_dropped = n_size_dropped = n_anchor_dropped = 0
+    for cls in raw_classes:
+        members = [s for s in dict.fromkeys(cls) if s in sign_set]
+        if len(members) < 2:
+            n_unknown_dropped += 1
+            continue
+        if len(members) > max_class_size:
+            log.info(
+                "Equivalence ties: dropping oversized class (%d > %d): %s…",
+                len(members), max_class_size, sorted(members)[:6],
+            )
+            n_size_dropped += 1
+            continue
+        if drop_anchor_conflicts:
+            pinned = {anchored[s] for s in members if s in anchored}
+            if len(pinned) > 1:
+                log.warning(
+                    "Equivalence ties: dropping class with conflicting anchor "
+                    "phonemes %s: %s",
+                    sorted(pinned), sorted(members),
+                )
+                n_anchor_dropped += 1
+                continue
+        classes.append(sorted(members))
+
+    log.info(
+        "Equivalence ties: %d class(es) active "
+        "(%d dropped: %d sub-2 / %d oversized / %d anchor-conflict).",
+        len(classes), n_unknown_dropped + n_size_dropped + n_anchor_dropped,
+        n_unknown_dropped, n_size_dropped, n_anchor_dropped,
+    )
+    return classes or None
 
 
 def _strip_non_scoring_signs(
@@ -825,9 +986,18 @@ def _run(
         phoneme_inventory,
         label="soft anchors",
     )
-    _check_anchors_in_corpus(CALENDAR_ANCHORS_HARD, sign_ids, "CALENDAR_ANCHORS_HARD")
+    _check_anchors_in_corpus(
+        CALENDAR_ANCHORS_HARD,
+        sign_ids,
+        "CALENDAR_ANCHORS_HARD",
+        strict=not _SMOKE_TEST and _FOCUS_PASSAGE is None,
+    )
 
-    calendar_priors = _build_calendar_phoneme_priors(phoneme_inventory)
+    _default_inv_set = set(_DEFAULT_PHONEME_INVENTORY)
+    calendar_priors = _build_calendar_phoneme_priors(phoneme_inventory, _default_inv_set)
+    soft_cribs = _build_soft_cribs(sign_ids, phoneme_inventory, _default_inv_set)
+    if soft_cribs:
+        log.info("Sign-specific soft cribs (common-syllable anchors): %s", soft_cribs)
 
     # ── MCMC: pass cribs directly so the sampler excludes them from proposals ─
     # Hard-anchored signs are added to _crib_signs → removed from _free_sign_ids →
@@ -849,6 +1019,24 @@ def _run(
             "Run without --smoke-test for full anchor activation.",
             sorted(skipped_anchors),
         )
+
+    # ── Equivalence-tie classes (paradigmatic + diachronic substitutions) ──────
+    # Built after the anchor map so anchor-conflict filtering can see every
+    # sign we hold a phoneme hypothesis for.  Conflict detection uses the FULL
+    # anchor intent — hard cribs PLUS all soft anchors (including rare-logogram
+    # soft anchors like 010→oike that ride the global boost rather than the
+    # sign-specific soft-crib path) — so a class chaining two differently
+    # anchored signs (e.g. 040=kokore with 010=oike) is dropped rather than
+    # collapsed onto one phoneme.
+    _anchored_phonemes = {
+        s: p for s, p in CALENDAR_ANCHORS_HARD.items() if s in sign_ids
+    }
+    for _s, (_p, _c) in CALENDAR_ANCHORS_SOFT.items():
+        if _s in sign_ids:
+            _anchored_phonemes.setdefault(_s, _p)
+    tied_signs = _build_equivalence_ties(
+        cfg, project_root, sign_ids, anchored_phonemes=_anchored_phonemes,
+    )
 
     # ── MCMC proposal weights ──────────────────────────────────────────────────
     # Priority order (highest wins):
@@ -979,6 +1167,8 @@ def _run(
         cribs=active_anchors,
         seed=int(cfg.seed),
         sign_ic_weights=_sign_ic_weights,
+        tied_signs=tied_signs,
+        soft_cribs=soft_cribs,
     )
     active_boosts = {ph: w for ph, w in _CALENDAR_SOFT_BOOST.items() if ph in phoneme_inventory}
     log.info("Calendar soft boosts: %s", active_boosts)
@@ -1121,7 +1311,9 @@ def _run(
             ph for ph in mixed_cribs.values() if ph not in _DEFAULT_PHONEME_INVENTORY
         ]
         mixed_phoneme_inventory = list(_DEFAULT_PHONEME_INVENTORY) + mixed_extras
-        mixed_priors = _build_calendar_phoneme_priors(mixed_phoneme_inventory)
+        mixed_priors = _build_calendar_phoneme_priors(
+            mixed_phoneme_inventory, set(_DEFAULT_PHONEME_INVENTORY)
+        )
         mixed_sequences = _strip_non_scoring_signs(corpus_sequences, mixed_non_scoring_signs)
 
         if not mixed_sequences:

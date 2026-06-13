@@ -265,6 +265,8 @@ def find_paradigmatic_pairs(
     passages: list[dict],
     min_attestations: int = 3,
     min_tablets: int = 2,
+    max_passage_attestations: int = 100,
+    max_passage_tablets: int = 8,
 ) -> dict:
     """Identify Pozdniakov-style paradigmatic sign pairs from parallel passages.
 
@@ -282,6 +284,16 @@ def find_paradigmatic_pairs(
         to retain a (s1, s2) pair.
     min_tablets : int
         Minimum number of distinct tablets across which the pair is attested.
+    max_passage_attestations : int
+        Passages with more attestations than this are excluded as degenerate.
+        Auto-discovered "passages" that are really corpus-wide recurring
+        formulae (e.g. P009 with 356 attestations across all 18 tablets)
+        connect nearly every frequent sign to every other, collapsing the
+        union-find into one giant class and zeroing precision/recall against
+        the Pozdniakov reference.
+    max_passage_tablets : int
+        Passages attested on more distinct tablets than this are likewise
+        excluded as degenerate corpus-wide clusters.
 
     Returns
     -------
@@ -289,14 +301,30 @@ def find_paradigmatic_pairs(
         ``pairs`` — list of {s1, s2, n_attestations, tablets, passage_ids}
         ``equivalence_classes`` — list of frozensets (union-find groups)
         ``comparison`` — recall/precision/F1 vs POZDNIAKOV_REFERENCE_CLASSES
+        ``excluded_passages`` — degenerate passages skipped by the caps
     """
     # pair_key → {attestations: int, tablets: set, passage_ids: set}
     pair_evidence: dict[tuple[str, str], dict] = {}
+    excluded_passages: list[dict] = []
 
     for passage in passages:
         passage_id = passage.get("passage_id", passage.get("id", "?"))
         attestations = passage.get("attestations", passage.get("variants", []))
         if not attestations:
+            continue
+
+        n_att = len(attestations)
+        n_tab = len({
+            str(att.get("tablet", att.get("tablet_id", "?")))
+            for att in attestations
+            if isinstance(att, dict)
+        })
+        if n_att > max_passage_attestations or n_tab > max_passage_tablets:
+            excluded_passages.append({
+                "passage_id": passage_id,
+                "n_attestations": n_att,
+                "n_tablets": n_tab,
+            })
             continue
 
         # Collect (form, tablet) tuples
@@ -390,9 +418,12 @@ def find_paradigmatic_pairs(
         "comparison": comparison,
         "n_pairs_found": len(filtered_pairs),
         "n_classes_found": len(equivalence_classes),
+        "excluded_passages": excluded_passages,
         "parameters": {
             "min_attestations": min_attestations,
             "min_tablets": min_tablets,
+            "max_passage_attestations": max_passage_attestations,
+            "max_passage_tablets": max_passage_tablets,
         },
     }
 

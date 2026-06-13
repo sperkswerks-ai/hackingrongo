@@ -174,6 +174,132 @@ class TestMCMCSampler:
 
 
 # ---------------------------------------------------------------------------
+# Equivalence ties and soft cribs
+# ---------------------------------------------------------------------------
+
+class TestEquivalenceTies:
+    @pytest.fixture()
+    def scorer(self, tmp_path):
+        lm_path = tmp_path / "lm.json"
+        _train_lm(lm_path, _CORPUS_SEQUENCES)
+        return LMScorer(_minimal_cfg(), tmp_path)
+
+    def _make_sampler(self, scorer, **kwargs):
+        from hackingrongo.zone_c.mcmc import MCMCSampler
+        corpus_seqs = [_SIGN_IDS[:5], _SIGN_IDS[5:]]
+        return MCMCSampler(
+            cfg=_minimal_cfg(),
+            lm_scorer=scorer,
+            corpus_sequences=corpus_seqs,
+            sign_ids=_SIGN_IDS,
+            seed=42,
+            **kwargs,
+        )
+
+    def test_tied_signs_share_phoneme_in_all_samples(self, scorer):
+        """Every sampled map must assign tied signs an identical phoneme."""
+        sampler = self._make_sampler(scorer, tied_signs=[["1", "2"], ["7", "9"]])
+        result = sampler.run()
+        assert result.top_samples, "MCMC produced no samples"
+        for s in result.top_samples:
+            assert s.phoneme_map["1"] == s.phoneme_map["2"]
+            assert s.phoneme_map["7"] == s.phoneme_map["9"]
+
+    def test_crib_propagates_to_tie_class(self, scorer):
+        """A crib pin on one tied member pins the whole class."""
+        sampler = self._make_sampler(
+            scorer, tied_signs=[["1", "2", "3"]], cribs={"2": "ma"},
+        )
+        assert sampler._cribs == {"1": "ma", "2": "ma", "3": "ma"}
+        result = sampler.run()
+        for s in result.top_samples:
+            assert s.phoneme_map["1"] == s.phoneme_map["2"] == s.phoneme_map["3"] == "ma"
+
+    def test_conflicting_crib_pins_raise(self, scorer):
+        with pytest.raises(ValueError, match="conflicting"):
+            self._make_sampler(
+                scorer, tied_signs=[["1", "2"]], cribs={"1": "ma", "2": "ri"},
+            )
+
+    def test_overlapping_classes_merge(self, scorer):
+        sampler = self._make_sampler(scorer, tied_signs=[["1", "2"], ["2", "3"]])
+        assert sampler._tie_classes == [["1", "2", "3"]]
+
+    def test_unknown_and_singleton_members_dropped(self, scorer):
+        """Members missing from sign_ids drop; classes shrunk below 2 vanish."""
+        sampler = self._make_sampler(
+            scorer, tied_signs=[["1", "999"], ["4", "5", "888"]],
+        )
+        assert sampler._tie_classes == [["4", "5"]]
+        assert "1" not in sampler._tie_class_of
+
+    def test_proposals_keep_classes_coherent(self, scorer):
+        """_propose never splits a tie class, including the swap branch."""
+        import random as _random
+        sampler = self._make_sampler(scorer, tied_signs=[["1", "2"], ["3", "4"]])
+        rng = _random.Random(7)
+        current = sampler._random_initial_map(rng)
+        for _ in range(200):
+            proposal, changes = sampler._propose(current, rng, reassign_prob=0.5)
+            assert proposal["1"] == proposal["2"], changes
+            assert proposal["3"] == proposal["4"], changes
+            current = proposal
+
+
+class TestSoftCribs:
+    @pytest.fixture()
+    def scorer(self, tmp_path):
+        lm_path = tmp_path / "lm.json"
+        _train_lm(lm_path, _CORPUS_SEQUENCES)
+        return LMScorer(_minimal_cfg(), tmp_path)
+
+    def _make_sampler(self, scorer, **kwargs):
+        from hackingrongo.zone_c.mcmc import MCMCSampler
+        return MCMCSampler(
+            cfg=_minimal_cfg(),
+            lm_scorer=scorer,
+            corpus_sequences=[_SIGN_IDS[:5], _SIGN_IDS[5:]],
+            sign_ids=_SIGN_IDS,
+            seed=42,
+            **kwargs,
+        )
+
+    def test_initial_map_starts_at_preferred_phoneme(self, scorer):
+        import random as _random
+        sampler = self._make_sampler(scorer, soft_cribs={"5": ("ma", 4.0)})
+        m = sampler._random_initial_map(_random.Random(3))
+        assert m["5"] == "ma"
+
+    def test_boost_biases_proposal_weights(self, scorer):
+        sampler = self._make_sampler(scorer, soft_cribs={"5": ("ma", 4.0)})
+        weights = sampler._phoneme_weights_for("5")
+        ma_idx = sampler._phoneme_inventory.index("ma")
+        baseline = sampler._phoneme_priors[ma_idx]
+        assert weights[ma_idx] == pytest.approx(4.0 * baseline)
+        # Other signs see the unmodified global priors.
+        assert sampler._phoneme_weights_for("6") is sampler._phoneme_priors
+
+    def test_soft_crib_on_hard_pinned_sign_ignored(self, scorer):
+        sampler = self._make_sampler(
+            scorer, cribs={"5": "ri"}, soft_cribs={"5": ("ma", 4.0)},
+        )
+        assert sampler._soft_cribs == {}
+
+    def test_invalid_boost_raises(self, scorer):
+        with pytest.raises(ValueError, match="boost"):
+            self._make_sampler(scorer, soft_cribs={"5": ("ma", 0.5)})
+
+    def test_unknown_phoneme_raises(self, scorer):
+        with pytest.raises(ValueError, match="inventory"):
+            self._make_sampler(scorer, soft_cribs={"5": ("zz", 2.0)})
+
+    def test_chain_can_move_off_soft_crib(self, scorer):
+        """Soft cribs bias but do not pin: the sign stays a free sign."""
+        sampler = self._make_sampler(scorer, soft_cribs={"5": ("ma", 4.0)})
+        assert "5" in sampler._free_sign_ids
+
+
+# ---------------------------------------------------------------------------
 # BeamSearchDecoder
 # ---------------------------------------------------------------------------
 

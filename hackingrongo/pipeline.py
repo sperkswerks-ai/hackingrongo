@@ -86,6 +86,7 @@ _RING_1_STEPS: frozenset[str] = frozenset({
     "4m",
     "4n",
     "4o",
+    "4s",
     "5", "5b",
 })
 
@@ -730,6 +731,35 @@ def step4o_contact_partition(dry_run: bool = False, seed: int = 20260606) -> tup
     )
 
 
+def step4s_diachronic_substitutions(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
+    """Mine pre↔post-contact sign substitution pairs from parallel passages.
+
+    Slot-aligns cross-stratum parallel passages and corroborates each
+    substitution against the contact-partition G² bias, emitting tie_pairs
+    consumed by the MCMC equivalence-tie constraint in run_decipherment.py.
+
+    Depends on step4e_parallel_passages (parallel_variants_auto.json) and
+    step4o_contact_partition (contact_partition.json); both are upstream.
+
+    Output
+    ------
+    outputs/analysis/diachronic_substitutions.json
+    """
+    parallel_auto = PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"
+    parallel_base = PROJECT_ROOT / "data" / "parallels" / "parallel_variants.json"
+    if not dry_run and not (parallel_auto.exists() or parallel_base.exists()):
+        log.warning(
+            "step4s_diachronic_substitutions: no parallel_variants*.json found — "
+            "skipping (run step4e_parallel_passages first)."
+        )
+        return 1, 0.0
+    return _run(
+        "diachronic_substitutions",
+        [sys.executable, "scripts/mine_diachronic_substitutions.py"],
+        dry_run=dry_run,
+    )
+
+
 def step4n_pozdniakov(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Pozdniakov (1996/2011) paradigmatic analysis + HTML report.
 
@@ -1301,8 +1331,9 @@ def main() -> None:
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
         ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run, seed)),
         ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run, seed)),
-        ("4n", "Pozdniakov paradigmatic analysis",      lambda: step4n_pozdniakov(dry_run, seed)),
         ("4o", "Contact partition (bipartite)",          lambda: step4o_contact_partition(dry_run, seed)),
+        ("4n", "Pozdniakov paradigmatic analysis",      lambda: step4n_pozdniakov(dry_run, seed)),
+        ("4s", "Diachronic substitution mining",         lambda: step4s_diachronic_substitutions(dry_run, seed)),
         ("5",  "Zone C decipherment",               lambda: step5_zone_c(args.smoke_test, dry_run, args.skip_fusion, seed)),
         ("5b", "Zone C HTML report",               lambda: step5b_decipherment_report(dry_run, seed)),
     ]
