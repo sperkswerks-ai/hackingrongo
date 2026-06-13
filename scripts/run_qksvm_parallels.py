@@ -83,6 +83,19 @@ MAX_SCORING_PAIRS   = 8_000   # cap for statevector scoring; ibmq/fake use 1,000
 N_FOLDS             = 5
 RANDOM_SEED         = 42
 
+# Training-kernel size control.  The QK-SVM training kernel is n×n in the number
+# of training pairs and every entry is a circuit-pair evaluation, so n MUST stay
+# small enough to run on a simulator or real backend (IBMQ).  Two guards:
+#   * Degenerate passages (corpus-wide recurring formulae like P009/P010/P012)
+#     are excluded — same filter as the Pozdniakov (4n) and diachronic (4s) steps;
+#     without it C(356,2) positive pairs from P009 alone blow n up to ~22k and
+#     the kernel becomes 22861² ≈ 5×10⁸ entries (intractable on any backend).
+#   * Positive pairs are then capped to MAX_POSITIVE_PAIRS and balanced against
+#     N_NEGATIVES, bounding the kernel to roughly (MAX_POSITIVE_PAIRS+N_NEGATIVES)².
+MAX_POSITIVE_PAIRS       = 200   # cap on label-1 training pairs (balanced vs N_NEGATIVES)
+MAX_PASSAGE_ATTESTATIONS = 100   # exclude corpus-wide degenerate passages
+MAX_PASSAGE_TABLETS      = 8
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data types
@@ -379,12 +392,24 @@ def build_positive_pairs(
     passages: list[dict],
     tablet_seqs: dict[str, list[str]],
 ) -> list[PositionPair]:
-    """One positive pair per canonical position per attestation cross-pair."""
+    """One positive pair per canonical position per attestation cross-pair.
+
+    Degenerate corpus-wide passages are skipped and the result is capped to
+    MAX_POSITIVE_PAIRS (seeded subsample) so the downstream QK-SVM kernel stays
+    a feasible size on a simulator or real quantum backend.
+    """
     positives: list[PositionPair] = []
+    n_degenerate = 0
     for p in passages:
         pid   = p["passage_id"]
         canon = p["canonical_form"]
         atts  = p["attestations"]
+        # Skip corpus-wide degenerate passages (see MAX_PASSAGE_* rationale) —
+        # they are not genuine parallels and explode the pair count combinatorially.
+        n_tablets = len({a["tablet"] for a in atts})
+        if len(atts) > MAX_PASSAGE_ATTESTATIONS or n_tablets > MAX_PASSAGE_TABLETS:
+            n_degenerate += 1
+            continue
         for i, canon_sign in enumerate(canon):
             # Collect attestations that have sign at position i
             valid_atts = [
@@ -414,6 +439,14 @@ def build_positive_pairs(
                         passage_id=pid,
                         label=1,
                     ))
+    if n_degenerate:
+        log.info("  build_positive_pairs: skipped %d degenerate passage(s)", n_degenerate)
+    if len(positives) > MAX_POSITIVE_PAIRS:
+        log.info(
+            "  build_positive_pairs: capping %d positive pairs → %d (seeded subsample)",
+            len(positives), MAX_POSITIVE_PAIRS,
+        )
+        positives = random.Random(RANDOM_SEED).sample(positives, MAX_POSITIVE_PAIRS)
     return positives
 
 
