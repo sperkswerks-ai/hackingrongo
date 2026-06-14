@@ -311,9 +311,20 @@ def _get_counts(result: Any, n: int) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _run_statevector(qc: Any, shots: int, n: int) -> dict[str, int]:
-    from qiskit.primitives import StatevectorSampler
-    result = StatevectorSampler().run([qc], shots=shots).result()
-    return _get_counts(result, n)
+    """Sample bitstring counts from the pure statevector.
+
+    Two pitfalls this avoids at n=16 (both allocate a dense 2ⁿ×2ⁿ ≈ 64 GiB
+    complex matrix and OOM):
+      * StatevectorSampler builds a density matrix for the measured circuit.
+      * Statevector on an undecomposed QAOAAnsatz matrix-exponentiates the
+        PauliEvolutionGate as a dense operator (the splu/spsolve path).
+    Decomposing first turns the evolution into elementary gates, so Statevector
+    evolves gate-by-gate on an O(2ⁿ) *vector* (~1 MB at n=16, scales to ~26 q).
+    """
+    from qiskit.quantum_info import Statevector
+    qc_decomposed = qc.remove_final_measurements(inplace=False).decompose(reps=3)
+    counts = Statevector(qc_decomposed).sample_counts(shots)
+    return {k.zfill(n): int(v) for k, v in counts.items()}
 
 
 def _make_ibmq_backend(min_qubits: int) -> Any:
