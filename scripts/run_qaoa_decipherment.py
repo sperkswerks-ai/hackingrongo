@@ -785,12 +785,19 @@ def main() -> None:
         log.info("--score-subset: %d/%d sequences contain a scoped sign.",
                  len(score_seqs), len(corpus_seqs))
     hybrid_lm_score       = _score_assignment(hybrid_map, score_seqs, lms)
+    # Apples-to-apples baseline: score the MCMC map with the SAME per-token-mean
+    # scorer.  mcmc_best_lm_score (ranking.json overall_lm_score) is a
+    # corpus-level TOTAL on a different scale, so hybrid − mcmc_best produced a
+    # meaningless Δ (e.g. +3119).  Only mcmc_baseline_lm_score is comparable.
+    mcmc_baseline_lm_score: float | None = None
     improvement_over_mcmc: float | None = None
-    if mcmc_best_lm_score is not None and math.isfinite(hybrid_lm_score):
-        improvement_over_mcmc = round(hybrid_lm_score - mcmc_best_lm_score, 6)
+    if mcmc_phone_map:
+        mcmc_baseline_lm_score = _score_assignment(mcmc_phone_map, score_seqs, lms)
+        if math.isfinite(hybrid_lm_score) and math.isfinite(mcmc_baseline_lm_score):
+            improvement_over_mcmc = round(hybrid_lm_score - mcmc_baseline_lm_score, 6)
 
     log.info("Hybrid LM score: %.4f%s", hybrid_lm_score,
-             f"  (Δ vs MCMC: {improvement_over_mcmc:+.4f})"
+             f"  (Δ vs MCMC baseline: {improvement_over_mcmc:+.4f})"
              if improvement_over_mcmc is not None else "")
 
     # ── Print summary ─────────────────────────────────────────────────────────
@@ -803,10 +810,12 @@ def main() -> None:
     print(f"\n  QAOA objective (Ising ⟨H⟩)        : {best_objective:.4f}")
     print(f"  QAOA subproblem LM score           : {sub_lm_score:.4f}")
     print(f"  Hybrid LM score (full corpus)      : {hybrid_lm_score:.4f}")
-    if mcmc_best_lm_score is not None:
+    if mcmc_baseline_lm_score is not None:
         sym = "▲" if (improvement_over_mcmc or 0) > 0 else "▼"
-        print(f"  MCMC best LM score                 : {mcmc_best_lm_score:.4f}")
-        print(f"  Δ hybrid vs MCMC                   : {(improvement_over_mcmc or 0):+.4f} {sym}")
+        print(f"  MCMC baseline (same scorer)        : {mcmc_baseline_lm_score:.4f}")
+        print(f"  Δ hybrid vs MCMC baseline          : {(improvement_over_mcmc or 0):+.4f} {sym}")
+    if mcmc_best_lm_score is not None:
+        print(f"  MCMC ranking total (diff. scale)   : {mcmc_best_lm_score:.4f}  (not comparable to the per-token scores above)")
     print()
     print("  QAOA subproblem assignments:")
     for sign, phoneme in sorted(qaoa_map.items()):
@@ -824,9 +833,16 @@ def main() -> None:
         "qaoa_objective":           round(best_objective, 6) if math.isfinite(best_objective) else None,
         "qaoa_subproblem_lm_score": round(sub_lm_score, 6) if math.isfinite(sub_lm_score) else None,
         "hybrid_lm_score":          round(hybrid_lm_score, 6) if math.isfinite(hybrid_lm_score) else None,
+        # improvement_over_mcmc compares hybrid vs mcmc_baseline_lm_score — BOTH
+        # per-token-mean scores from _score_assignment, so the Δ is meaningful.
         "improvement_over_mcmc":    improvement_over_mcmc,
-        "mcmc_best_lm_score":       (round(mcmc_best_lm_score, 6)
-                                     if mcmc_best_lm_score is not None else None),
+        "mcmc_baseline_lm_score":   (round(mcmc_baseline_lm_score, 6)
+                                     if mcmc_baseline_lm_score is not None else None),
+        # mcmc_best_lm_score is the ranking.json overall_lm_score: a corpus-level
+        # TOTAL on a different scale — NOT comparable to the per-token scores; kept
+        # for provenance only, not used in improvement_over_mcmc.
+        "mcmc_ranking_total_lm_score": (round(mcmc_best_lm_score, 6)
+                                        if mcmc_best_lm_score is not None else None),
         "qaoa_elapsed_seconds":     round(qaoa_elapsed, 2),
         "n_cobyla_evaluations":     n_evals,
         "optimal_params":           optimal_params,
