@@ -1237,9 +1237,11 @@ def _parse_args() -> argparse.Namespace:
 
 def _parse_steps(steps_str: str | None) -> set[str]:
     """Parse --steps value; return set of enabled step IDs."""
+    # NOTE: keep in sync with the step registry in main().  4n/4o/4q/4r/4s were
+    # added to the pipeline but were missing here, so --steps rejected them.
     valid = {"1", "1b", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
              "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
-             "4p", "5", "5b"}
+             "4n", "4o", "4p", "4q", "4r", "4s", "5", "5b"}
     if steps_str is None:
         return valid
     result: set[str] = set()
@@ -1248,7 +1250,7 @@ def _parse_steps(steps_str: str | None) -> set[str]:
         if part == "4":
             result.update({"4a", "4ar", "4b", "4c", "4d", "4e", "4f",
                            "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
-                           "4p"})
+                           "4n", "4o", "4p", "4q", "4r", "4s"})
         elif part == "5":
             result.update({"5", "5b"})
         elif part in valid:
