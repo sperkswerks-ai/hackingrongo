@@ -569,8 +569,11 @@ def step4h_astronomical_report(dry_run: bool = False) -> tuple[int, float]:
         [
             sys.executable, "-m",
             "hackingrongo.results.astronomical_report",
-            "--candidates", str(candidates_path),
-            "--output",     str(PROJECT_ROOT / "outputs" / "analysis" /
+            "--candidates",  str(candidates_path),
+            # --svg-catalog is required by the script; it degrades gracefully
+            # (warns, renders without glyphs) if the catalog file is absent.
+            "--svg-catalog", str(PROJECT_ROOT / "data" / "glyphs" / "svg" / "catalog.json"),
+            "--output",      str(PROJECT_ROOT / "outputs" / "analysis" /
                                 "astronomical_report.html"),
         ],
         dry_run=dry_run,
