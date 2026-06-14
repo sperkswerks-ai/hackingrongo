@@ -550,7 +550,8 @@ def step4g_astronomical(dry_run: bool = False) -> tuple[int, float]:
             "--corpus-dir",  str(PROJECT_ROOT / "data" / "corpus"),
             "--output",      str(PROJECT_ROOT / "outputs" / "zone_b" /
                                 "astronomical_candidates.json"),
-            "hydra.job.chdir=false",
+            # NOTE: astronomical_analysis uses argparse, not Hydra — passing
+            # hydra.job.chdir=false makes argparse abort ("unrecognized arguments").
         ],
         dry_run=dry_run,
     )
