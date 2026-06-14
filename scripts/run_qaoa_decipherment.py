@@ -376,7 +376,9 @@ def _run_qaoa(
 
     def _sample(params: np.ndarray) -> dict[str, int]:
         bound = (t_ansatz if t_ansatz is not None else ansatz).assign_parameters(params)
-        if backend == "statevector":
+        if backend in ("statevector", "simulator"):
+            # Run the logical ansatz on StatevectorSampler — no device transpile,
+            # no Aer dependency, no 24-qubit BasicSimulator cap.
             return _run_statevector(bound, shots, n_qubits)
         elif backend == "fake_brisbane":
             result = SamplerV2(mode=fake_backend).run([bound], shots=shots).result()
@@ -536,7 +538,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--lm-dir",       type=Path, default=None)
     p.add_argument("--init-from",    type=Path, default=None, metavar="JSON",
                    help="ranking.json from run_decipherment.py (MCMC warm-start / hybrid merge).")
-    p.add_argument("--backend", choices=["simulator", "fake_brisbane", "ibmq"],
+    p.add_argument("--backend", choices=["simulator", "statevector", "fake_brisbane", "ibmq"],
                    default="simulator")
     p.add_argument("--reps",         type=int, default=_REPS_DEFAULT,
                    help=f"QAOA depth p (default: {_REPS_DEFAULT}).")

@@ -148,15 +148,24 @@ def _unigram_score(phoneme: str, lms: list[NGramLM]) -> float:
 
 
 def _bigram_score(prev_phoneme: str, phoneme: str, lms: list[NGramLM]) -> float:
-    """Mean log₂P(phoneme | prev_phoneme) across bigram-capable LMs."""
+    """Mean log₂ score of the bigram (prev_phoneme, phoneme) across all LMs.
+
+    Uses ``score_sequence([prev, phoneme])`` rather than
+    ``log_prob((prev, phoneme))`` so the call works for any LM order — the
+    rebuilt LMs are order 3–5, and ``log_prob`` requires the tuple length to
+    equal the model order (a 2-tuple against an order-5 model raises
+    ``ValueError: ngram length 2 != model order 5``).  This mirrors the
+    order-agnostic convention already used by :func:`_unigram_score`:
+    ``score_sequence`` pads with boundary tokens and sums all covering
+    n-grams, giving a valid transition-likelihood proxy at any order.
+    """
     total = 0.0
     n = 0
     for lm in lms:
-        if lm.order >= 2:
-            lp = lm.log_prob((prev_phoneme, phoneme))
-            if math.isfinite(lp):
-                total += lp
-                n += 1
+        lp = lm.score_sequence([prev_phoneme, phoneme])
+        if math.isfinite(lp):
+            total += lp
+            n += 1
     return total / n if n > 0 else -20.0
 
 

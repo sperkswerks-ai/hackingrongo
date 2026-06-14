@@ -662,7 +662,11 @@ def step4q_qaoa_decipherment(dry_run: bool = False) -> tuple[int, float]:
         sys.executable, "scripts/run_qaoa_decipherment.py",
         "--corpus-dir", str(PROJECT_ROOT / "data" / "corpus"),
         "--lm-dir",     str(PROJECT_ROOT / "data" / "language_models"),
-        "--backend",    "fake_brisbane",
+        # statevector runs the logical 16-qubit ansatz directly.  fake_brisbane
+        # transpiles onto the full 127-qubit device, which its BasicSimulator
+        # (Aer is not installed) rejects at >24 qubits.  Real-hardware demos use
+        # --backend ibmq via a manual invocation.
+        "--backend",    "statevector",
         "--output",     str(PROJECT_ROOT / "outputs" / "decipherment" /
                             "qaoa_result.json"),
     ]
