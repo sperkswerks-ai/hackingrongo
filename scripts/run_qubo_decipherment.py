@@ -893,6 +893,12 @@ def _parse_args() -> argparse.Namespace:
                         "lambda1/lambda2 (default: 1.0; set 0 to disable bigrams).")
     p.add_argument("--max-per-phoneme", type=int, default=5, metavar="K",
                    help="Max signs per phoneme (default: 5).")
+    p.add_argument("--max-signs", type=int, default=60, metavar="N",
+                   help="Cap the QUBO to the top-N most frequent signs (default: 60). "
+                        "The full corpus (~2000 signs × 50 phonemes ≈ 100k binary "
+                        "variables) is intractable for neal or any QUBO solver; this "
+                        "restricts to the decipherment-relevant core. Crib/taxogram "
+                        "signs are always retained. Set 0 to disable the cap.")
     p.add_argument("--smoke-test",   action="store_true",
                    help="Use 10 signs × 10 phonemes, 50 reads (fast wiring check).")
     return p.parse_args()
@@ -965,6 +971,25 @@ def main() -> None:
         all_signs    = all_signs[:10]
         all_phonemes = all_phonemes[:10]
         args.num_reads = 50
+    elif args.max_signs and len(all_signs) > args.max_signs:
+        # Bound the QUBO to a tractable subproblem: the top-N most frequent signs
+        # (the decipherment-relevant core), always retaining crib/taxogram signs.
+        # The full ~2000 signs × 50 phonemes ≈ 100k binary variables is far beyond
+        # what neal or any QUBO solver handles.  Mirrors the QAOA subproblem.
+        from collections import Counter
+        _freq = Counter(code for seq in corpus_seqs for code in seq)
+        _ranked = sorted(all_signs, key=lambda s: _freq.get(s, 0), reverse=True)
+        _keep = list(_ranked[: args.max_signs])
+        _kept = set(_keep)
+        _extra_cribs = [c for c in cribs if c in _freq and c not in _kept]
+        _keep.extend(_extra_cribs)
+        log.info(
+            "Restricting QUBO to top %d signs by frequency%s — from %d total.",
+            args.max_signs,
+            f" (+{len(_extra_cribs)} crib)" if _extra_cribs else "",
+            len(all_signs),
+        )
+        all_signs = sorted(_keep)
 
     n_signs    = len(all_signs)
     n_phonemes = len(all_phonemes)
