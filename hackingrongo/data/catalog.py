@@ -227,6 +227,22 @@ class SignCatalog:
             return result if result else None
         return None
 
+    def is_known(self, code: str) -> bool:
+        """True if *code* names a known sign, tolerant of zero-padding.
+
+        The corpus and parallel passages use zero-padded Barthel codes
+        (``'003'``, ``'079'``) while some catalog sources key the numeric
+        base unpadded (``'3'``, ``'79'``).  This mirrors the leading-zero
+        fallback in :meth:`barthel_to_horley` so validation does not
+        false-warn on padded codes that are genuinely present.  (Modifier
+        case, e.g. ``'711v'`` vs ``'711V'``, is intentionally NOT folded —
+        modifier case can be semantically distinct, so those stay flagged.)
+        """
+        if code in self.signs:
+            return True
+        stripped = self._ZERO_PAD.sub("", code)
+        return stripped != code and stripped in self.signs
+
     def horley_to_barthels(self, horley_code: str) -> list[str]:
         """Return all Barthel codes that map to the given Horley code.
 

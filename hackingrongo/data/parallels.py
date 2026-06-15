@@ -315,9 +315,9 @@ def load_parallel_passages(
                 if code.strip()
             ]
 
-            # Validate codes; warn once per unknown code.
+            # Validate codes; warn once per unknown code (zero-pad tolerant).
             for code in form:
-                if code not in catalog.signs and code not in unknown_codes:
+                if not catalog.is_known(code) and code not in unknown_codes:
                     logger.warning(
                         "Row %d: Barthel code '%s' not in sign catalog.",
                         row_num,
@@ -445,9 +445,9 @@ def load_parallel_variants_json(
         canonical_form: list[str] = list(entry["canonical_form"])
         taxogram_pos = tag_taxogram_positions(canonical_form)
 
-        # Validate Barthel codes in canonical form.
+        # Validate Barthel codes in canonical form (zero-pad tolerant).
         for code in canonical_form:
-            if code not in catalog.signs and code not in unknown_codes:
+            if not catalog.is_known(code) and code not in unknown_codes:
                 logger.warning(
                     "Entry %d (%r): Barthel code '%s' not in sign catalog.",
                     entry_num,
