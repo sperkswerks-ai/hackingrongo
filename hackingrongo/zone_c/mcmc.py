@@ -441,51 +441,30 @@ class MCMCSampler:
         # Precompute sign → per-sequence position index for incremental scoring.
         self._sign_positions: dict[str, list[list[int]]] = self._build_position_index(corpus_sequences)
 
-        # ── Bigram context scoring via precomputed matrix ─────────────────────
+        # ── Bigram context scoring (computed in-process) ──────────────────────
         # When use_bigram=True (default), delta_bigram_score() is added to
-        # _compute_delta() to capture phoneme-pair context that the base
-        # LM scorer may not handle incrementally.  The matrix is loaded from
-        # the cache written by run_qubo_decipherment.py; if absent, bigram
-        # scoring is silently disabled for this run.
+        # _compute_delta() to capture phoneme-pair context that the base LM
+        # scorer may not handle incrementally.  The matrix is built here from
+        # the same LM ensemble the chain scores with, over THIS sampler's exact
+        # phoneme inventory — so it always aligns in size and ordering (no
+        # cross-process cache, which previously mismatched: a 50×50 QUBO matrix
+        # read at a wrong path against this 57-phoneme inventory).
         self._use_bigram: bool = bool(getattr(mc, "use_bigram", True))
         self._bigram_matrix: np.ndarray | None = None
         self._phoneme_to_idx: dict[str, int] = {
             p: i for i, p in enumerate(self._phoneme_inventory)
         }
         if self._use_bigram:
-            _project_root = Path(__file__).resolve().parents[3]
-            _cache_path = _project_root / "outputs" / "decipherment" / "bigram_score_matrix.npy"
-            if _cache_path.exists():
-                try:
-                    mat = np.load(_cache_path)
-                    n_ph = len(self._phoneme_inventory)
-                    if mat.shape == (n_ph, n_ph):
-                        self._bigram_matrix = mat
-                        logger.info(
-                            "MCMCSampler: bigram matrix loaded from cache (%d×%d).", n_ph, n_ph
-                        )
-                    else:
-                        logger.warning(
-                            "MCMCSampler: bigram matrix shape %s does not match "
-                            "phoneme inventory size %d — bigram scoring disabled.",
-                            mat.shape, n_ph,
-                        )
-                        self._use_bigram = False
-                except Exception as _exc:
-                    logger.warning(
-                        "MCMCSampler: could not load bigram matrix (%s) "
-                        "— bigram scoring disabled.", _exc,
-                    )
-                    self._use_bigram = False
-            else:
-                logger.info(
-                    "MCMCSampler: bigram matrix cache not found at %s "
-                    "— run run_qubo_decipherment.py first to enable bigram scoring.",
-                    _cache_path,
-                )
+            self._bigram_matrix = self._build_bigram_matrix()
+            if self._bigram_matrix is None:
                 self._use_bigram = False
         if self._use_bigram:
-            logger.info("MCMCSampler: bigram context scoring enabled.")
+            n_ph = len(self._phoneme_inventory)
+            logger.info(
+                "MCMCSampler: bigram context scoring enabled "
+                "(%d×%d matrix built in-process from the LM ensemble).",
+                n_ph, n_ph,
+            )
 
     # ------------------------------------------------------------------
     # Position index
@@ -993,6 +972,36 @@ class MCMCSampler:
             [phoneme_map.get(sign, "<UNK>") for sign in seq]
             for seq in self._corpus_sequences
         ]
+
+    def _build_bigram_matrix(self) -> "np.ndarray | None":
+        """Bigram-context score matrix over this sampler's phoneme inventory.
+
+        ``mat[i, j]`` = ensemble log-prob of the bigram
+        ``(phoneme_inventory[i], phoneme_inventory[j])`` from the same
+        :class:`LMScorer` ensemble the chain uses for n-gram scoring.  Built
+        in-process so it always matches ``self._phoneme_inventory`` exactly in
+        size and ordering — eliminating the prior cross-process cache (wrong
+        path + 50-vs-57 shape/ordering mismatch) that silently disabled bigram
+        scoring.  Cost: O(V²) score calls once at construction (V≈57 → ~3.2k
+        calls, sub-second); non-finite scores fall back to the −20.0 sentinel
+        used throughout the delta logic.
+        """
+        inv = self._phoneme_inventory
+        v = len(inv)
+        mat = np.full((v, v), -20.0, dtype=np.float64)
+        try:
+            for i, p1 in enumerate(inv):
+                for j, p2 in enumerate(inv):
+                    lp = self._scorer.score([p1, p2]).ensemble_log_prob
+                    if math.isfinite(lp):
+                        mat[i, j] = lp
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "MCMCSampler: in-process bigram matrix build failed (%s) "
+                "— bigram scoring disabled.", exc,
+            )
+            return None
+        return mat
 
     def delta_bigram_score(
         self,
