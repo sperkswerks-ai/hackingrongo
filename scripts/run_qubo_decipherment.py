@@ -1000,6 +1000,7 @@ def main() -> None:
     # ── Warm-start ────────────────────────────────────────────────────────────
     initial_state: dict[int, int] | None = None
     mcmc_best_lm_score: float | None = None
+    mcmc_phone_map: dict[str, str] = {}
 
     if args.init_from and args.init_from.exists():
         initial_state = _init_from_ranking(args.init_from, all_signs, all_phonemes)
@@ -1008,6 +1009,8 @@ def main() -> None:
             hyps = ranking.get("hypotheses", [])
             if hyps:
                 mcmc_best_lm_score = hyps[0].get("overall_lm_score")
+                mcmc_phone_map = {a["sign_code"]: a["phoneme"]
+                                  for a in hyps[0].get("assignments", [])}
         except Exception:
             pass
     elif args.init_from:
@@ -1054,6 +1057,15 @@ def main() -> None:
         lms,
         non_scoring_signs=taxogram_signs,
     )
+    # Apples-to-apples baseline: score the MCMC map with the SAME per-token
+    # scorer.  mcmc_best_lm_score (ranking.json overall_lm_score) is a
+    # corpus-level TOTAL on a different scale, so best_lm_score − mcmc_best
+    # produced a meaningless Δ (e.g. +3116).  Only this baseline is comparable.
+    mcmc_baseline_lm_score: float | None = None
+    if mcmc_phone_map:
+        mcmc_baseline_lm_score = _score_assignment(
+            mcmc_phone_map, corpus_seqs, lms, non_scoring_signs=taxogram_signs,
+        )
 
     # ── Benchmark: bigram coupling contribution ───────────────────────────────
     bigram_contribution = 0.0
@@ -1090,11 +1102,13 @@ def main() -> None:
     print(f"{'═' * 64}")
     print(f"\n  Best energy     : {best_energy:.4f}")
     print(f"  LM score (QUBO) : {best_lm_score:.4f} (mean per-token log₂p)")
-    if mcmc_best_lm_score is not None:
-        improvement = best_lm_score - mcmc_best_lm_score
+    if mcmc_baseline_lm_score is not None:
+        improvement = best_lm_score - mcmc_baseline_lm_score
         symbol = "▲" if improvement > 0 else "▼"
-        print(f"  LM score (MCMC) : {mcmc_best_lm_score:.4f}")
-        print(f"  Δ vs MCMC       : {improvement:+.4f} {symbol}")
+        print(f"  MCMC baseline (same scorer) : {mcmc_baseline_lm_score:.4f} (mean per-token log₂p)")
+        print(f"  Δ vs MCMC baseline          : {improvement:+.4f} {symbol}")
+    if mcmc_best_lm_score is not None:
+        print(f"  MCMC ranking total (diff. scale) : {mcmc_best_lm_score:.4f}  (corpus total — NOT comparable to per-token scores)")
     print(f"  Annealing time  : {elapsed:.1f} s")
     print()
     print(f"  Top 10 sign→phoneme assignments (by confidence):")
@@ -1121,12 +1135,17 @@ def main() -> None:
         "n_reads":               args.num_reads,
         "best_energy":           round(best_energy, 6),
         "best_lm_score":         round(best_lm_score, 6) if math.isfinite(best_lm_score) else None,
-        "mcmc_best_lm_score":    round(mcmc_best_lm_score, 6) if mcmc_best_lm_score is not None else None,
+        # improvement_over_mcmc compares best_lm_score vs mcmc_baseline_lm_score —
+        # BOTH per-token means from _score_assignment, so the Δ is meaningful.
+        "mcmc_baseline_lm_score": round(mcmc_baseline_lm_score, 6) if mcmc_baseline_lm_score is not None else None,
         "improvement_over_mcmc": (
-            round(best_lm_score - mcmc_best_lm_score, 6)
-            if mcmc_best_lm_score is not None and math.isfinite(best_lm_score)
+            round(best_lm_score - mcmc_baseline_lm_score, 6)
+            if mcmc_baseline_lm_score is not None and math.isfinite(best_lm_score)
             else None
         ),
+        # Corpus-level TOTAL from ranking.json — different scale, NOT comparable;
+        # kept for provenance only, not used in improvement_over_mcmc.
+        "mcmc_ranking_total_lm_score": round(mcmc_best_lm_score, 6) if mcmc_best_lm_score is not None else None,
         "cribs":                 cribs if cribs else {},
         "taxogram_signs_excluded_from_lm": sorted(taxogram_signs),
         "crib_penalty":          args.crib_penalty if cribs else None,
