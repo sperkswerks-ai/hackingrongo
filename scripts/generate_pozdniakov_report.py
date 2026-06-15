@@ -757,14 +757,23 @@ def _build_paradigmatic_html(
 </div>
 """
 
+    # Verdict must not claim "replication" when nothing replicated.  Use the
+    # word positively only when F1 > 0; F1 == 0 means zero exact class matches.
+    if f1 >= 0.5:
+        _verdict = ("Replication quality is high — the structural signal in the corpus aligns with "
+                    "Pozdniakov's manual paradigmatic analysis.")
+    elif f1 > 0.0:
+        _verdict = ("Partial replication — the automated method recovers a subset of Pozdniakov's "
+                    "classes. Additional parallel passages or looser matching parameters may improve coverage.")
+    else:
+        _verdict = ("No replication — the automated method recovered none of Pozdniakov's reference "
+                    "classes under current parameters. Near-misses exist (see Jaccard column) but no "
+                    "exact class matches.")
     verdict_text = (
         f"Paradigmatic analysis recovered {n_matched} of {n_ref} Pozdniakov (2011) "
         f"reference equivalence classes (recall {recall:.1%}, precision {precision:.1%}, "
         f"F1 {f1:.3f}). "
-        + ("Replication quality is high — the structural signal in the corpus aligns with "
-           "Pozdniakov's manual paradigmatic analysis." if f1 >= 0.5 else
-           "Partial replication — the automated method recovers a subset of Pozdniakov's "
-           "classes. Additional parallel passages or looser matching parameters may improve coverage.")
+        + _verdict
     )
 
     return (
