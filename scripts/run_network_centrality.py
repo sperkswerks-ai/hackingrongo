@@ -53,8 +53,15 @@ _OUTPUTS_DIR = PROJECT_ROOT / "outputs" / "network"
 def _load_corpus_by_stratum(
     corpus_dir: Path,
     use_barthel: bool = True,
+    canon=None,
 ) -> dict[str, Any]:
     """Return sequences grouped by stratum and per-tablet.
+
+    If *canon* is given (a ``SignCatalog.get_canonical_id`` callable) and
+    Barthel codes are in use, every code is collapsed to its canonical
+    allograph id BEFORE sequences are built — matching the Zone B IC /
+    decipherment path — so the bigram graph's nodes are canonical signs rather
+    than the variant-inflated raw inventory.
 
     Returns:
       {
@@ -63,14 +70,19 @@ def _load_corpus_by_stratum(
         "post_contact":list[list[str]],
         "per_tablet":  dict[str, list[list[str]]],
         "tablet_ids":  list[str],
+        "n_raw_signs":       int,   # distinct codes before normalisation
+        "n_canonical_signs": int,   # distinct codes after  normalisation
       }
     """
     all_seqs: list[list[str]] = []
     pre_seqs: list[list[str]] = []
     post_seqs: list[list[str]] = []
     per_tablet: dict[str, list[list[str]]] = {}
+    raw_codes: set[str] = set()
+    canon_codes: set[str] = set()
 
     key = "barthel_code" if use_barthel else "horley_code"
+    do_canon = canon is not None and use_barthel
 
     for path in sorted(corpus_dir.glob("[A-Z].json")):
         try:
@@ -79,9 +91,12 @@ def _load_corpus_by_stratum(
             continue
         tablet_id = path.stem
         glyphs    = data.get("glyphs", [])
-        seq       = [str(g[key]) for g in glyphs if g.get(key)]
-        if len(seq) < 3:
+        raw_seq   = [str(g[key]) for g in glyphs if g.get(key)]
+        if len(raw_seq) < 3:
             continue
+        raw_codes.update(raw_seq)
+        seq = [canon(c) for c in raw_seq] if do_canon else raw_seq
+        canon_codes.update(seq)
         cluster = data.get("cluster", "unknown")
 
         all_seqs.append(seq)
@@ -102,6 +117,8 @@ def _load_corpus_by_stratum(
         "post_contact": post_seqs,
         "per_tablet":   per_tablet,
         "tablet_ids":   sorted(per_tablet.keys()),
+        "n_raw_signs":       len(raw_codes),
+        "n_canonical_signs": len(canon_codes),
     }
 
 
@@ -441,6 +458,10 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--corpus-dir", type=Path, default=None)
     p.add_argument("--output-dir", type=Path, default=_OUTPUTS_DIR)
+    p.add_argument("--no-allograph-norm", action="store_true",
+                   help="Disable SignCatalog.get_canonical_id() allograph "
+                        "normalization (build the graph on the raw variant-"
+                        "inflated inventory instead of canonical signs).")
     p.add_argument("--pmi-floor",  type=float, default=0.0,
                    help="Minimum PMI to retain an edge (default: 0.0).")
     p.add_argument("--min-cofreq", type=int, default=2,
@@ -488,9 +509,35 @@ def main() -> None:
     json_out = args.output_dir / "centrality_report.json"
     html_out = args.output_dir / "centrality_report.html"
 
+    # ── Allograph canonicalizer (same normalization as the Zone B IC path) ────
+    canon = None
+    if not args.no_allograph_norm:
+        try:
+            from omegaconf import OmegaConf
+            from hackingrongo.data.catalog import SignCatalog
+            _cat_dir = PROJECT_ROOT / "data" / "catalog"
+            _cat_cfg = OmegaConf.create({"paths": {
+                "horley_encoding_json": str(_cat_dir / "horley_encoding.json"),
+                "allographs_json":      str(_cat_dir / "allographs.json"),
+                "sign_metadata_json":   str(_cat_dir / "sign_metadata.json"),
+            }})
+            canon = SignCatalog.load(_cat_cfg, PROJECT_ROOT).get_canonical_id
+        except Exception as exc:
+            log.warning("Could not load SignCatalog (%s) — falling back to RAW "
+                        "(variant-inflated) sign inventory.", exc)
+            canon = None
+
     # ── Load corpus ───────────────────────────────────────────────────────────
     log.info("Loading corpus from %s …", corpus_dir)
-    corpus = _load_corpus_by_stratum(corpus_dir)
+    corpus = _load_corpus_by_stratum(corpus_dir, canon=canon)
+    if canon is not None:
+        log.info(
+            "Allograph normalisation (get_canonical_id): %d → %d canonical signs.",
+            corpus["n_raw_signs"], corpus["n_canonical_signs"],
+        )
+    else:
+        log.info("Allograph normalisation DISABLED — using %d raw sign codes.",
+                 corpus["n_raw_signs"])
     log.info(
         "  %d tablets, %d sequences total, %d pre-contact, %d post-contact.",
         len(corpus["tablet_ids"]),
