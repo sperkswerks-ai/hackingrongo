@@ -13,6 +13,9 @@ are out of scope for the reproducible pipeline:
 Run the pipeline with `python -m hackingrongo.pipeline --ring 1` (default) for
 the classical core, or `--ring 2` to add ML and quantum steps.
 
+**CLI options:** per-flag documentation for the pipeline and every script lives
+in [`../docs/CLI.md`](../docs/CLI.md). Each script's `--help` is authoritative.
+
 ---
 
 ## Ring 1 — classical core
@@ -25,6 +28,7 @@ cryptanalysis that underpins the DEF CON presentation.
 | `run_decipherment.py` | ✓ step 5 | Zone C MCMC + beam-search decipherment |
 | `cross_reference_parallels.py` | ✓ step 4e | Algorithmic parallel passage cross-reference |
 | `generate_pozdniakov_report.py` | ✓ step 4n | Pozdniakov (1996/2011) paradigmatic analysis + HTML |
+| `mine_diachronic_substitutions.py` | ✓ step 4s | Pre↔post-contact substitution mining, corroborated against the contact partition |
 | `run_freq_match.py` | ✓ step 4l | Zipf α, Spearman ρ, χ² fit vs. each language model |
 | `segment_morphemes.py` | ✓ step 4m | Zellig Harris successor-entropy morpheme segmentation |
 | `run_zone_b.py` | — | Zone B classical analysis runner (interactive use) |
@@ -34,6 +38,7 @@ cryptanalysis that underpins the DEF CON presentation.
 | `validate_glosses_calendar.py` | — | Gloss-against-calendar validation |
 | `dating_priority.py` | — | Priority-weighted corpus dating scenarios |
 | `diagnose_anchor_conflicts.py` | — | Detect conflicting positional anchors in corpus |
+| `partition_compounds.py` | — | Recurrence partition of canonical compound codes (structural vs singleton; non-destructive) |
 | `find_deity_names.py` | — | Lexical search for deity-name candidates |
 | `gloss_hypotheses.py` | — | Generate and rank phonetic gloss hypotheses |
 | `refine_assignments.py` | — | Post-MCMC sign-phoneme assignment refinement |
