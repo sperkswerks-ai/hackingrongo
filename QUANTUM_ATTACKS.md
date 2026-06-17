@@ -158,6 +158,41 @@ cryptanalysis stack compiles and runs, and that the corpus structure
 
 ---
 
+## Quantum noise & reproducibility
+
+Hardware-executed results carry two distinct kinds of error, and only one of
+them averages away:
+
+| Source | Behaviour | Mitigation |
+|---|---|---|
+| **Shot noise** (finite sampling) | Statistical, zero-mean, shrinks as ~1/√N_shots | More shots |
+| **Hardware error** (gate ~0.5–1% per 2-qubit gate, readout ~1–3%, decoherence T1/T2 ≈ 100–300 µs) | **Systematic**, compounds with circuit depth; deep circuits decay toward the maximally-mixed distribution. **Does not** average out with more shots | Shallower circuits, dynamical decoupling, readout mitigation (M3), zero-noise extrapolation |
+
+**Calibration drift.** IBM devices are recalibrated roughly daily; between
+calibrations the qubit frequencies, gate fidelities, T1/T2, and readout
+discriminators drift. The error model is therefore **non-stationary**: the
+*same* circuit with the *same* shot count returns different results hours
+apart, or before vs. after a recalibration. This is a moving systematic bias,
+not zero-mean scatter, so it cannot be eliminated by averaging.
+
+**Consequence for this project.** A real-hardware run **cannot be a
+reproducible baseline** — the number is not re-derivable once the device drifts.
+Real-IBMQ results are therefore treated as **dated demonstrations**: report the
+backend name, calibration timestamp, job ID, and mean ± std over repeats, and
+keep them *separate* from the reproducible figures. The reproducible quantum
+artifacts come from a **seeded statevector simulator** (shot noise only, no
+device error) or a **cached** computed result.
+
+**Why `p_good` is exempt.** The quantum-hardness analysis (`measure_pgood.py`)
+is computed **classically** — it samples and LM-scores random assignments on a
+CPU, with no qubit, no shots, and no device. It is therefore fully reproducible
+and immune to noise and drift. It is a *query-complexity characterization*
+(Grover's `π/(4√p_good)` oracle-call count under an idealized oracle), not a
+hardware result — see the oracle-construction caveat above and the terminology
+note below.
+
+---
+
 ## Terminology note
 
 Throughout this project "quantum advantage" means a **proven asymptotic or
