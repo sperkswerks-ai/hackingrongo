@@ -131,13 +131,27 @@ consumed by `run_decipherment.py --use-fingerprint-roles`.
 | `--anchor-thresh F` | `0.5` | `passage_anchor_score ≥ F` → subtype `anchor`. |
 | `--corpus-dir / --variants-file / --output-dir` | data/outputs | Path overrides. |
 
+The **determinative** test keys on `direction_skew` — the signed adjacency
+asymmetry `(#succ_types − #pred_types)/sum` ∈ [−1, 1]. A determinative binds to a
+class on one side (proclitic/postclitic), so it is strongly lopsided; a phonetic
+sign is roughly symmetric. A sign is flagged taxogram when `|direction_skew|` clears
+the 90th-percentile-or-2× floor (`dirskew_hi`, ≥ 1/3) on a reliably-attested sign
+(`freq ≥ 10`). The JSON `taxogram_validation` block then marks each candidate
+**corroborated** only if it is also a compound/ligature member *or* keeps its role
+across the contact boundary — otherwise **unconfirmed** (distributional noise until
+another signal supports it).
+
 > **Caveat (carried in every output).** Roles are *distributional hypotheses*, not
-> confirmed linguistic functions. On the current corpus the classifier finds
-> **0 taxograms** (high-betweenness bridges have below-median neighbour diversity
-> after ÷-frequency normalization and near-maximal positional entropy, so they fail
-> both the determinative and particle rules) — consistent with the earlier network
-> determinative=0 result. role_stability is **0.385 over only 13 signs** (pre-contact
-> = Tablet D alone), i.e. underpowered.
+> confirmed linguistic functions. On the current corpus the directional test surfaces
+> **7 taxogram candidates** (proclitic 064/243/532/551, postclitic 098/380/604) but
+> **0 are corroborated** — none are compounds and none survive the contact boundary
+> as stable. The corroboration is currently blocked by two data limitations, not by
+> the signs being uninteresting: the diachronic test has **only Tablet D as the
+> pre-contact stratum** (role_stability 0.385 over 13 signs — underpowered), and the
+> strongly-skewed compound 009:005 sits just below the `freq ≥ 10` reliability floor.
+> The earlier `positional_entropy`/`neighbour_diversity` determinative rule returned
+> 0 because those features are anti-correlated under ÷-frequency normalization and
+> positional entropy saturates at ~1.0; `direction_skew` replaces it.
 
 ### Diachronic substitution mining — `mine_diachronic_substitutions.py` (step 4s) **(new)**
 

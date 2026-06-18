@@ -99,6 +99,32 @@ def run(corpus_dir: Path, variants_path: Path, min_freq: int, anchor_thresh: flo
     subtype_counts = Counter(fp.subtype for fp in roles.values() if fp.subtype)
     signs_sorted = sorted(roles.values(), key=lambda fp: -fp.features["betweenness"])
 
+    # ---- Validation guardrails: a taxogram is a *finding* only if corroborated
+    #      by an independent signal, not by the distributional rule alone. ----
+    stable_set = set(stability.get("stable_signs", []))
+    taxo_validation = []
+    for code, fp in sorted(roles.items()):
+        if fp.role != "taxogram":
+            continue
+        # rule is e.g. "determinative:proclitic" or "...+anchor"; take the side only.
+        side = fp.rule.split(":", 1)[1].split("+", 1)[0] if ":" in fp.rule else None
+        in_compound = (":" in code) or ("." in code) or ("-" in code)
+        diachronically_stable = code in stable_set
+        corroborated = bool(in_compound or diachronically_stable)
+        taxo_validation.append({
+            "code": code,
+            "side": side,
+            "frequency": fp.frequency,
+            "direction_skew": round(fp.features["direction_skew"], 4),
+            "in_compound": in_compound,
+            "diachronically_stable": diachronically_stable,
+            "corroborated": corroborated,
+        })
+    n_taxo = len(taxo_validation)
+    n_corrob = sum(t["corroborated"] for t in taxo_validation)
+    log.info("Taxogram candidates: %d (%d corroborated by an independent signal).",
+             n_taxo, n_corrob)
+
     return {
         "_schema_version": "1.0",
         "generated": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -109,6 +135,15 @@ def run(corpus_dir: Path, variants_path: Path, min_freq: int, anchor_thresh: flo
         "role_counts": dict(role_counts),
         "subtype_counts": dict(subtype_counts),
         "diachronic": stability,
+        "taxogram_validation": {
+            "n_taxograms": n_taxo,
+            "n_corroborated": n_corrob,
+            "note": ("A taxogram is corroborated when it is also a compound/ligature "
+                     "member OR keeps its role across the contact boundary. "
+                     "Un-corroborated candidates are distributional noise until "
+                     "another signal supports them."),
+            "candidates": taxo_validation,
+        },
         # Consumed by the Zone C MCMC loader to down-weight/exclude taxograms:
         "taxogram_signs": sorted(s for s, fp in roles.items() if fp.role == "taxogram"),
         "signs": [fp.as_dict() for fp in signs_sorted],
@@ -155,8 +190,38 @@ def render_html(r: dict[str, Any]) -> str:
             f'<tr><td class="mono">{_esc(fp["code"])}</td><td>{fp["frequency"]}</td>'
             f'<td>{_badge(fp["role"])}{sub}</td>'
             f'<td>{f["betweenness"]:.4f}</td><td>{f["neighbor_diversity"]:.2f}</td>'
+            f'<td>{f.get("direction_skew", 0.0):+.2f}</td>'
             f'<td>{f["positional_entropy"]:.2f}</td><td>{f["slot_predictability"]:.2f}</td>'
             f'<td>{f["passage_anchor_score"]:.2f}</td><td class="mono">{_esc(fp["rule"])}</td></tr>'
+        )
+
+    tv = r.get("taxogram_validation", {})
+    if tv.get("candidates"):
+        _corrob_cell = '<b style="color:#7fdf9f">corroborated</b>'
+        _uncon_cell = '<span style="color:#c8702f">unconfirmed</span>'
+        tax_rows = "".join(
+            f'<tr><td class="mono">{_esc(c["code"])}</td>'
+            f'<td>{_esc(c["side"] or "—")}</td><td>{c["frequency"]}</td>'
+            f'<td>{c["direction_skew"]:+.2f}</td>'
+            f'<td>{"✓" if c["in_compound"] else "·"}</td>'
+            f'<td>{"✓" if c["diachronically_stable"] else "·"}</td>'
+            f'<td>{_corrob_cell if c["corroborated"] else _uncon_cell}</td></tr>'
+            for c in tv["candidates"]
+        )
+        taxo_block = (
+            f'<h2>Taxogram candidates &amp; corroboration</h2>'
+            f'<div class="sub">{_esc(tv["note"])} '
+            f'{tv["n_corroborated"]}/{tv["n_taxograms"]} candidates are corroborated by an independent signal.</div>'
+            f'<table><thead><tr><th>sign</th><th>side</th><th>freq</th><th>dir-skew</th>'
+            f'<th>compound?</th><th>diachronically stable?</th><th>verdict</th></tr></thead>'
+            f'<tbody>{tax_rows}</tbody></table>'
+        )
+    else:
+        taxo_block = (
+            '<h2>Taxogram candidates</h2>'
+            '<div class="sub">No sign meets the determinative criterion '
+            '(strong directional binding on a reliably-attested sign). '
+            'A null here is itself a result: no distributionally-detectable classifiers.</div>'
         )
     changes = "".join(
         f'<tr><td class="mono">{_esc(c["code"])}</td><td>{_badge(c["pre_role"])}</td>'
@@ -185,10 +250,13 @@ P007/P012 diachronic substitutions. A role that flips is a weaker hypothesis tha
 <table><thead><tr><th>sign</th><th>pre-contact role</th><th>post-contact role</th></tr></thead>
 <tbody>{changes}</tbody></table>
 
+{taxo_block}
+
 <h2>Per-sign fingerprints (top 80 by betweenness)</h2>
 <div class="sub">Every assignment shows the feature values that produced it — auditable, not asserted.
-btwn = betweenness · ndiv = neighbour diversity · pent = positional entropy · slot = slot predictability · anc = passage-anchor.</div>
-<table><thead><tr><th>sign</th><th>freq</th><th>role</th><th>btwn</th><th>ndiv</th><th>pent</th><th>slot</th><th>anc</th><th>rule</th></tr></thead>
+btwn = betweenness · ndiv = neighbour diversity · dir = direction skew (+proclitic / −postclitic) ·
+pent = positional entropy · slot = slot predictability · anc = passage-anchor.</div>
+<table><thead><tr><th>sign</th><th>freq</th><th>role</th><th>btwn</th><th>ndiv</th><th>dir</th><th>pent</th><th>slot</th><th>anc</th><th>rule</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table>
 </body></html>"""
 

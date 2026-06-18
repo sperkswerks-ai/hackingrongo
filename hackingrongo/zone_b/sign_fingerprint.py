@@ -31,6 +31,13 @@ Feature vector (per canonical sign, frequency >= ``min_freq``)
   distribution (high = predictable grammatical slot).
 * ``passage_anchor_score`` — fraction of occurrences at parallel-passage
   boundaries (start/end of detected passages).
+* ``direction_skew`` — signed adjacency asymmetry
+  ``(#distinct_successors − #distinct_predecessors) / (sum)`` ∈ [−1, 1].
+  A determinative/classifier binds to a *class on one side* (Sumerian DINGIR
+  precedes a diverse set of god-names; Egyptian determinatives follow the word),
+  so it is strongly lopsided; a pure phonetic sign is roughly symmetric.
+  Positive ⇒ successor-diverse (**proclitic**, precedes the class);
+  negative ⇒ predecessor-diverse (**postclitic**, follows the class).
 """
 
 from __future__ import annotations
@@ -48,6 +55,15 @@ from hackingrongo.zone_b.network_analysis import build_pmi_graph, compute_centra
 from hackingrongo.zone_b.sign_classifier import SignClass
 
 _POS_BINS = 10
+
+# A determinative must be strongly lopsided regardless of corpus-relative rank:
+# |direction_skew| >= 1/3  ⟺  the diverse side has >= 2x the distinct neighbour
+# types of the other side. This absolute floor guards against a corpus where the
+# 90th-percentile skew is itself low (i.e. everything is roughly symmetric).
+_DIR_MIN_SKEW = 1.0 / 3.0
+# Minimum raw frequency for a sign to be eligible as a determinative: the
+# asymmetry estimate is unreliable on a handful of occurrences.
+_DIR_MIN_FREQ = 10
 
 
 # ---------------------------------------------------------------------------
@@ -178,18 +194,22 @@ def _neighbor_and_predecessor_stats(
     sequences: list[list[str]],
     freq: dict[str, int],
     n_distinct: int,
-) -> tuple[dict[str, float], dict[str, float]]:
-    """Return (neighbor_diversity, slot_predictability) per sign."""
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    """Return (neighbor_diversity, slot_predictability, direction_skew) per sign."""
     neighbors: dict[str, set[str]] = defaultdict(set)
     predecessors: dict[str, Counter] = defaultdict(Counter)
+    pred_types: dict[str, set[str]] = defaultdict(set)
+    succ_types: dict[str, set[str]] = defaultdict(set)
     for seq in sequences:
         for i, s in enumerate(seq):
             if i > 0:
                 neighbors[s].add(seq[i - 1])
                 neighbors[seq[i - 1]].add(s)
                 predecessors[s][seq[i - 1]] += 1
+                pred_types[s].add(seq[i - 1])
             if i < len(seq) - 1:
                 neighbors[s].add(seq[i + 1])
+                succ_types[s].add(seq[i + 1])
 
     neighbor_diversity = {
         s: len(neighbors[s]) / freq[s] if freq.get(s) else 0.0
@@ -198,16 +218,21 @@ def _neighbor_and_predecessor_stats(
     # slot_predictability = 1 - H(predecessor dist) / log2(vocab) ∈ [0, 1]
     denom = math.log2(max(n_distinct, 2))
     slot_predictability: dict[str, float] = {}
+    # direction_skew = (#succ_types - #pred_types) / (sum) ∈ [-1, 1]
+    direction_skew: dict[str, float] = {}
     for s in freq:
         preds = predecessors.get(s)
         if not preds:
             slot_predictability[s] = 0.0
-            continue
-        total = sum(preds.values())
-        probs = np.array([c / total for c in preds.values()])
-        h = -float(np.sum(probs * np.log2(probs)))
-        slot_predictability[s] = max(0.0, min(1.0, 1.0 - h / denom))
-    return neighbor_diversity, slot_predictability
+        else:
+            total = sum(preds.values())
+            probs = np.array([c / total for c in preds.values()])
+            h = -float(np.sum(probs * np.log2(probs)))
+            slot_predictability[s] = max(0.0, min(1.0, 1.0 - h / denom))
+        dp = len(pred_types.get(s, ()))
+        ds = len(succ_types.get(s, ()))
+        direction_skew[s] = (ds - dp) / (ds + dp) if (ds + dp) else 0.0
+    return neighbor_diversity, slot_predictability, direction_skew
 
 
 def compute_features(
@@ -223,7 +248,7 @@ def compute_features(
 
     sequences = _sequences_by_tablet(records)
     pos_entropy = _positional_entropy_by_line(records)
-    nd, sp = _neighbor_and_predecessor_stats(sequences, freq, len(freq))
+    nd, sp, dskew = _neighbor_and_predecessor_stats(sequences, freq, len(freq))
 
     # Centralities on the bigram-PMI graph (signs below min_cofreq → 0).
     cen = compute_centralities(build_pmi_graph(sequences, min_cofreq=min_cofreq))
@@ -246,6 +271,7 @@ def compute_features(
             "own_frequency":        freq[s] / total,
             "slot_predictability":  float(sp.get(s, 0.0)),
             "passage_anchor_score": boundary_hits.get(s, 0) / freq[s],
+            "direction_skew":       float(dskew.get(s, 0.0)),
         }
     return features, {s: freq[s] for s in core}
 
@@ -254,22 +280,35 @@ def compute_features(
 # Role assignment (interpretable thresholds, not a black box)
 # ---------------------------------------------------------------------------
 
-def _threshold_stats(features: dict[str, dict[str, float]], anchor_thresh: float) -> dict[str, float]:
+def _threshold_stats(
+    features: dict[str, dict[str, float]],
+    frequency: dict[str, int],
+    anchor_thresh: float,
+    min_dir_freq: int = _DIR_MIN_FREQ,
+) -> dict[str, float]:
     if not features:
         return {"mean_betweenness": 0.0, "median_neighbor_diversity": 0.0,
                 "median_positional_entropy": 0.0, "median_slot_predictability": 0.0,
-                "anchor_thresh": anchor_thresh, "freq_hi_pct": 0.0}
+                "freq_hi": 0.0, "dirskew_hi": _DIR_MIN_SKEW,
+                "min_dir_freq": float(min_dir_freq), "anchor_thresh": anchor_thresh}
     betw = np.array([f["betweenness"] for f in features.values()])
     nd = np.array([f["neighbor_diversity"] for f in features.values()])
     pe = np.array([f["positional_entropy"] for f in features.values()])
     sp = np.array([f["slot_predictability"] for f in features.values()])
     freqs = np.array([f["own_frequency"] for f in features.values()])
+    # Directional-skew cutoff: 90th percentile of |skew| among signs frequent
+    # enough for a reliable estimate, floored at the absolute 2x criterion.
+    reliable = [abs(f["direction_skew"]) for s, f in features.items()
+                if frequency.get(s, 0) >= min_dir_freq]
+    dirskew_q90 = float(np.quantile(reliable, 0.90)) if reliable else _DIR_MIN_SKEW
     return {
         "mean_betweenness":            float(betw.mean()),
         "median_neighbor_diversity":   float(np.median(nd)),
         "median_positional_entropy":   float(np.median(pe)),
         "median_slot_predictability":  float(np.median(sp)),
         "freq_hi":                     float(np.quantile(freqs, 0.75)),  # "high frequency"
+        "dirskew_hi":                  max(dirskew_q90, _DIR_MIN_SKEW),
+        "min_dir_freq":                float(min_dir_freq),
         "anchor_thresh":               anchor_thresh,
     }
 
@@ -284,16 +323,21 @@ def assign_roles(
     Returns ``(fingerprints_by_sign, threshold_stats)``; the thresholds are
     returned so the report can show exactly which cutoffs were applied.
     """
-    st = _threshold_stats(features, anchor_thresh)
+    st = _threshold_stats(features, frequency, anchor_thresh)
     out: dict[str, SignFingerprint] = {}
     for s, f in features.items():
         anchor = f["passage_anchor_score"] >= st["anchor_thresh"]
 
-        # 1. Determinative/classifier → TAXOGRAM
-        if (f["betweenness"] > 2.0 * st["mean_betweenness"]
-                and f["neighbor_diversity"] > st["median_neighbor_diversity"]
-                and f["own_frequency"] < st["freq_hi"]):
-            role, sub, rule = SignClass.TAXOGRAM, "determinative", "determinative"
+        # 1. Determinative/classifier → TAXOGRAM.
+        #    Signature: binds to a diverse class on ONE side (strong direction
+        #    skew), with enough attestations for the asymmetry to be reliable.
+        #    NB: this replaces the earlier positional-entropy/neighbour-diversity
+        #    rule, which was anti-correlated with betweenness under /freq
+        #    normalisation and therefore essentially could not fire.
+        if (abs(f["direction_skew"]) >= st["dirskew_hi"]
+                and frequency.get(s, 0) >= st["min_dir_freq"]):
+            side = "proclitic" if f["direction_skew"] > 0 else "postclitic"
+            role, sub, rule = SignClass.TAXOGRAM, "determinative", f"determinative:{side}"
         # 2. Grammatical particle → TAXOGRAM (subtype particle)
         elif (f["own_frequency"] >= st["freq_hi"]
                 and f["slot_predictability"] > st["median_slot_predictability"]

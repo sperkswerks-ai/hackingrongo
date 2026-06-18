@@ -24,6 +24,7 @@ from hackingrongo.zone_b.sign_fingerprint import (
 _FEATURE_KEYS = {
     "betweenness", "pagerank", "positional_entropy", "neighbor_diversity",
     "own_frequency", "slot_predictability", "passage_anchor_score",
+    "direction_skew",
 }
 
 
@@ -71,26 +72,48 @@ class TestFeatureVector:
 # (b) threshold logic on hand-built fingerprints
 # ---------------------------------------------------------------------------
 
-def _feat(betw, ndiv, freq_rel, pent, slot, anchor=0.0, prank=0.0):
+def _feat(betw, ndiv, freq_rel, pent, slot, anchor=0.0, prank=0.0, dskew=0.0):
     return {"betweenness": betw, "pagerank": prank, "positional_entropy": pent,
             "neighbor_diversity": ndiv, "own_frequency": freq_rel,
-            "slot_predictability": slot, "passage_anchor_score": anchor}
+            "slot_predictability": slot, "passage_anchor_score": anchor,
+            "direction_skew": dskew}
 
 
 class TestThresholdLogic:
     def test_determinative_maps_to_taxogram(self):
-        # One bridge-like sign vs four ordinary signs.
+        # A strongly successor-diverse sign (proclitic) vs symmetric signs.
         features = {
-            "DET": _feat(betw=1.0, ndiv=10.0, freq_rel=0.01, pent=0.5, slot=0.5),
-            "f1":  _feat(0.01, 0.5, 0.20, 0.9, 0.3),
-            "f2":  _feat(0.01, 0.5, 0.20, 0.9, 0.3),
-            "f3":  _feat(0.01, 0.5, 0.20, 0.9, 0.3),
-            "f4":  _feat(0.01, 0.5, 0.20, 0.9, 0.3),
+            "DET": _feat(betw=0.01, ndiv=0.5, freq_rel=0.01, pent=0.9, slot=0.3, dskew=0.7),
+            "f1":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.0),
+            "f2":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.0),
+            "f3":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.05),
+            "f4":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=-0.05),
         }
-        freq = {k: 50 for k in features}
+        freq = {k: 50 for k in features}  # all above the reliability floor
         roles, _ = assign_roles(features, freq)
         assert roles["DET"].role == "taxogram"
         assert roles["DET"].subtype == "determinative"
+        assert roles["DET"].rule == "determinative:proclitic"  # +skew ⇒ precedes the class
+
+    def test_postclitic_determinative_side(self):
+        # Strong predecessor diversity ⇒ negative skew ⇒ postclitic.
+        features = {
+            "DET": _feat(0.01, 0.5, 0.01, 0.9, 0.3, dskew=-0.7),
+            "f1":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.0),
+            "f2":  _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.0),
+        }
+        roles, _ = assign_roles(features, {k: 50 for k in features})
+        assert roles["DET"].role == "taxogram"
+        assert roles["DET"].rule == "determinative:postclitic"
+
+    def test_low_frequency_skew_not_determinative(self):
+        # Same strong skew but too few attestations to be reliable → not a taxogram.
+        features = {
+            "RARE": _feat(0.01, 0.5, 0.01, 0.9, 0.3, dskew=0.9),
+            "f1":   _feat(0.01, 0.5, 0.20, 0.9, 0.3, dskew=0.0),
+        }
+        roles, _ = assign_roles(features, {"RARE": 6, "f1": 50})
+        assert roles["RARE"].role != "taxogram"
 
     def test_particle_maps_to_taxogram_particle(self):
         # High frequency, high slot predictability, low positional entropy.
