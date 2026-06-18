@@ -100,6 +100,7 @@ _RING_2_STEPS: frozenset[str] = _RING_1_STEPS | frozenset({
     "4p",
     "4q",
     "4r",
+    "4t",
 })
 
 
@@ -689,6 +690,25 @@ def step4r_network_centrality(dry_run: bool = False) -> tuple[int, float]:
     return _run("network_centrality", cmd, dry_run=dry_run)
 
 
+def step4t_sign_fingerprint(dry_run: bool = False) -> tuple[int, float]:
+    """Distributional sign-role classification + diachronic validation.
+
+    Runs after 4r (it reuses the same bigram-PMI centralities). Emits
+    outputs/network/sign_fingerprint.{json,html}; headline = role_stability
+    across the pre/post-contact split.
+    """
+    return _run(
+        "sign_fingerprint",
+        [
+            sys.executable, "scripts/run_sign_fingerprint.py",
+            "--corpus-dir",    str(PROJECT_ROOT / "data" / "corpus"),
+            "--variants-file", str(PROJECT_ROOT / "data" / "parallels" / "parallel_variants_auto.json"),
+            "--output-dir",    str(PROJECT_ROOT / "outputs" / "network"),
+        ],
+        dry_run=dry_run,
+    )
+
+
 def step4l_freq_match(dry_run: bool = False, seed: int = 20260606) -> tuple[int, float]:
     """Frequency-language match: Zipf α, Spearman ρ, χ² fit vs. each LM."""
     return _run(
@@ -1244,7 +1264,7 @@ def _parse_steps(steps_str: str | None) -> set[str]:
     # added to the pipeline but were missing here, so --steps rejected them.
     valid = {"1", "1b", "2", "3", "4", "4a", "4ar", "4b", "4c", "4d", "4e", "4f",
              "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
-             "4n", "4o", "4p", "4q", "4r", "4s", "5", "5b"}
+             "4n", "4o", "4p", "4q", "4r", "4s", "4t", "5", "5b"}
     if steps_str is None:
         return valid
     result: set[str] = set()
@@ -1253,7 +1273,7 @@ def _parse_steps(steps_str: str | None) -> set[str]:
         if part == "4":
             result.update({"4a", "4ar", "4b", "4c", "4d", "4e", "4f",
                            "4g", "4h", "4i", "4i_simon", "4i_bv", "4j", "4k", "4l", "4m",
-                           "4n", "4o", "4p", "4q", "4r", "4s"})
+                           "4n", "4o", "4p", "4q", "4r", "4s", "4t"})
         elif part == "5":
             result.update({"5", "5b"})
         elif part in valid:
@@ -1338,6 +1358,7 @@ def main() -> None:
         ("4j", "QUBO quantum annealing key search",   lambda: step4j_qubo_decipherment(dry_run)),
         ("4q", "QAOA hybrid decipherment",            lambda: step4q_qaoa_decipherment(dry_run)),
         ("4r", "Network centrality (PMI bigram graph)", lambda: step4r_network_centrality(dry_run)),
+        ("4t", "Sign functional fingerprint (distributional roles)", lambda: step4t_sign_fingerprint(dry_run)),
         ("4k", "Zone C fusion layer training",        lambda: step4k_train_fusion(args.smoke_test, dry_run)),
         ("4l", "Frequency-language match",             lambda: step4l_freq_match(dry_run, seed)),
         ("4m", "Morpheme segmentation",                lambda: step4m_morpheme_seg(dry_run, seed)),

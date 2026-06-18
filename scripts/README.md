@@ -29,6 +29,7 @@ cryptanalysis that underpins the DEF CON presentation.
 | `cross_reference_parallels.py` | ✓ step 4e | Algorithmic parallel passage cross-reference |
 | `generate_pozdniakov_report.py` | ✓ step 4n | Pozdniakov (1996/2011) paradigmatic analysis + HTML |
 | `mine_diachronic_substitutions.py` | ✓ step 4s | Pre↔post-contact substitution mining, corroborated against the contact partition |
+| `run_sign_fingerprint.py` | ✓ step 4t | Distributional sign-role classification (taxogram/logogram/phonetic) + diachronic role-stability validation; feeds `run_decipherment.py --use-fingerprint-roles` |
 | `run_freq_match.py` | ✓ step 4l | Zipf α, Spearman ρ, χ² fit vs. each language model |
 | `segment_morphemes.py` | ✓ step 4m | Zellig Harris successor-entropy morpheme segmentation |
 | `run_zone_b.py` | — | Zone B classical analysis runner (interactive use) |

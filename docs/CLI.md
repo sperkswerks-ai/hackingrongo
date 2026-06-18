@@ -19,7 +19,7 @@ python -m hackingrongo.pipeline [options]
 | Flag | Default | Meaning |
 |---|---|---|
 | `--ring {1,2,all}` | `1` | Which analysis ring to run. `1` = classical core (no ML/quantum); `2` = core + ML + quantum; `all` = every step. |
-| `--steps N[,N...]` | (all in ring) | Run only the listed steps, e.g. `--steps 4j,4n,4r`. Accepts `1, 1b, 2, 3, 4a, 4ar, 4b, 4c, 4d, 4e, 4f, 4g, 4h, 4i, 4i_simon, 4i_bv, 4j, 4k, 4l, 4m, 4n, 4o, 4p, 4q, 4r, 4s, 5, 5b` (bare `4` expands to all 4-series; `5` → `5,5b`). |
+| `--steps N[,N...]` | (all in ring) | Run only the listed steps, e.g. `--steps 4j,4n,4r`. Accepts `1, 1b, 2, 3, 4a, 4ar, 4b, 4c, 4d, 4e, 4f, 4g, 4h, 4i, 4i_simon, 4i_bv, 4j, 4k, 4l, 4m, 4n, 4o, 4p, 4q, 4r, 4s, 4t, 5, 5b` (bare `4` expands to all 4-series; `5` → `5,5b`). |
 | `--skip-training` | off | Skip Step 2 (Zone A autoencoder). Requires `outputs/embeddings_cache.pt` to already exist. |
 | `--skip-fusion` | off | Step 5: ignore `fusion_layer.pt` even if present (use sequential-entropy proposal weights). |
 | `--no-cache` | off | Ignore `.done` stage checkpoints and re-run every selected step. **Needed when re-running a step that already succeeded** (otherwise it's skipped as cached). |
@@ -58,6 +58,7 @@ Hydra-configured (reads `conf/config.yaml`). Override config keys directly, e.g.
 | `--smoke-test` | Tablet-D-only fast run (anchor signs absent from the reduced corpus are skipped, non-strict). |
 | `--focus-passage=PXXX` | Restrict the run to one parallel-passage group from `parallel_variants_auto.json`. |
 | `--fusion-checkpoint=PATH` | Use a Zone C fusion checkpoint for MCMC proposal weights. |
+| `--use-fingerprint-roles` **(new)** | Opt-in. Reads `outputs/network/sign_fingerprint.json` (pipeline step 4t) and down-weights signs flagged as **taxograms** ×0.25 in MCMC proposals — an effective phonetic-keyspace shrink. Active anchors are never demoted. OFF by default, so the established baseline is unaffected. No-op (with a log line) when the file is missing or 0 taxograms are flagged. |
 
 Allograph normalization (`get_canonical_id`), the calendar anchors, equivalence
 ties (from `pozdniakov_paradigmatic.json` + `diachronic_substitutions.json`), and
@@ -113,6 +114,30 @@ capped automatically so the training kernel stays backend-feasible.
 | `--min-cofreq N` | `2` | Minimum bigram co-occurrence to retain an edge. |
 | `--pmi-floor F` | `0.0` | Minimum PMI to retain an edge. |
 | `--quantum-pagerank` / `--quantum-fiedler` | off | Quantum walk PageRank / Fiedler estimation (Qiskit). |
+
+### Sign functional fingerprint — `run_sign_fingerprint.py` (step 4t) **(new)**
+
+Distributional "service discovery": classifies each frequency-core sign's
+functional role (taxogram / logogram / phonetic, + anchor subtype) from its
+behavioural fingerprint, and validates by recomputing roles independently on the
+pre- and post-contact strata. Reuses the 4r PMI centralities, so it runs after 4r.
+Headline = **role_stability** across the contact boundary. Emits
+`outputs/network/sign_fingerprint.{json,html}`; the JSON `taxogram_signs` list is
+consumed by `run_decipherment.py --use-fingerprint-roles`.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--min-freq N` | `5` | Frequency-core threshold; signs below this are not classified. |
+| `--anchor-thresh F` | `0.5` | `passage_anchor_score ≥ F` → subtype `anchor`. |
+| `--corpus-dir / --variants-file / --output-dir` | data/outputs | Path overrides. |
+
+> **Caveat (carried in every output).** Roles are *distributional hypotheses*, not
+> confirmed linguistic functions. On the current corpus the classifier finds
+> **0 taxograms** (high-betweenness bridges have below-median neighbour diversity
+> after ÷-frequency normalization and near-maximal positional entropy, so they fail
+> both the determinative and particle rules) — consistent with the earlier network
+> determinative=0 result. role_stability is **0.385 over only 13 signs** (pre-contact
+> = Tablet D alone), i.e. underpowered.
 
 ### Diachronic substitution mining — `mine_diachronic_substitutions.py` (step 4s) **(new)**
 

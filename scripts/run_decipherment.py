@@ -60,6 +60,7 @@ _FOCUS_PASSAGE: str | None = None
 _SMOKE_TEST: bool = False
 _FUSION_CHECKPOINT: "Path | None" = None
 _SEED: int = 20260606
+_USE_FINGERPRINT_ROLES: bool = False
 
 if __name__ == "__main__":
     for _arg in list(sys.argv):
@@ -84,6 +85,13 @@ if __name__ == "__main__":
     if "--skip-fusion" in sys.argv:
         _FUSION_CHECKPOINT = None
         sys.argv.remove("--skip-fusion")
+
+    # Opt-in: down-weight signs the fingerprint step flags as taxograms (logographic/
+    # determinative behaviour) so MCMC spends fewer proposals trying phonetic values
+    # on them. OFF by default — leaves the established baseline untouched.
+    if "--use-fingerprint-roles" in sys.argv:
+        _USE_FINGERPRINT_ROLES = True
+        sys.argv.remove("--use-fingerprint-roles")
 
     _SMOKE_TEST = "--smoke-test" in sys.argv
     if _SMOKE_TEST:
@@ -1156,6 +1164,44 @@ def _run(
             )
         else:
             log.info("No fusion checkpoint or sequential_entropy.json — uniform MCMC weights.")
+
+    # Opt-in fingerprint roles: down-weight signs the 4t fingerprint step classified
+    # as taxograms. These behave logographically/determinatively, so reassigning them
+    # to phonetic values is mostly wasted MCMC effort; shrinking their proposal weight
+    # concentrates search on the genuinely phonetic core (an effective keyspace shrink).
+    if _USE_FINGERPRINT_ROLES:
+        _fp_path = project_root / "outputs" / "network" / "sign_fingerprint.json"
+        if not _fp_path.exists():
+            log.warning(
+                "--use-fingerprint-roles set but %s missing — run pipeline step 4t first; "
+                "proceeding with un-weighted proposals.", _fp_path,
+            )
+        else:
+            _fp = json.loads(_fp_path.read_text(encoding="utf-8"))
+            _taxograms = {_canon(s) for s in _fp.get("taxogram_signs", [])}
+            # Never demote an active anchor — a pinned crib outranks a distributional guess.
+            _taxograms -= set(active_anchors)
+            _hit = _taxograms & set(sign_ids)
+            if _hit and _sign_ic_weights is not None:
+                _TAXOGRAM_DOWNWEIGHT = 0.25
+                for _s in _hit:
+                    _sign_ic_weights[_s] = _sign_ic_weights.get(_s, 1.0) * _TAXOGRAM_DOWNWEIGHT
+                log.info(
+                    "Fingerprint roles applied: %d/%d signs flagged taxogram down-weighted "
+                    "×%.2f in MCMC proposals (effective phonetic keyspace %d → %d signs).",
+                    len(_hit), len(sign_ids), _TAXOGRAM_DOWNWEIGHT,
+                    len(sign_ids), len(sign_ids) - len(_hit),
+                )
+            elif _hit:
+                log.warning(
+                    "--use-fingerprint-roles: %d taxogram signs found but proposal weights "
+                    "are uniform (no IC weights) — cannot down-weight.", len(_hit),
+                )
+            else:
+                log.info(
+                    "--use-fingerprint-roles: no taxogram signs to down-weight "
+                    "(fingerprint step classified 0 taxograms in the active inventory).",
+                )
 
     sampler = MCMCSampler(
         cfg=cfg,
