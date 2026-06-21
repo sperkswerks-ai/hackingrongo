@@ -316,33 +316,49 @@ corroboration is on record.
 
 <!-- Sources read for §3.6: outputs/network/centrality_report.json (corpus_graph n_nodes 2097, n_edges 1684, density 0.000383); outputs/network/sign_fingerprint.json (824-node/2044-edge canonical graph; top-betweenness 008/001/003/076; 297 core; 7 taxogram candidates proclitic 064/243/532/551, postclitic 098/380/604; 0 corroborated; role_stability 0.385 over 13 signs) -->
 
-### 3.7 Relationship to concurrent work: sign 76
+### 3.7 Relationship to concurrent work: sign 76 as a candidate prominence marker
 
-Sign 76 is among the most-discussed glyphs in the field, and de Souza (2025),
-extending the `rongopy` line of computational decipherment, advances a specific
-functional reading for it.[^desouza] Our results bear on that discussion only
+Sign 76 is among the most-discussed glyphs in the field. Davletshin (2012)
+proposed on epigraphic grounds that it functions as a prominence marker,
+the particle *ko* preceding personal names, and de Souza (2025), in a
+statistical reassessment of texts I, Gv, and T, provides supporting evidence
+through collocation analysis. Our results bear on this proposal only
 distributionally, and we are careful not to overstate the connection. In our
 data, sign 076 is the second-ranked sign by information content (normalised
 IC 0.921, behind only sign 001) and one of the four highest-betweenness hubs in
 the bigram-PMI network (§3.6). It also appears as the post-contact member of a
 recovered diachronic substitution (678 → 076; §4.2).
 
-A high-frequency, high-centrality hub is consistent with a grammatical or
-high-load functional sign of the kind de Souza proposes, but our evidence
-characterises how 76 is used (ubiquitous, well-connected, a bridge between
-neighbourhoods) and cannot adjudicate what value it carries. In particular,
-centrality alone does not distinguish a frequent grammatical particle from a
-frequent logogram, and our own role classifier does not assign 076 a corroborated
-taxogram role. We therefore record agreement at the level of "76 is structurally
-load-bearing" and explicitly decline to confirm or contradict any specific
-phonetic or morphemic value for it.
+This is a genuine, if modest, convergence: a frequent particle such as *ko*,
+recurring before a varied class of following names, would be expected to present
+exactly as a high-frequency, high-centrality bridge sign — which is what our
+purely distributional analysis finds, with no knowledge of the *ko* hypothesis.
+We are careful about what this does and does not establish. Centrality alone does
+not distinguish a grammatical particle from a frequent logogram, and our own role
+classifier does not assign 076 a corroborated taxogram role (§3.6); so our
+evidence is consistent with the Davletshin/de Souza reading and independently
+motivated, but it does not by itself confirm the phonetic value *ko*. We record
+agreement at the level of "sign 76 behaves like a high-load grammatical
+particle," which the *ko*-prominence-marker hypothesis would predict, and leave
+the phonetic identification to the epigraphic and collocational arguments that
+can actually adjudicate it.
 
-[^desouza]: We cite de Souza (2025) as concurrent work; bibliographic details
-should be confirmed against the published version, and readers should treat our
-one-paragraph characterisation of its claim as a pointer, not a summary. Our
-distributional figures for sign 076 are grounded in the files cited below.
+A second, weaker instance of the same pattern is worth recording with its
+caveat attached. Davletshin (2012) also reads sign 532 as *ʻariki* "chief," a
+title that, like *ko*, would precede a personal name. In our blind directional
+analysis (§3.6), sign 532 is one of the seven proclitic taxogram candidates
+(frequency 21, `direction_skew` = +0.44), i.e. it binds to a more diverse class
+of *following* than preceding signs; exactly the left-bound shape a prenominal
+title would produce. We stress that this is a candidate, not a corroborated
+result: sign 532 is among the **zero** of seven taxogram candidates that survive
+our own corroboration check (it is not a compound member and its role does not
+hold across the contact boundary; §3.6), and at 21 attestations the asymmetry
+estimate is noisy. So the 532 / *ʻariki* convergence is suggestive and directly
+parallel to the sign-76 case, but it rests on a candidate our internal validation
+explicitly declined to confirm; we present it as a hypothesis worth testing
+epigraphically, not as independent support.
 
-<!-- Sources read for §3.7: quantum_results/bv/n7_ic_analysis_*.json (sign 076 ic_norm 0.921, rank 1 behind 001); outputs/network/sign_fingerprint.json (076 high betweenness); quantum_results/simon/P012_*.json (678 -> 076 substitution). de Souza (2025) is a literature pointer, not an on-disk source. -->
+<!-- Sources read for §3.7: quantum_results/bv/n7_ic_analysis_*.json (sign 076 ic_norm 0.921, rank 1 behind 001); outputs/network/sign_fingerprint.json (076 among top-4 betweenness, not a corroborated taxogram; 532 proclitic taxogram candidate, frequency 21, direction_skew +0.44, corroborated=false [not in compound, not diachronically stable], 0 of 7 candidates corroborated); quantum_results/simon/P012_*.json (678 -> 076 substitution). Davletshin (2012) and de Souza (2025) are literature pointers, not on-disk sources; the convergences are between their published claims and our distributional figures. -->
 
 ---
 
@@ -591,15 +607,16 @@ documented its nulls as carefully as its signals.
 
 - Barthel, T. S. (1958). *Grundlagen zur Entzifferung der Osterinselschrift*. Hamburg: Cram, de Gruyter.
 - Barthel, T. S. (1960). Rezente Einwirkungen auf das Runenschreiben der Osterinsulaner. *Baessler-Archiv* 8, 255–274.
-- de Souza, [author/initials to be confirmed] (2023). *rongopy* (computational decipherment toolkit; GPL-3.0).
-- de Souza, [author/initials to be confirmed] (2025). [Concurrent work on sign 76; full citation to be confirmed.]
+- Davletshin, A. (2012). Name in the Kohau Rongorongo script (Easter Island). *Journal de la Société des Océanistes* 134(1), 71–85.
+- de Souza, J. G. (2023). *rongopy* (computational decipherment toolkit). GitHub: github.com/jgregoriods/rongopy. GPL-3.0.
+- de Souza, J. G. (2025). A statistical reassessment of rongorongo texts I, Gv, and T: implications for genre and content. *Digital Scholarship in the Humanities* 40(4), 1126–1142. DOI: 10.1093/llc/fqaf101.
 - Ferrara, M., Lastilla, L., Ravanelli, N., & Valério, M. (2022). Modelling the Rongorongo tablets. *Digital Scholarship in the Humanities* 37(2), 497–526. DOI: 10.1093/llc/fqab045.
-- Ferrara, M., Lastilla, L., Ravanelli, N., & Valério, M. (2024). Radiocarbon dating of the Échancrée rongorongo tablet. [Journal/volume to be confirmed.]
+- Ferrara, S., Tassoni, L., Kromer, B., et al. (2024). The invention of writing on Rapa Nui (Easter Island): new radiocarbon dates on the Rongorongo script. *Scientific Reports* 14, 2794. DOI: 10.1038/s41598-024-53063-7.
 - Fischer, S. R. (1997). *Rongorongo: The Easter Island Script*. Oxford: Clarendon Press.
 - Horley, P. (2021). *Rongorongo*. Rapa Nui Press.
-- Kudryavtsev, B. G. (1949/1995). [Parallel-passage analysis; posthumously published notes.]
+- Kudryavtsev, B. G. (1949). Письменность острова Пасхи [The writing of Easter Island]. *Sbornik Muzeya Antropologii i Etnografii* (Collection of the Museum of Anthropology and Ethnography) 11, 175–221. (Posthumous; originator of parallel-passage analysis.)
 - Orliac, C. (2005). The woody plants of the rongorongo tablets. *Rapa Nui Journal* 19(1), 61–66.
 - Pozdniakov, K. (1996). Les bases du déchiffrement de l'écriture de l'île de Pâques. *Journal de la Société des Océanistes* 103, 289–303.
 - Pozdniakov, K., & Pozdniakov, I. (2007). Rapanui writing and the Rapanui language. *Forum for Anthropology and Culture* 3, 3–36.
 
-<!-- Some references (de Souza 2023/2025; Ferrara 2024 volume; Kudryavtsev) require the user to confirm exact bibliographic details; flagged inline. -->
+<!-- All references confirmed. Davletshin 2012 (JSO 134(1):71–85); de Souza, J. G. (2023 rongopy; 2025 DSH 40(4):1126–1142, fqaf101); Ferrara et al. 2024 (Sci Rep 14, 2794); Kudryavtsev 1949 (Sbornik MAE 11:175–221). -->

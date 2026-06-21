@@ -60,7 +60,7 @@ Data under `data/` is redistributed under original licenses. GPL-3.0 applies to 
 - Di Santo, A. & Lanziani, G. (2025). Linguistic predictability and search complexity: how linguistic redundancy constrains the landscape of classical and quantum search. arXiv:2511.13867.
 - dohliam. *Hawaiian Corpus Project*. dohliam.github.io/corpus/haw. CC0.
 - Ferrara, M., Lastilla, L., Ravanelli, N., & Valério, M. (2022). Modelling the Rongorongo tablets. *Digital Scholarship in the Humanities*, 37(2), 497–526.
-- Ferrara, M., Lastilla, L., Ravanelli, N., & Valério, M. (2024). Radiocarbon dating of the Échancrée rongorongo tablet. [Journal/volume to be confirmed.]
+- Ferrara, S., Tassoni, L., Kromer, B., et al. (2024). The invention of writing on Rapa Nui (Easter Island): new radiocarbon dates on the Rongorongo script. *Scientific Reports* 14, 2794. DOI: 10.1038/s41598-024-53063-7.
 - Fischer, S.R. (1994). Preliminary evidence for cosmogonic texts in rongorongo. *Journal of the Polynesian Society* 103(3), 303–321.
 - Fischer, S.R. (1997). *RongoRongo, the Easter Island Script*. Oxford: Clarendon Press.
 - Greenhill, S.J., Blust, R., & Gray, R.D. (2008). The Austronesian Basic Vocabulary Database. *Evolutionary Bioinformatics*, 4:271–283.
