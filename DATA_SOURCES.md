@@ -57,7 +57,6 @@ Data under `data/` is redistributed under original licenses. GPL-3.0 applies to 
 - Barthel, T.S. (1958). *Grundlagen zur Entzifferung der Osterinselschrift*. Hamburg: Cram, de Gruyter.
 - Barthel, T.S. (1960). Rezente Einwirkungen auf das Runenschreiben der Osterinsulaner. *Baessler-Archiv* 8, 255–274.
 - Blixen, O. (1979). El lenguaje secreto de la Isla de Pascua. *Moana* 2(1).
-- Di Santo, A. & Lanziani, G. (2025). Linguistic predictability and search complexity: how linguistic redundancy constrains the landscape of classical and quantum search. arXiv:2511.13867.
 - dohliam. *Hawaiian Corpus Project*. dohliam.github.io/corpus/haw. CC0.
 - Ferrara, M., Lastilla, L., Ravanelli, N., & Valério, M. (2022). Modelling the Rongorongo tablets. *Digital Scholarship in the Humanities*, 37(2), 497–526.
 - Ferrara, S., Tassoni, L., Kromer, B., et al. (2024). The invention of writing on Rapa Nui (Easter Island): new radiocarbon dates on the Rongorongo script. *Scientific Reports* 14, 2794. DOI: 10.1038/s41598-024-53063-7.
@@ -72,6 +71,5 @@ Data under `data/` is redistributed under original licenses. GPL-3.0 applies to 
 - Spaelti, P. (2012). kohaumotu.org rongorongo corpus. kohaumotu.org/Rongorongo/
 - de Souza, J.G. (2023). *rongopy*. GitHub. github.com/jgregoriods/rongopy. GPL-3.0.
 - Tregear, E. (1891). *The Maori-Polynesian Comparative Dictionary*. Wellington: Lyon and Blair.
-- Zhang, A. & Feng, X. (2022). Applications of quantum annealing in cryptography. arXiv:2211.10076.
 - POLLEX-Online (pollex.eva.mpg.de); Pasefika (pasefika.com/dictionary); Austronesian Comparative Dictionary (trussel2.com/acd)
 - Tregear's Maori-Polynesian Comparative Dictionary (1891)
