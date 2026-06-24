@@ -76,11 +76,22 @@ cmake --build corto/build -j "$JOBS"
 CORTO_LIB="$(find "$TOOLS_PREFIX/corto/build" -name 'libcorto*' | head -1 || true)"
 [ -n "$CORTO_LIB" ] && echo "  ✓ corto built: $CORTO_LIB" || { echo "  ✗ corto lib not found"; exit 1; }
 
+# --- 1.5 vcglib (mesh library Nexus is built on; header-mostly) --------------
+echo; echo "STEP 1.5 — vcglib…"
+if [ ! -d vcglib ]; then git clone --depth 1 https://github.com/cnr-isti-vclab/vcglib.git; fi
+# Configure to generate vcglibConfig.cmake (needed by Nexus find_package(vcglib)).
+cmake -S vcglib -B vcglib/build -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1 || true
+# Find the directory containing vcglibConfig.cmake (build dir, else source tree).
+VCGLIB_DIR="$(dirname "$(find "$TOOLS_PREFIX/vcglib" -name 'vcglibConfig.cmake' 2>/dev/null | head -1)" 2>/dev/null || true)"
+[ -z "$VCGLIB_DIR" ] || [ "$VCGLIB_DIR" = "." ] && VCGLIB_DIR="$TOOLS_PREFIX/vcglib"   # fallback: source root
+echo "  ✓ vcglib at: $VCGLIB_DIR"
+
 # --- 2. nexus (nxsbuild / nxsedit / nxsdump) ---------------------------------
 echo; echo "STEP 2 — nexus…"
 if [ ! -d nexus ]; then git clone --depth 1 https://github.com/cnr-isti-vclab/nexus.git; fi
 # Point nexus at the corto we just built, and at Qt6 if we located a prefix.
 NEXUS_CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCORTO_ROOT="$TOOLS_PREFIX/corto" -DBUILD_NXS_VIEW=OFF)
+NEXUS_CMAKE_ARGS+=(-Dvcglib_DIR="$VCGLIB_DIR" -DVCGDIR="$TOOLS_PREFIX/vcglib")
 [ -n "$QT6_PREFIX" ] && NEXUS_CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$QT6_PREFIX")
 cmake -S nexus -B nexus/build "${NEXUS_CMAKE_ARGS[@]}" \
   || cmake -S nexus -B nexus/build -DCMAKE_BUILD_TYPE=Release ${QT6_PREFIX:+-DCMAKE_PREFIX_PATH="$QT6_PREFIX"}
