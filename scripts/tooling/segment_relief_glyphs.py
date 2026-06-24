@@ -151,7 +151,7 @@ def split_to_count(profile: np.ndarray, target: int, lo_frac: float = 0.15) -> l
 
 def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Path,
             pad: int = 6, mass_sigma_frac: float = 0.004, edge_trim_frac: float = 0.02,
-            diagnose: bool = False):
+            diagnose: bool = False, flip_lines: bool = False):
     gray = np.asarray(Image.open(relief_path).convert("L"))
     H, W = gray.shape
     lines = corpus_lines(tablet, side_letters)
@@ -206,10 +206,18 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
     font = _load_font(30)
     manifest = []
     n_crops = 0
-    for (line_id, glyphs), (y0, y1) in zip(lines.items(), bands):
+    # Pair corpus lines with bands. Rongorongo is read bottom-to-top, so corpus
+    # line 1 may be the BOTTOM band — --flip-lines assigns it there.
+    band_seq = list(bands[::-1]) if flip_lines else list(bands)
+    for (line_id, glyphs), (y0, y1) in zip(lines.items(), band_seq):
         band = mass[y0:y1, :]
         col_profile = band.sum(axis=0)
-        spans = split_to_count(col_profile, target=len(glyphs))
+        # trim to the x-extent that actually has tablet content in THIS line, so
+        # cells stop floating in the empty corners of an irregular tablet
+        nz = np.where(col_profile > col_profile.max() * 0.05)[0] if col_profile.max() > 0 else np.array([])
+        bx0, bx1 = (int(nz.min()), int(nz.max()) + 1) if nz.size else (0, Wt)
+        sub_spans = split_to_count(col_profile[bx0:bx1], target=len(glyphs))
+        spans = [(s + bx0, e + bx0) for s, e in sub_spans]
         for g, (x0, x1) in zip(glyphs, spans):
             # tighten the grid cell to the actual glyph content (bright pixels),
             # so boxes hug glyphs instead of forming a rigid rectangle and stop
@@ -256,10 +264,12 @@ def main() -> None:
                     help="fraction of tablet size to erode inward, to suppress the bright rim")
     ap.add_argument("--diagnose", action="store_true",
                     help="print image stats + write _mass_preview.png, write NO crops")
+    ap.add_argument("--flip-lines", action="store_true",
+                    help="assign corpus line 1 to the BOTTOM band (rongorongo reads bottom-to-top)")
     args = ap.parse_args()
     segment(args.relief, args.tablet.upper(),
             [s.strip().lower() for s in args.side_letters.split(",")], args.out_dir, args.pad,
-            edge_trim_frac=args.edge_trim_frac, diagnose=args.diagnose)
+            edge_trim_frac=args.edge_trim_frac, diagnose=args.diagnose, flip_lines=args.flip_lines)
 
 
 if __name__ == "__main__":
