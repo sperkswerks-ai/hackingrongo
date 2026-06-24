@@ -14,6 +14,22 @@ Source: Ferrara et al. (2022). *Digital Scholarship in the Humanities*, 37(2). D
 `data/parallels/horley_parallels.csv` — 146 passage groups.
 Derived from de Souza (2023) rongopy (GPL-3.0); original catalogue: Horley, P. (2021). *Rongorongo*. Rapa Nui Press.
 
+### 3D Tablet Models (INSCRIBE)
+
+`data/glyphs/3d_models/*.nxz` — high-resolution photogrammetric 3D meshes of
+Tablets B (Aruku Kurenga), C (Mamari), and D (Échancrée), in CNR-ISTI VCLab
+Nexus multiresolution format.
+**Source: the INSCRIBE Project (inscribercproject.com).** We gratefully
+acknowledge INSCRIBE for making these 3D tablet models openly accessible — they
+are the basis of this project's 3D glyph-geometry analysis, and to our knowledge
+this is the first computational study to work from the tablet *geometry* rather
+than 2D facsimiles. Use here is for non-commercial academic research with
+attribution, per INSCRIBE's terms. Please cite the INSCRIBE Project when using
+these models.
+
+> Big shout-out to the INSCRIBE Project — without their open 3D scans the
+> high-definition glyph work would not be possible.
+
 ### Language Model Corpora
 
 | Source | File | Notes |
@@ -64,6 +80,8 @@ Data under `data/` is redistributed under original licenses. GPL-3.0 applies to 
 - Fischer, S.R. (1997). *RongoRongo, the Easter Island Script*. Oxford: Clarendon Press.
 - Greenhill, S.J., Blust, R., & Gray, R.D. (2008). The Austronesian Basic Vocabulary Database. *Evolutionary Bioinformatics*, 4:271–283.
 - Horley, P. (2021). *Rongorongo*. Rapa Nui Press.
+- INSCRIBE Project. 3D models of the Rongorongo tablets (Aruku Kurenga / B, Mamari / C, Échancrée / D). inscribercproject.com. Non-commercial academic use with attribution.
+- Ponchio, F. & others — Nexus (multiresolution mesh library/format). CNR-ISTI Visual Computing Lab. github.com/cnr-isti-vclab/nexus.
 - Key, M.R. & Comrie, B. (eds.) (2015). *The Intercontinental Dictionary Series*. Leipzig: Max Planck Institute for Evolutionary Anthropology.
 - Kieviet, P. (2017). *A Grammar of Rapa Nui*. Berlin: Language Science Press.
 - Orliac, C. (2005). The woody plants of the rongorongo tablets. *Rapa Nui Journal* 19(1), 61–66.
