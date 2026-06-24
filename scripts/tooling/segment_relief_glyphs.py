@@ -77,17 +77,26 @@ def tablet_bbox(gray: np.ndarray, bg_thresh: int = 8) -> tuple[int, int, int, in
 
 
 def foreground_mass(gray: np.ndarray, sigma: float, edge_trim: int = 0) -> np.ndarray:
-    """Glyph-mass map: deviation of relief from its surface mid-tone, blurred.
-    `edge_trim` zeros a margin so the bright tablet RIM doesn't dominate the
-    projection profiles (the rim is a huge step vs the ~2-grey-level glyphs)."""
+    """Glyph-mass map from EDGE ENERGY (gradient magnitude), blurred.
+
+    Brightness-deviation fails on this relief because it's blown out to a bimodal
+    0/255 image (median 255), so 'deviation from mid-tone' highlights the wrong
+    pixels. Edge energy is polarity- and saturation-independent: glyph STROKES
+    have many edges; the smooth surface (white, grey, or black) has none. This is
+    what actually localises carvings across the 14 rows.
+
+    `edge_trim` erodes the tablet rim so its huge step edge doesn't dominate.
+    """
     g = gray.astype(np.float32) / 255.0
     fg = gray > 8
-    med = float(np.median(g[fg])) if fg.any() else 0.5
-    mass = np.abs(g - med)
-    mass[~fg] = 0.0                              # ignore background
-    if edge_trim > 0:                           # suppress the tablet rim
-        from scipy.ndimage import binary_erosion
+    gx = np.zeros_like(g); gy = np.zeros_like(g)
+    gx[:, 1:] = np.abs(np.diff(g, axis=1))
+    gy[1:, :] = np.abs(np.diff(g, axis=0))
+    mass = np.hypot(gx, gy)
+    mass[~fg] = 0.0
+    if edge_trim > 0:                           # suppress the tablet rim's step edge
         try:
+            from scipy.ndimage import binary_erosion
             core = binary_erosion(fg, iterations=edge_trim)
             mass[~core] = 0.0
         except Exception:
