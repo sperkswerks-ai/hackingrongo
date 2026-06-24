@@ -88,7 +88,20 @@ echo "  ✓ vcglib at: $VCGLIB_DIR"
 
 # --- 2. nexus (nxsbuild / nxsedit / nxsdump) ---------------------------------
 echo; echo "STEP 2 — nexus…"
-if [ ! -d nexus ]; then git clone --depth 1 https://github.com/cnr-isti-vclab/nexus.git; fi
+# Nexus bundles corto as a submodule at src/corto and does add_subdirectory on it,
+# so it MUST be cloned with submodules (the standalone corto build above is unused).
+if [ ! -d nexus ]; then
+  git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/cnr-isti-vclab/nexus.git
+else
+  ( cd nexus && git submodule update --init --recursive --depth 1 ) || true
+fi
+# Belt-and-suspenders: if the corto submodule is still empty, force-init it.
+if [ ! -f nexus/src/corto/CMakeLists.txt ]; then
+  echo "  src/corto empty — initialising submodules…"
+  ( cd nexus && git submodule update --init --recursive )
+fi
+[ -f nexus/src/corto/CMakeLists.txt ] && echo "  ✓ src/corto populated" \
+  || { echo "  ✗ src/corto still empty — submodule fetch failed"; exit 1; }
 # Point nexus at the corto we just built, and at Qt6 if we located a prefix.
 NEXUS_CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCORTO_ROOT="$TOOLS_PREFIX/corto" -DBUILD_NXS_VIEW=OFF)
 NEXUS_CMAKE_ARGS+=(-Dvcglib_DIR="$VCGLIB_DIR" -DVCGDIR="$TOOLS_PREFIX/vcglib")
