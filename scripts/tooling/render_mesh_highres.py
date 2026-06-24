@@ -147,6 +147,23 @@ def save_relief(depth, path, Image, ImageFilter, blur_radius, gain=2.5):
     return amp
 
 
+def build_primitives(pyrender, mesh, smooth, max_faces=4_000_000):
+    """One pyrender.Mesh per <=max_faces chunk. A single VBO for a huge mesh (e.g.
+    Tablet D, ~19.6M faces → ~2.3 GB) overflows the GL buffer limit (GLError 1281);
+    chunking keeps each buffer small while preserving full resolution."""
+    import numpy as _np
+    n = len(mesh.faces)
+    if n <= max_faces:
+        return [pyrender.Mesh.from_trimesh(mesh, smooth=smooth)]
+    parts = []
+    for i in range(0, n, max_faces):
+        fi = _np.arange(i, min(i + max_faces, n))
+        sub = mesh.submesh([fi], append=True)
+        parts.append(pyrender.Mesh.from_trimesh(sub, smooth=smooth))
+    print(f"  (mesh split into {len(parts)} primitives of <= {max_faces:,} faces to fit GL buffers)")
+    return parts
+
+
 def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_margin,
            relief_gain=2.5, relief_blur_frac=0.012):
     trimesh, pyrender, Image, ImageFilter, ImageOps = _import_gfx()
@@ -167,7 +184,8 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
     dist = inplane_half / np.tan(yfov / 2.0) * frame_margin
     print(f"  face normal axis={norm_i} (thin), framing dist={dist:.2f}")
 
-    pr_mesh_flat = pyrender.Mesh.from_trimesh(mesh, smooth=False)
+    pr_flats = build_primitives(pyrender, mesh, smooth=False)
+    pr_smooths = None   # built lazily only if the normal pass is requested
     cam = pyrender.PerspectiveCamera(yfov=yfov)
     renderer = pyrender.OffscreenRenderer(viewport_width=w, viewport_height=h)
     tag = ply_path.stem
@@ -189,7 +207,8 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
             for k in range(num_views):
                 theta = 2 * np.pi * k / num_views
                 scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.03, 0.03, 0.03])
-                scene.add(pr_mesh_flat)
+                for pm in pr_flats:
+                    scene.add(pm)
                 scene.add(cam, pose=cam_pose)
                 scene.add(pyrender.DirectionalLight(color=[1, 1, 1], intensity=6.0),
                           pose=light_pose_raking(n, right, up, theta, rake_elev))
@@ -200,7 +219,9 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
         if "relief" in passes or "depth" in passes:
             # Lighting-independent high-pass relief — the reliable high-contrast view.
             scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.5, 0.5, 0.5])
-            scene.add(pr_mesh_flat); scene.add(cam, pose=cam_pose)
+            for pm in pr_flats:
+                scene.add(pm)
+            scene.add(cam, pose=cam_pose)
             _, depth = renderer.render(scene)
             radius = max(4, int(w * relief_blur_frac))
             amp = save_relief(depth, out_dir / f"{tag}_{side_name}_relief.png",
@@ -210,8 +231,12 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
                       f"(higher = deeper carving; very small ⇒ shallow scan)")
 
         if "normal" in passes:
+            if pr_smooths is None:
+                pr_smooths = build_primitives(pyrender, mesh, smooth=True)
             ns = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[1, 1, 1])
-            ns.add(pyrender.Mesh.from_trimesh(mesh, smooth=True)); ns.add(cam, pose=cam_pose)
+            for pm in pr_smooths:
+                ns.add(pm)
+            ns.add(cam, pose=cam_pose)
             ncolor, _ = renderer.render(ns)
             Image.fromarray(ncolor).save(out_dir / f"{tag}_{side_name}_normal.png")
 
