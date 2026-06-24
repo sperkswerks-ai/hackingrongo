@@ -29,6 +29,11 @@ echo "════════════════════════�
 echo "  Building Nexus toolchain into: $TOOLS_PREFIX   (jobs=$JOBS)"
 echo "════════════════════════════════════════════════════════════════"
 
+# Azure ML batch mounts (/mnt/batch/.../mounts) report git "dubious ownership"
+# because the mount UID != the running user, which blocks clone/submodule ops.
+# Whitelist repos so git proceeds. Single-user research instance → acceptable.
+git config --global --add safe.directory '*' 2>/dev/null || true
+
 # --- 0. system deps -----------------------------------------------------------
 # These are the usual Ubuntu deps. If apt needs sudo and you don't have it on the
 # compute instance, install equivalents via conda (cmake, qt) and re-run.
