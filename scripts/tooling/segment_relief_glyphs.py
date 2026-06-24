@@ -94,14 +94,14 @@ def foreground_mass(gray: np.ndarray, sigma: float, edge_trim: int = 0) -> np.nd
     gy[1:, :] = np.abs(np.diff(g, axis=0))
     mass = np.hypot(gx, gy)
     mass[~fg] = 0.0
-    if edge_trim > 0:                           # suppress the tablet rim's step edge
-        try:
-            from scipy.ndimage import binary_erosion
-            core = binary_erosion(fg, iterations=edge_trim)
-            mass[~core] = 0.0
-        except Exception:
-            mass[:edge_trim, :] = mass[-edge_trim:, :] = 0
-            mass[:, :edge_trim] = mass[:, -edge_trim:] = 0
+    if edge_trim > 0:
+        # Suppress only the tablet RIM, which (after bbox-crop) sits at the image
+        # borders. Do NOT erode the fg mask — fg is sparse glyph strokes, and
+        # eroding it deletes the carvings (the bug that left a single stripe).
+        mass[:edge_trim, :] = 0.0
+        mass[-edge_trim:, :] = 0.0
+        mass[:, :edge_trim] = 0.0
+        mass[:, -edge_trim:] = 0.0
     mass = _blur(mass, sigma)
     if mass.max() > 0:
         mass /= mass.max()
