@@ -67,6 +67,20 @@ def _blur(a: np.ndarray, sigma: float) -> np.ndarray:
         return np.asarray(im.filter(ImageFilter.GaussianBlur(sigma)), np.float32) / 255.0
 
 
+def _load_font(size: int):
+    """A readable TrueType font for overlay labels (PIL's default is ~10px,
+    invisible on a 4096px image). Falls back to the bitmap default."""
+    from PIL import ImageFont
+    for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
 def tablet_bbox(gray: np.ndarray, bg_thresh: int = 8) -> tuple[int, int, int, int]:
     """Bounding box of the non-background (tablet) region: (x0, y0, x1, y1)."""
     nonbg = gray > bg_thresh
@@ -189,6 +203,7 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
 
     overlay = Image.open(relief_path).convert("RGB")
     draw = ImageDraw.Draw(overlay)
+    font = _load_font(30)
     manifest = []
     n_crops = 0
     for (line_id, glyphs), (y0, y1) in zip(lines.items(), bands):
@@ -196,17 +211,27 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
         col_profile = band.sum(axis=0)
         spans = split_to_count(col_profile, target=len(glyphs))
         for g, (x0, x1) in zip(glyphs, spans):
+            # tighten the grid cell to the actual glyph content (bright pixels),
+            # so boxes hug glyphs instead of forming a rigid rectangle and stop
+            # swallowing edge-damage noise.
+            cell = g_t[y0:y1, x0:x1]
+            ys2, xs2 = np.where(cell > 8)
+            if xs2.size > 20:
+                ax0, ay0 = x0 + int(xs2.min()), y0 + int(ys2.min())
+                ax1, ay1 = x0 + int(xs2.max()) + 1, y0 + int(ys2.max()) + 1
+            else:
+                ax0, ay0, ax1, ay1 = x0, y0, x1, y1     # empty cell → keep grid box
             # offset tablet-local coords back to full image
-            cx0, cy0 = max(0, tx0 + x0 - pad), max(0, ty0 + y0 - pad)
-            cx1, cy1 = min(W, tx0 + x1 + pad), min(H, ty0 + y1 + pad)
+            cx0, cy0 = max(0, tx0 + ax0 - pad), max(0, ty0 + ay0 - pad)
+            cx1, cy1 = min(W, tx0 + ax1 + pad), min(H, ty0 + ay1 + pad)
             code = str(g.get("barthel_code", "?"))
             pos = int(g.get("position", 0))
             crop = Image.fromarray(gray[cy0:cy1, cx0:cx1]).convert("L")
             safe = code.replace(":", "-").replace("/", "-").replace("?", "Q")
             fname = f"L{line_id}_P{pos:04d}_{safe}.png"
             crop.save(out_dir / fname)
-            draw.rectangle([cx0, cy0, cx1, cy1], outline=(0, 200, 0), width=2)
-            draw.text((cx0 + 1, cy0 + 1), code, fill=(255, 80, 80))
+            draw.rectangle([cx0, cy0, cx1, cy1], outline=(0, 220, 0), width=3)
+            draw.text((cx0 + 2, max(0, cy0 - 32)), code, fill=(255, 60, 60), font=font)
             manifest.append({"tablet": tablet, "line": line_id, "position": pos,
                              "barthel_code": code, "bbox": [cx0, cy0, cx1, cy1],
                              "file": fname, "uncertain": bool(g.get("uncertain"))})
