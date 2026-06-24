@@ -67,12 +67,32 @@ def _blur(a: np.ndarray, sigma: float) -> np.ndarray:
         return np.asarray(im.filter(ImageFilter.GaussianBlur(sigma)), np.float32) / 255.0
 
 
-def foreground_mass(gray: np.ndarray, sigma: float) -> np.ndarray:
-    """Glyph-mass map: deviation of relief from its surface mid-tone, blurred."""
+def tablet_bbox(gray: np.ndarray, bg_thresh: int = 8) -> tuple[int, int, int, int]:
+    """Bounding box of the non-background (tablet) region: (x0, y0, x1, y1)."""
+    nonbg = gray > bg_thresh
+    ys, xs = np.where(nonbg)
+    if len(xs) == 0:
+        return 0, 0, gray.shape[1], gray.shape[0]
+    return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+def foreground_mass(gray: np.ndarray, sigma: float, edge_trim: int = 0) -> np.ndarray:
+    """Glyph-mass map: deviation of relief from its surface mid-tone, blurred.
+    `edge_trim` zeros a margin so the bright tablet RIM doesn't dominate the
+    projection profiles (the rim is a huge step vs the ~2-grey-level glyphs)."""
     g = gray.astype(np.float32) / 255.0
-    med = float(np.median(g[g > 0])) if (g > 0).any() else 0.5
+    fg = gray > 8
+    med = float(np.median(g[fg])) if fg.any() else 0.5
     mass = np.abs(g - med)
-    mass[gray == 0] = 0.0                       # ignore background
+    mass[~fg] = 0.0                              # ignore background
+    if edge_trim > 0:                           # suppress the tablet rim
+        from scipy.ndimage import binary_erosion
+        try:
+            core = binary_erosion(fg, iterations=edge_trim)
+            mass[~core] = 0.0
+        except Exception:
+            mass[:edge_trim, :] = mass[-edge_trim:, :] = 0
+            mass[:, :edge_trim] = mass[:, -edge_trim:] = 0
     mass = _blur(mass, sigma)
     if mass.max() > 0:
         mass /= mass.max()
@@ -101,19 +121,47 @@ def split_to_count(profile: np.ndarray, target: int, lo_frac: float = 0.15) -> l
 
 
 def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Path,
-            pad: int = 6, mass_sigma_frac: float = 0.004):
+            pad: int = 6, mass_sigma_frac: float = 0.004, edge_trim_frac: float = 0.02,
+            diagnose: bool = False):
     gray = np.asarray(Image.open(relief_path).convert("L"))
     H, W = gray.shape
     lines = corpus_lines(tablet, side_letters)
     if not lines:
         raise SystemExit(f"No corpus glyphs for tablet {tablet} side in {side_letters}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    mass = foreground_mass(gray, sigma=max(1.0, mass_sigma_frac * W))
 
-    # 1) line bands via horizontal projection, reconciled to corpus line count
+    # --- DIAGNOSTICS: characterise the image numerically (so we tune from data) ---
+    tx0, ty0, tx1, ty1 = tablet_bbox(gray)
+    nz = gray[gray > 8]
+    print("── DIAGNOSTICS ──────────────────────────────────────────")
+    print(f"  image: {W}×{H}  dtype={gray.dtype}")
+    print(f"  intensity: min={gray.min()} max={gray.max()} mean={gray.mean():.1f}")
+    print(f"  pixels==0 (black bg): {100*np.mean(gray==0):.1f}%  | non-bg: {100*np.mean(gray>8):.1f}%")
+    if nz.size:
+        pcts = np.percentile(nz, [5, 25, 50, 75, 95])
+        print(f"  non-bg intensity pctiles [5/25/50/75/95]: {[int(p) for p in pcts]}")
+        print(f"  non-bg std (glyph-signal strength): {nz.std():.1f}")
+    print(f"  TABLET bbox: x[{tx0}:{tx1}] y[{ty0}:{ty1}]  = {tx1-tx0}×{ty1-ty0}  "
+          f"({100*(tx1-tx0)*(ty1-ty0)/(W*H):.0f}% of image)")
+
+    # --- crop to the tablet, work in tablet-local coords ---
+    g_t = gray[ty0:ty1, tx0:tx1]
+    Wt, Ht = g_t.shape[1], g_t.shape[0]
+    edge_trim = max(1, int(edge_trim_frac * min(Wt, Ht)))
+    mass = foreground_mass(g_t, sigma=max(1.0, mass_sigma_frac * Wt), edge_trim=edge_trim)
+
     row_profile = mass.sum(axis=1)
     bands = split_to_count(row_profile, target=len(lines))
-    print(f"  image {W}×{H} · corpus lines={len(lines)} · detected bands={len(bands)}")
+    # report where the row-mass concentrates (are bands landing on real rows?)
+    top_rows = np.argsort(row_profile)[-5:][::-1]
+    print(f"  edge_trim={edge_trim}px · row-mass peaks at y(local)={sorted(int(r) for r in top_rows)}")
+    print(f"  corpus lines={len(lines)} · bands={len(bands)} · band heights={[b[1]-b[0] for b in bands]}")
+    print("─────────────────────────────────────────────────────────")
+    if diagnose:
+        # save a heat preview of the mass map + exit (no crops)
+        Image.fromarray((mass * 255).astype("uint8")).save(out_dir / "_mass_preview.png")
+        print(f"  [diagnose] wrote {out_dir/'_mass_preview.png'} — no crops written")
+        return
 
     overlay = Image.open(relief_path).convert("RGB")
     draw = ImageDraw.Draw(overlay)
@@ -124,8 +172,9 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
         col_profile = band.sum(axis=0)
         spans = split_to_count(col_profile, target=len(glyphs))
         for g, (x0, x1) in zip(glyphs, spans):
-            cx0, cy0 = max(0, x0 - pad), max(0, y0 - pad)
-            cx1, cy1 = min(W, x1 + pad), min(H, y1 + pad)
+            # offset tablet-local coords back to full image
+            cx0, cy0 = max(0, tx0 + x0 - pad), max(0, ty0 + y0 - pad)
+            cx1, cy1 = min(W, tx0 + x1 + pad), min(H, ty0 + y1 + pad)
             code = str(g.get("barthel_code", "?"))
             pos = int(g.get("position", 0))
             crop = Image.fromarray(gray[cy0:cy1, cx0:cx1]).convert("L")
@@ -154,9 +203,14 @@ def main() -> None:
     ap.add_argument("--side-letters", default="a,r", help="corpus 'side' values for THIS face (e.g. a,r for recto)")
     ap.add_argument("--out-dir", type=Path, required=True)
     ap.add_argument("--pad", type=int, default=6)
+    ap.add_argument("--edge-trim-frac", type=float, default=0.02,
+                    help="fraction of tablet size to erode inward, to suppress the bright rim")
+    ap.add_argument("--diagnose", action="store_true",
+                    help="print image stats + write _mass_preview.png, write NO crops")
     args = ap.parse_args()
     segment(args.relief, args.tablet.upper(),
-            [s.strip().lower() for s in args.side_letters.split(",")], args.out_dir, args.pad)
+            [s.strip().lower() for s in args.side_letters.split(",")], args.out_dir, args.pad,
+            edge_trim_frac=args.edge_trim_frac, diagnose=args.diagnose)
 
 
 if __name__ == "__main__":
