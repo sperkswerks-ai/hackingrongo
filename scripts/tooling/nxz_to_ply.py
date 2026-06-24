@@ -112,6 +112,16 @@ def main() -> None:
     nxsedit = find_nxsedit(args.nxsedit)
     inputs = sorted(DEFAULT_MODELS.glob("*.nxz")) if args.all else args.inputs
     if not inputs:
+        if args.all:
+            exists = DEFAULT_MODELS.is_dir()
+            sys.exit(
+                f"No .nxz files found in {DEFAULT_MODELS} "
+                f"({'directory missing' if not exists else 'directory empty'}).\n"
+                "The ~253 MB INSCRIBE .nxz meshes are not in git — they must be uploaded\n"
+                "to the Azure instance (or re-downloaded from inscribercproject.com) into\n"
+                f"  {DEFAULT_MODELS}\n"
+                "Expected: echancree_tablet_d.nxz, tablet_b_aruku_kurenga.nxz, tablet_c_mamari.nxz"
+            )
         sys.exit("No inputs. Pass .nxz paths or --all.")
 
     print(f"nxsedit: {nxsedit}")
