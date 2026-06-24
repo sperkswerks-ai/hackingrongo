@@ -106,29 +106,49 @@ def light_pose_raking(face_normal, right, up, theta, rake_elev_deg) -> np.ndarra
     return pose_from_axes(x, y, z, z * 3.0)
 
 
-def save_relief(depth, path, Image, ImageFilter, blur_radius):
-    """Lighting-INDEPENDENT relief map: high-pass the depth buffer so the slab's
-    gross flat shape / tilt is removed and only fine incised relief remains, then
-    hard-stretch contrast. This is the reliable 'dark grooves, light surface' view."""
+def save_relief(depth, path, Image, ImageFilter, blur_radius, gain=2.5):
+    """Lighting-INDEPENDENT relief map. High-pass the depth buffer (remove the
+    slab's flat shape/tilt → keep only fine incised relief), then normalise by the
+    *typical relief amplitude* and amplify hard so faint sub-mm grooves become
+    strongly visible. Surface → mid-grey, incisions → dark/light. Writes the map
+    and an inverted copy; applies CLAHE (local contrast) if OpenCV is available.
+
+    Returns the measured relief amplitude (depth units after 0–1 normalisation),
+    so we can tell whether the carving is faint because of rendering or because
+    the scan itself is shallow.
+    """
     import numpy as _np
     d = depth.astype(_np.float32)
     m = d > 0
     if not m.any():
-        return False
+        return None
     lo, hi = _np.percentile(d[m], [1, 99])
     dn = _np.clip((d - lo) / (hi - lo + 1e-9), 0, 1)
-    dn[~m] = float(dn[m].mean())                 # flatten background to avoid edge ring
+    dn[~m] = float(dn[m].mean())                 # flatten background → no edge ring
     base = Image.fromarray((dn * 255).astype("uint8"), "L")
     blur = base.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-    hp = _np.asarray(base, _np.float32) - _np.asarray(blur, _np.float32)   # high-pass = fine relief
-    p1, p99 = _np.percentile(hp[m], [1, 99])
-    hp = _np.clip((hp - p1) / (p99 - p1 + 1e-9), 0, 1)
-    hp[~m] = 0.0
-    Image.fromarray((hp * 255).astype("uint8"), "L").save(path)
-    return True
+    hp = _np.asarray(base, _np.float32) - _np.asarray(blur, _np.float32)   # fine relief
+
+    amp = float(_np.percentile(_np.abs(hp[m]), 60)) + 1e-6   # typical groove amplitude
+    norm = _np.clip(0.5 + 0.5 * gain * hp / amp, 0, 1)       # surface→0.5, amplify
+    norm[~m] = 0.0
+    u8 = (norm * 255).astype("uint8")
+
+    try:                                          # optional: local contrast (best)
+        import cv2
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(16, 16))
+        u8 = _np.where(m, clahe.apply(u8), 0).astype("uint8")
+    except Exception:
+        pass
+
+    Image.fromarray(u8, "L").save(path)
+    inv = path.with_name(path.stem + "_inv.png")
+    Image.fromarray((255 - u8) * m.astype("uint8"), "L").save(inv)
+    return amp
 
 
-def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_margin):
+def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_margin,
+           relief_gain=2.5, relief_blur_frac=0.012):
     trimesh, pyrender, Image, ImageFilter, ImageOps = _import_gfx()
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n→ {ply_path.name}")
@@ -182,9 +202,12 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
             scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.5, 0.5, 0.5])
             scene.add(pr_mesh_flat); scene.add(cam, pose=cam_pose)
             _, depth = renderer.render(scene)
-            radius = max(6, w // 100)
-            save_relief(depth, out_dir / f"{tag}_{side_name}_relief.png",
-                        Image, ImageFilter, radius)
+            radius = max(4, int(w * relief_blur_frac))
+            amp = save_relief(depth, out_dir / f"{tag}_{side_name}_relief.png",
+                              Image, ImageFilter, radius, gain=relief_gain)
+            if amp is not None:
+                print(f"  [{side_name}] relief amplitude (norm. depth units): {amp:.5f}  "
+                      f"(higher = deeper carving; very small ⇒ shallow scan)")
 
         if "normal" in passes:
             ns = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[1, 1, 1])
@@ -206,13 +229,18 @@ def main() -> None:
     ap.add_argument("--width", type=int, default=4096)
     ap.add_argument("--height", type=int, default=4096)
     ap.add_argument("--passes", default="relief,raking,normal", help="comma list: relief,raking,normal")
-    ap.add_argument("--rake-elev", type=float, default=12.0,
-                    help="raking-light elevation toward camera (low = stronger groove shadows)")
+    ap.add_argument("--rake-elev", type=float, default=6.0,
+                    help="raking-light elevation toward camera (lower = longer groove shadows)")
     ap.add_argument("--frame-margin", type=float, default=1.15,
                     help=">1 zooms out; tune so the face fills the frame")
+    ap.add_argument("--relief-gain", type=float, default=2.5,
+                    help="relief contrast amplification (raise if glyphs are faint)")
+    ap.add_argument("--relief-blur-frac", type=float, default=0.012,
+                    help="high-pass blur radius as fraction of width (smaller = finer detail)")
     args = ap.parse_args()
     render(args.ply, args.out_dir, args.faces, args.num_views, args.width, args.height,
-           [p.strip() for p in args.passes.split(",") if p.strip()], args.rake_elev, args.frame_margin)
+           [p.strip() for p in args.passes.split(",") if p.strip()], args.rake_elev,
+           args.frame_margin, args.relief_gain, args.relief_blur_frac)
 
 
 if __name__ == "__main__":
