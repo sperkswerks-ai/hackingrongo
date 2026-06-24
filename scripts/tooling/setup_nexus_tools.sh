@@ -32,25 +32,41 @@ echo "════════════════════════�
 # --- 0. system deps -----------------------------------------------------------
 # These are the usual Ubuntu deps. If apt needs sudo and you don't have it on the
 # compute instance, install equivalents via conda (cmake, qt) and re-run.
-echo; echo "STEP 0 — checking build deps (cmake, g++, qmake/qtbase)…"
+echo; echo "STEP 0 — checking build deps (cmake, g++, Qt6)…"
 need=()
 command -v cmake >/dev/null || need+=(cmake)
 command -v g++   >/dev/null || need+=(build-essential)
 command -v git   >/dev/null || need+=(git)
-# Qt5Core is required by nxsedit/nxsbuild:
-if ! (pkg-config --exists Qt5Core 2>/dev/null || command -v qmake >/dev/null); then
-  need+=(qtbase5-dev)
+# Current Nexus CMake requires Qt6 (find_package(Qt6) at CMakeLists.txt:16).
+qt6_ok() { pkg-config --exists Qt6Core 2>/dev/null || command -v qmake6 >/dev/null \
+           || ls /usr/lib/*/cmake/Qt6/Qt6Config.cmake >/dev/null 2>&1; }
+if ! qt6_ok; then
+  need+=(qt6-base-dev)        # provides Qt6Config.cmake on Ubuntu 22.04+
 fi
 if [ "${#need[@]}" -gt 0 ]; then
   echo "  Missing: ${need[*]}"
   echo "  Trying:  sudo apt-get install -y ${need[*]}"
-  sudo apt-get update -y && sudo apt-get install -y "${need[@]}" || {
-    echo "  ⚠ apt failed (no sudo?). Install via conda instead, e.g.:"
-    echo "      conda install -y -c conda-forge cmake cxx-compiler qt-main"
-    echo "  then re-run this script."; exit 1; }
+  if ! { sudo apt-get update -y && sudo apt-get install -y "${need[@]}"; }; then
+    echo "  ⚠ apt failed (no sudo?). Install Qt6 via conda instead:"
+    echo "      conda install -y -c conda-forge cmake cxx-compiler qt6-main"
+    echo "    then re-run this script (it will auto-detect the conda Qt6)."
+    exit 1
+  fi
 else
   echo "  ✓ build deps present"
 fi
+
+# Locate Qt6 so we can hand CMake an explicit prefix (covers apt AND conda installs).
+QT6_PREFIX=""
+for cand in \
+    "$(command -v qmake6 >/dev/null && dirname "$(dirname "$(command -v qmake6)")")" \
+    "${CONDA_PREFIX:-}" \
+    "$(ls -d /usr/lib/*/cmake/Qt6 2>/dev/null | head -1 | sed 's#/lib/.*##')" ; do
+  if [ -n "$cand" ] && ls "$cand"/lib/cmake/Qt6/Qt6Config.cmake >/dev/null 2>&1; then
+    QT6_PREFIX="$cand"; break
+  fi
+done
+[ -n "$QT6_PREFIX" ] && echo "  ✓ Qt6 prefix: $QT6_PREFIX" || echo "  (Qt6 on default CMake path)"
 
 # --- 1. corto (geometry codec) -----------------------------------------------
 echo; echo "STEP 1 — corto…"
@@ -63,11 +79,11 @@ CORTO_LIB="$(find "$TOOLS_PREFIX/corto/build" -name 'libcorto*' | head -1 || tru
 # --- 2. nexus (nxsbuild / nxsedit / nxsdump) ---------------------------------
 echo; echo "STEP 2 — nexus…"
 if [ ! -d nexus ]; then git clone --depth 1 https://github.com/cnr-isti-vclab/nexus.git; fi
-# Point nexus at the corto we just built.
-cmake -S nexus -B nexus/build -DCMAKE_BUILD_TYPE=Release \
-      -DCORTO_ROOT="$TOOLS_PREFIX/corto" \
-      -DBUILD_NXS_VIEW=OFF 2>/dev/null \
-  || cmake -S nexus -B nexus/build -DCMAKE_BUILD_TYPE=Release   # fallback: default opts
+# Point nexus at the corto we just built, and at Qt6 if we located a prefix.
+NEXUS_CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCORTO_ROOT="$TOOLS_PREFIX/corto" -DBUILD_NXS_VIEW=OFF)
+[ -n "$QT6_PREFIX" ] && NEXUS_CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$QT6_PREFIX")
+cmake -S nexus -B nexus/build "${NEXUS_CMAKE_ARGS[@]}" \
+  || cmake -S nexus -B nexus/build -DCMAKE_BUILD_TYPE=Release ${QT6_PREFIX:+-DCMAKE_PREFIX_PATH="$QT6_PREFIX"}
 cmake --build nexus/build -j "$JOBS"
 
 # --- 3. locate + verify the CLI tools ----------------------------------------
