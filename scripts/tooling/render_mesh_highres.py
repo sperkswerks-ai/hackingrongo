@@ -45,8 +45,8 @@ def _import_gfx():
     try:
         import trimesh  # noqa
         import pyrender  # noqa
-        from PIL import Image  # noqa
-        return trimesh, pyrender, Image
+        from PIL import Image, ImageFilter, ImageOps  # noqa
+        return trimesh, pyrender, Image, ImageFilter, ImageOps
     except Exception as exc:  # pragma: no cover
         sys.exit(
             f"ERROR importing graphics stack: {exc}\n"
@@ -90,21 +90,46 @@ def camera_pose_facing(face_normal: np.ndarray, up_axis: np.ndarray, dist: float
 
 
 def light_pose_raking(face_normal, right, up, theta, rake_elev_deg) -> np.ndarray:
-    """Directional light skimming the face from in-plane azimuth `theta`, lifted
-    `rake_elev_deg` toward the viewer. pyrender DirectionalLight emits along -Z."""
+    """Directional light grazing the inscribed face from in-plane azimuth `theta`,
+    sitting LOW on the camera (+face_normal) side at `rake_elev_deg` above the
+    surface. pyrender DirectionalLight emits along its local -Z, so local +Z must
+    point from the surface toward the light source."""
     el = np.radians(rake_elev_deg)
     inplane = np.cos(theta) * right + np.sin(theta) * up
-    # Light travels mostly across the face (grazing), slightly out toward camera.
-    travel = _unit(-inplane * np.cos(el) - face_normal * np.sin(el) * -1.0)
-    z = _unit(-travel)                 # local +Z = -emit direction
+    # Direction from the surface toward the light: low (small +normal) and mostly
+    # across the face — a true grazing rake that throws shadows into the grooves.
+    to_light = _unit(inplane * np.cos(el) + face_normal * np.sin(el))
+    z = to_light
     helper = up if abs(np.dot(up, z)) < 0.95 else right
     x = _unit(np.cross(helper, z))
     y = np.cross(z, x)
     return pose_from_axes(x, y, z, z * 3.0)
 
 
+def save_relief(depth, path, Image, ImageFilter, blur_radius):
+    """Lighting-INDEPENDENT relief map: high-pass the depth buffer so the slab's
+    gross flat shape / tilt is removed and only fine incised relief remains, then
+    hard-stretch contrast. This is the reliable 'dark grooves, light surface' view."""
+    import numpy as _np
+    d = depth.astype(_np.float32)
+    m = d > 0
+    if not m.any():
+        return False
+    lo, hi = _np.percentile(d[m], [1, 99])
+    dn = _np.clip((d - lo) / (hi - lo + 1e-9), 0, 1)
+    dn[~m] = float(dn[m].mean())                 # flatten background to avoid edge ring
+    base = Image.fromarray((dn * 255).astype("uint8"), "L")
+    blur = base.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    hp = _np.asarray(base, _np.float32) - _np.asarray(blur, _np.float32)   # high-pass = fine relief
+    p1, p99 = _np.percentile(hp[m], [1, 99])
+    hp = _np.clip((hp - p1) / (p99 - p1 + 1e-9), 0, 1)
+    hp[~m] = 0.0
+    Image.fromarray((hp * 255).astype("uint8"), "L").save(path)
+    return True
+
+
 def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_margin):
-    trimesh, pyrender, Image = _import_gfx()
+    trimesh, pyrender, Image, ImageFilter, ImageOps = _import_gfx()
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n→ {ply_path.name}")
     mesh, ext = load_and_normalize(trimesh, ply_path)
@@ -138,26 +163,28 @@ def render(ply_path, out_dir, faces, num_views, w, h, passes, rake_elev, frame_m
         cam_pose = camera_pose_facing(n, up, dist)
 
         if "raking" in passes:
+            # Directional shadows are what make raking light reveal incisions —
+            # OFF by default in pyrender, so enable them explicitly.
+            flags = pyrender.RenderFlags.SHADOWS_DIRECTIONAL
             for k in range(num_views):
                 theta = 2 * np.pi * k / num_views
-                scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.05, 0.05, 0.05])
+                scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.03, 0.03, 0.03])
                 scene.add(pr_mesh_flat)
                 scene.add(cam, pose=cam_pose)
-                scene.add(pyrender.DirectionalLight(color=[1, 1, 1], intensity=5.0),
+                scene.add(pyrender.DirectionalLight(color=[1, 1, 1], intensity=6.0),
                           pose=light_pose_raking(n, right, up, theta, rake_elev))
-                color, _ = renderer.render(scene)
-                Image.fromarray(color).save(
-                    out_dir / f"{tag}_{side_name}_rake{int(np.degrees(theta)):03d}.png")
+                color, _ = renderer.render(scene, flags=flags)
+                img = ImageOps.autocontrast(Image.fromarray(color).convert("L"), cutoff=1)
+                img.save(out_dir / f"{tag}_{side_name}_rake{int(np.degrees(theta)):03d}.png")
 
-        if "depth" in passes:
-            scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.3, 0.3, 0.3])
+        if "relief" in passes or "depth" in passes:
+            # Lighting-independent high-pass relief — the reliable high-contrast view.
+            scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[0.5, 0.5, 0.5])
             scene.add(pr_mesh_flat); scene.add(cam, pose=cam_pose)
-            scene.add(pyrender.DirectionalLight(color=[1, 1, 1], intensity=3.0), pose=cam_pose)
             _, depth = renderer.render(scene)
-            d = depth.copy(); m = d > 0
-            if m.any():
-                d[m] = (d[m] - d[m].min()) / (np.ptp(d[m]) + 1e-9)
-            Image.fromarray((d * 255).astype("uint8")).save(out_dir / f"{tag}_{side_name}_depth.png")
+            radius = max(6, w // 100)
+            save_relief(depth, out_dir / f"{tag}_{side_name}_relief.png",
+                        Image, ImageFilter, radius)
 
         if "normal" in passes:
             ns = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=[1, 1, 1])
@@ -178,7 +205,7 @@ def main() -> None:
     ap.add_argument("--num-views", type=int, default=12, help="raking-light azimuths per face")
     ap.add_argument("--width", type=int, default=4096)
     ap.add_argument("--height", type=int, default=4096)
-    ap.add_argument("--passes", default="raking,depth,normal", help="comma list: raking,depth,normal")
+    ap.add_argument("--passes", default="relief,raking,normal", help="comma list: relief,raking,normal")
     ap.add_argument("--rake-elev", type=float, default=12.0,
                     help="raking-light elevation toward camera (low = stronger groove shadows)")
     ap.add_argument("--frame-margin", type=float, default=1.15,
