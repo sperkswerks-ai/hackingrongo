@@ -115,16 +115,22 @@ def split_to_count(profile: np.ndarray, target: int, lo_frac: float = 0.15) -> l
     n = len(profile)
     if target <= 1 or n == 0:
         return [(0, n)]
-    thr = profile.max() * lo_frac
-    # candidate cut points = local minima below threshold
+    min_w = max(1, int((n / target) * 0.5))     # cuts ≥ half a band-width apart
     valleys = [i for i in range(1, n - 1)
-               if profile[i] <= thr and profile[i] <= profile[i - 1] and profile[i] <= profile[i + 1]]
-    if len(valleys) < target - 1:
-        # not enough real valleys → fall back to even spacing (honest: low confidence)
+               if profile[i] <= profile[i - 1] and profile[i] <= profile[i + 1]]
+    valleys.sort(key=lambda i: profile[i])      # deepest (lowest) first
+    chosen: list[int] = []
+    for v in valleys:
+        if v < min_w or v > n - min_w:
+            continue
+        if all(abs(v - c) >= min_w for c in chosen):
+            chosen.append(v)
+        if len(chosen) == target - 1:
+            break
+    if len(chosen) < target - 1:                # not enough separated valleys → even spacing
         cuts = [round(n * k / target) for k in range(1, target)]
     else:
-        valleys.sort(key=lambda i: profile[i])           # shallowest..deepest
-        cuts = sorted(valleys[:target - 1])
+        cuts = sorted(chosen)
     bounds = [0] + cuts + [n]
     return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)]
 
@@ -160,8 +166,17 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
     mass = foreground_mass(g_t, sigma=max(1.0, mass_sigma_frac * Wt), edge_trim=edge_trim)
 
     row_profile = mass.sum(axis=1)
+    # --- decisive: is row-mass SPREAD across rows, or jammed in one stripe? ---
+    rp = row_profile
+    if rp.sum() > 0:
+        binned = [rp[i * Ht // 14:(i + 1) * Ht // 14].sum() for i in range(14)]
+        pct = [round(100 * b / rp.sum()) for b in binned]
+        cum = np.cumsum(rp) / rp.sum()
+        y_lo, y_hi = int(np.searchsorted(cum, 0.05)), int(np.searchsorted(cum, 0.95))
+        print(f"  row-mass by 14ths (%): {pct}")
+        print(f"  central 90% of row-mass spans y_local [{y_lo}:{y_hi}] of {Ht}  "
+              f"({100*(y_hi-y_lo)/Ht:.0f}% of tablet height)")
     bands = split_to_count(row_profile, target=len(lines))
-    # report where the row-mass concentrates (are bands landing on real rows?)
     top_rows = np.argsort(row_profile)[-5:][::-1]
     print(f"  edge_trim={edge_trim}px · row-mass peaks at y(local)={sorted(int(r) for r in top_rows)}")
     print(f"  corpus lines={len(lines)} · bands={len(bands)} · band heights={[b[1]-b[0] for b in bands]}")
