@@ -151,7 +151,8 @@ def split_to_count(profile: np.ndarray, target: int, lo_frac: float = 0.15) -> l
 
 def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Path,
             pad: int = 6, mass_sigma_frac: float = 0.004, edge_trim_frac: float = 0.02,
-            diagnose: bool = False, flip_lines: bool = False):
+            diagnose: bool = False, flip_lines: bool = False,
+            boustrophedon: bool = False, boustro_phase: int = 1):
     gray = np.asarray(Image.open(relief_path).convert("L"))
     H, W = gray.shape
     lines = corpus_lines(tablet, side_letters)
@@ -209,7 +210,13 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
     # Pair corpus lines with bands. Rongorongo is read bottom-to-top, so corpus
     # line 1 may be the BOTTOM band — --flip-lines assigns it there.
     band_seq = list(bands[::-1]) if flip_lines else list(bands)
-    for (line_id, glyphs), (y0, y1) in zip(lines.items(), band_seq):
+    for li, ((line_id, glyphs), (y0, y1)) in enumerate(zip(lines.items(), band_seq)):
+        # Reverse boustrophedon: alternate lines are carved inverted, so their
+        # reading order is right-to-left and the glyph sits 180° rotated. When
+        # --boustrophedon is set, flip the position→box pairing on alternate lines
+        # (phase chosen by --boustro-phase) and rotate those crops 180°.
+        line_inverted = boustrophedon and (li % 2 == boustro_phase)
+        glyphs = list(reversed(glyphs)) if line_inverted else list(glyphs)
         band = mass[y0:y1, :]
         col_profile = band.sum(axis=0)
         # trim to the x-extent that actually has tablet content in THIS line, so
@@ -235,6 +242,8 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
             code = str(g.get("barthel_code", "?"))
             pos = int(g.get("position", 0))
             crop = Image.fromarray(gray[cy0:cy1, cx0:cx1]).convert("L")
+            if line_inverted:
+                crop = crop.rotate(180)             # upright the inverted-line glyph
             safe = code.replace(":", "-").replace("/", "-").replace("?", "Q")
             fname = f"L{line_id}_P{pos:04d}_{safe}.png"
             crop.save(out_dir / fname)
@@ -266,10 +275,15 @@ def main() -> None:
                     help="print image stats + write _mass_preview.png, write NO crops")
     ap.add_argument("--flip-lines", action="store_true",
                     help="assign corpus line 1 to the BOTTOM band (rongorongo reads bottom-to-top)")
+    ap.add_argument("--boustrophedon", action="store_true",
+                    help="reverse glyph order + 180° rotate crops on alternate (inverted) lines")
+    ap.add_argument("--boustro-phase", type=int, default=1, choices=[0, 1],
+                    help="which alternate lines are inverted (0 or 1); flip if it lands on the wrong lines")
     args = ap.parse_args()
     segment(args.relief, args.tablet.upper(),
             [s.strip().lower() for s in args.side_letters.split(",")], args.out_dir, args.pad,
-            edge_trim_frac=args.edge_trim_frac, diagnose=args.diagnose, flip_lines=args.flip_lines)
+            edge_trim_frac=args.edge_trim_frac, diagnose=args.diagnose, flip_lines=args.flip_lines,
+            boustrophedon=args.boustrophedon, boustro_phase=args.boustro_phase)
 
 
 if __name__ == "__main__":
