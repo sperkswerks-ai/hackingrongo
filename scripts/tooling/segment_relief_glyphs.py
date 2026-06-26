@@ -251,12 +251,19 @@ def segment(relief_path: Path, tablet: str, side_letters: list[str], out_dir: Pa
             draw.text((cx0 + 2, max(0, cy0 - 32)), code, fill=(255, 60, 60), font=font)
             manifest.append({"tablet": tablet, "line": line_id, "position": pos,
                              "barthel_code": code, "bbox": [cx0, cy0, cx1, cy1],
-                             "file": fname, "uncertain": bool(g.get("uncertain"))})
+                             "file": fname, "uncertain": bool(g.get("uncertain")),
+                             "source_quality": "3d_relief_highdef"})
             n_crops += 1
 
     overlay.save(out_dir / "_debug_overlay.png")
+    # PROVENANCE: this set is 3D-derived (INSCRIBE geometry → relief), kept
+    # SEPARATE from 2D-facsimile (svg/) and from the noisy Barthel OCR sets. It
+    # must never be silently merged into training; wire it in as a distinct,
+    # weightable source. Labels are corpus-position ground truth.
     (out_dir / "manifest.json").write_text(json.dumps(
-        {"relief": str(relief_path), "tablet": tablet, "n_corpus_glyphs": sum(len(v) for v in lines.values()),
+        {"relief": str(relief_path), "tablet": tablet,
+         "source_quality": "3d_relief_highdef", "provenance": "INSCRIBE 3D mesh → nxsedit → relief → corpus-guided segmentation",
+         "n_corpus_glyphs": sum(len(v) for v in lines.values()),
          "n_crops": n_crops, "crops": manifest}, indent=1))
     print(f"  ✓ {n_crops} crops (corpus expected {sum(len(v) for v in lines.values())}) → {out_dir}")
     print(f"  → audit {out_dir/'_debug_overlay.png'} : boxes should sit on glyphs, red codes in reading order")

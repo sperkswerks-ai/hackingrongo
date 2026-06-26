@@ -30,6 +30,27 @@ these models.
 > Big shout-out to the INSCRIBE Project — without their open 3D scans the
 > high-definition glyph work would not be possible.
 
+### Data-Provenance Policy (glyph imagery & restoration)
+
+These are **invariants**, not just current behaviour:
+
+1. **3D-derived imagery is kept separate from 2D facsimiles.** Glyph crops
+   segmented from the INSCRIBE 3D relief (`data/glyphs/glyph_crops/`, tagged
+   `source_quality: "3d_relief_highdef"`, labelled by corpus position) are a
+   distinct, clean, high-fidelity set. They are **never silently merged** into
+   the 2D-facsimile SVG training corpus (`data/glyphs/svg/`). The training
+   dataset tracks source provenance per image (`is_3d_crop`, and per-source
+   slots); when the 3D set is introduced to training it must enter as an
+   explicit, separately-weightable source — not concatenated.
+2. **Restoration / reconstruction is experimental and quarantined.** Predicted
+   reconstructions of damaged/illegible (`?`) glyphs (from `complete_sequence.py`,
+   `reconstruct_tablet_d.py`, image inpainting) are written only to
+   `outputs/` and are labelled hypotheses, never ground truth. **No restored or
+   reconstructed glyph is ever written back into `data/corpus/` or fed into the
+   IC / entropy / contact-partition analyses.** Those analyses read only the raw
+   transcription (`data/corpus/[A-Z].json`). This firewall keeps the statistical
+   results free of inferred data.
+
 ### Language Model Corpora
 
 | Source | File | Notes |
