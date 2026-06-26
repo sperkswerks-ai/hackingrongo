@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# ============================================================================
+# DEPRECATED — SYLLABIC SUBSTITUTION-CIPHER TRACK (set down 2026-06, in place).
+# Part of the sign→phoneme substitution-cipher hypothesis, which was tested and
+# set down as a recorded NEGATIVE RESULT — preserved as an archive, NOT fixed,
+# tuned, or deleted. Do not extend this module. The structural/logographic track
+# supersedes it. Full rationale + on-disk numbers: DEPRECATED_SYLLABIC.md (root).
+# ============================================================================
 """
 build_grover_oracle.py — Grover search oracle for rongorongo decipherment.
 
