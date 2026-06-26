@@ -528,11 +528,12 @@ class GlyphImageDataset(Dataset):
                 for p in sorted(subdir.glob("*.png")):
                     _insert(p)
 
-        # 3d_crops/tablet_X/side_Y/{line}_{pos}_{barthel_code}.png
-        # Files are named like "L{line}_G{pos}_{code}.png"; the Barthel code
-        # is the last underscore-separated field.  These are added last so
-        # barthel_ref and barthel_corpus take priority for any code already seen.
-        crops_dir = self.glyphs_dir / "3d_crops"
+        # glyph_crops/<T>_<face>/{L{line}_P{pos}_{code}.png}  — the 3D-RELIEF
+        # crops from the INSCRIBE geometry (source_quality "3d_relief_highdef").
+        # The Barthel code is the last underscore-separated field. Added last so
+        # barthel_ref / barthel_corpus take priority for any code already seen.
+        # (Was "3d_crops" = the retired web-viewer screenshots, now deleted.)
+        crops_dir = self.glyphs_dir / "glyph_crops"
         if crops_dir.is_dir():
             for p in sorted(crops_dir.rglob("*.png")):
                 stem = p.stem
@@ -667,7 +668,7 @@ class GlyphImageDataset(Dataset):
             gray = img.convert("L")
             if _looks_like_low_contrast_relief(
                 gray,
-                is_3d_crop=("3d_crops" in path.parts),
+                is_3d_crop=("glyph_crops" in path.parts or "3d_crops" in path.parts),
                 std_threshold=self._lc_std_threshold,
                 dynamic_range_threshold=self._lc_dynamic_range_threshold,
                 mean_floor=self._lc_mean_floor,
