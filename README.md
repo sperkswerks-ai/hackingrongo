@@ -96,7 +96,7 @@ All LM tokens pass structural (C)V phonotactic validation (Rapa Nui admits no co
 
 **Zone C** runs Metropolis-Hastings with Geweke Z and, for multi-chain runs, Gelman-Rubin R-hat. The corrected run **converged** (R-hat 0.9994 over 4 chains) — but convergence means the chains mixed, not that the decipherment is valid; the layer is a hypothesis-generation engine, not a source of endorsed assignments. Incremental delta scoring reduces per-iteration cost from O(N) to O(k).
 
-**Quantum analysis** (`scripts/measure_pgood.py`, `scripts/run_qubo_decipherment.py`) computes p_good (fraction of random assignments scoring above threshold) to derive Grover oracle-call estimates and compare classical vs quantum search complexity, and reformulates sign→phoneme assignment as a QUBO for D-Wave annealing. All search layers draw from the same 50-syllable inventory, so complexities are measured over the same space; p_good sampling is verified bit-identical between its vectorised and reference scorers.
+**Quantum analysis** (`scripts/measure_pgood.py`, `scripts/run_qubo_decipherment.py`) computes p_good (fraction of random assignments scoring above threshold) to derive Grover oracle-call estimates and compare classical vs quantum search complexity, and reformulates sign→phoneme assignment as a QUBO solved by simulated annealing (D-Wave's `neal` library, on CPU — not a QPU). All search layers draw from the same 50-syllable inventory, so complexities are measured over the same space; p_good sampling is verified bit-identical between its vectorised and reference scorers.
 
 ---
 
@@ -104,7 +104,7 @@ All LM tokens pass structural (C)V phonotactic validation (Rapa Nui admits no co
 
 **p_good measurement** samples random sign→phoneme assignments and measures what fraction score above threshold under the Rapa Nui LM, yielding a Grover oracle-call estimate. Runs in minutes on CPU. **Caveat:** at τ=0.99 only ~1 sample in 2,000 is "good" (n_good = 1), so the estimate carries large uncertainty, and the Grover √-advantage is over *random* search — MCMC is not random search.
 
-**QUBO key search** reformulates sign→phoneme assignment as a QUBO. `--solver neal` runs local simulated annealing (no account); `--solver dwave` submits to a D-Wave Advantage QPU. (Note: the last run's QUBO collapsed to a degenerate all-vowel assignment — a known bug to fix before relying on it.)
+**QUBO key search** reformulates sign→phoneme assignment as a QUBO. **The actual runs used `--solver neal` — D-Wave's *simulated-annealing library*, which runs on CPU (no quantum hardware, no account).** `--solver dwave` / `--solver hybrid` would submit to a real D-Wave Advantage QPU, but those paths have **not** been exercised — there is no D-Wave QPU run on record. So, to be clear: **all of this project's real quantum-hardware runs are on IBM** (`ibm_marrakesh`); the QUBO layer is a classical annealer. (Note: the last QUBO run also collapsed to a degenerate all-vowel assignment — a known bug to fix before relying on it.)
 
 **Hardware runs** (Bernstein–Vazirani and Simon on `ibm_marrakesh`, 156 qubits; job IDs in `RESULTS.md`) are hardware-executed **demonstrations, not discoveries** — the oracles encode structure first extracted classically, so no quantum advantage is claimed. BV recovers an affine structure that is a *tautological artifact* of the rank encoding; Simon recovers diachronic key-change periods but shows **no separation** at the available n=2,4; QAOA, on a common per-token scale, improves on MCMC by a negligible +0.543. The attack map, evidence tiers, and noise/oracle caveats are in `QUANTUM_ATTACKS.md`.
 
@@ -126,7 +126,7 @@ Jonas Gregorio de Souza's `rongopy` (2023, GPL-3.0) is the closest prior computa
 | **Parallel passages** | In-memory only | Algorithmic cross-reference; permutation test; diachronic variant analysis |
 | **Astronomical analysis** | None | 5-test candidate detector; Mamari calendar anchor; Dietrich correspondence |
 | **Sequence completion** | None | N-gram completion; damaged-glyph reconstruction (**experimental**, quarantined from IC) |
-| **Quantum analysis** | None | p_good; QUBO; D-Wave; BV + Simon on IBM hardware |
+| **Quantum analysis** | None | p_good; QUBO (D-Wave `neal` simulated annealing, on CPU); BV + Simon + QAOA on **IBM** hardware (`ibm_marrakesh`) |
 | **Results format** | Untyped CSV | Typed dataclasses; CSV; JSON; HTML |
 
 ---
