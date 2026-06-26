@@ -6,8 +6,7 @@ This project treats decipherment as a cryptanalysis problem and applies a six-la
 
 > A reproducible pipeline applying diachronic stratification, differential oracle attacks, and quantum complexity analysis to the Rongorongo corpus — an analytical lens no prior computational study has applied. It reports its null and artifactual results with the same prominence as its positive ones.
 
-**The careful version of everything below — every quantitative claim tied to its source file, results graded into robust / suggestive / null tiers — is in [`docs/preprint.md`](docs/preprint.md).** This README is the short tour.
-
+**I carefully tie every quantitative claim to its source file and make best effort to grade confidence of results.**
 ---
 ## Status (June 2026)
 
