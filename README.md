@@ -151,7 +151,6 @@ The authoritative results live on the AzureML instance, not this local checkout;
 ---
 
 ## For more information
-- **[`docs/preprint.md`](docs/preprint.md)** — the full reproducible report (per-claim source files, evidence tiers, substantial limitations).
 - **`DATA_SOURCES.md`** — provenance, references, and the data-governance policy.
 - **`QUICKSTART.md`** — installation and usage · **`docs/CLI.md`** — command reference.
 - **`QUANTUM_ATTACKS.md`** — quantum attack map, evidence tiers, noise/oracle caveats.
