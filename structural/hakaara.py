@@ -17,12 +17,11 @@ Integrity rules enforced in code:
   * PASS is decided on robust (exact-code) features against Null B alone.
   * distinctness is a GATE only -- it earns no positive credit.
 """
-import json, hashlib, os, sys, csv
+import json, hashlib, os, sys, csv, re, argparse
 import numpy as np
 from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONF = os.path.join(ROOT, "conf", "hakaara")
 CORPUS = os.path.join(ROOT, "data", "corpus")
 SEED = 20260627
 
@@ -30,20 +29,20 @@ SEED = 20260627
 # ----------------------------------------------------------------------------
 # Lock verification
 # ----------------------------------------------------------------------------
-def _verify(json_name, lock_name):
-    path = os.path.join(CONF, json_name)
+def _verify(conf, json_name, lock_name):
+    path = os.path.join(conf, json_name)
     blob = open(path, "rb").read()
     digest = hashlib.sha256(blob).hexdigest()
-    expected = open(os.path.join(CONF, lock_name)).read().strip()
+    expected = open(os.path.join(conf, lock_name)).read().strip()
     if digest != expected:
         sys.exit(f"LOCK MISMATCH on {json_name}: {digest} != {expected}\n"
                  f"Refusing to run. Boundaries/parameters were altered after freeze.")
     return json.loads(blob)
 
 
-def load_frozen():
-    freeze = _verify("freeze.json", "freeze.lock")
-    seg = _verify("segmentation.frozen.json", "segmentation.lock")
+def load_frozen(conf):
+    freeze = _verify(conf, "freeze.json", "freeze.lock")
+    seg = _verify(conf, "segmentation.frozen.json", "segmentation.lock")
     return freeze, seg
 
 
@@ -56,10 +55,24 @@ def section_tokens(sec):
     sg = sorted(sg, key=lambda g: g["position"])
     exact = [g["barthel_code"] for g in sg]
     base = [g.get("barthel_base") or g["barthel_code"] for g in sg]
+    # windowed segmentation slices the side; content hash pins exactly that slice
+    if "win_start" in sec:
+        a, b = sec["win_start"], sec["win_end"]
+        exact, base = exact[a:b], base[a:b]
     content_sig = hashlib.sha256("|".join(exact).encode()).hexdigest()
     if content_sig != sec["content_sha256"]:
         sys.exit(f"CORPUS DRIFT on {sec['section_id']}: glyph content changed since freeze.")
     return np.array(exact, dtype=object), np.array(base, dtype=object)
+
+
+def is_glyph(tok):
+    """Content-blind validity: reject uncertainty/lacuna markers ('?', '-') and
+    the Barthel 000 family (unidentified/destroyed sign). A periodic recurrence
+    of destroyed-sign markers is damage, not enumeration."""
+    m = re.match(r"0*([0-9]+)", str(tok))
+    if not m:
+        return False
+    return m.group(1) != "0"
 
 
 # ----------------------------------------------------------------------------
@@ -98,11 +111,12 @@ def slot_head_entropy(tokens, pos):
     return float(-sum((v / n) * np.log2(v / n) for v in c.values()))
 
 
-def candidates(tokens, fmin_count, fmin_relfreq):
+def candidates(tokens, fmin_count, fmin_relfreq, exclude_nonglyph=False):
     c = Counter(tokens.tolist())
     n = len(tokens)
     return [t for t, k in c.items()
-            if k >= fmin_count and (k / n) >= fmin_relfreq]
+            if k >= fmin_count and (k / n) >= fmin_relfreq
+            and (not exclude_nonglyph or is_glyph(t))]
 
 
 def section_T(tokens, cand_tokens, periods, k, delta, want_detail=False):
@@ -185,22 +199,23 @@ def bh_reject(pvals, q):
 # ----------------------------------------------------------------------------
 # Driver
 # ----------------------------------------------------------------------------
-def run():
-    freeze, seg = load_frozen()
+def run(conf):
+    freeze, seg = load_frozen(conf)
     sig, nul = freeze["signature"], freeze["null"]
     p, eps, step = sig["p"], sig["eps"], sig["period_grid_step"]
     periods = np.arange(p - eps, p + eps + 1e-9, step)
     k, delta = sig["k"], sig["delta"]
     fmin_c, fmin_r = sig["f_min_count"], sig["f_min_relfreq"]
+    xnon = sig.get("exclude_nonglyph", False)   # off in v1, on in v2; pinned by lock
     b, B = nul["block_length_b"], nul["n_permutations"]
     rng = np.random.default_rng(SEED)
 
     rows = []
     for sec in seg["sections"]:
         exact, base = section_tokens(sec)
-        row = {"section": sec["section_id"], "n_glyphs": sec["n_glyphs"]}
+        row = {"section": sec["section_id"], "n_glyphs": len(exact)}
 
-        cand_robust = candidates(exact, fmin_c, fmin_r)
+        cand_robust = candidates(exact, fmin_c, fmin_r, xnon)
         T_rob, detail = section_T(exact, cand_robust, periods, k, delta, want_detail=True)
 
         if detail is None:
@@ -225,7 +240,7 @@ def run():
                                      lambda t, r: block_shuffle(t, b, r), B, rng)
 
         # augmented (allograph-normalized) -- reported, never decides PASS
-        cand_aug = candidates(base, fmin_c, fmin_r)
+        cand_aug = candidates(base, fmin_c, fmin_r, xnon)
         T_aug, _ = section_T(base, cand_aug, periods, k, delta, want_detail=True)
         pB_aug, _, _ = permutation_test(base, cand_aug, periods, k, delta, T_aug,
                                         lambda t, r: block_shuffle(t, b, r), B, rng)
@@ -255,11 +270,17 @@ def run():
 
 
 def main():
-    freeze, rows = run()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--conf", default=os.path.join(ROOT, "conf", "hakaara"),
+                    help="frozen+locked config dir")
+    ap.add_argument("--out", default=os.path.join(ROOT, "reports", "hakaara_results.csv"))
+    args = ap.parse_args()
+
+    freeze, rows = run(args.conf)
     cols = ["section", "n_glyphs", "status", "connective", "n_slots", "period",
             "Pi_robust", "slot_cv", "z_A", "p_A", "z_B", "p_B",
             "Pi_aug", "p_B_aug", "result"]
-    out = os.path.join(ROOT, "reports", "hakaara_results.csv")
+    out = args.out
     with open(out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
