@@ -87,3 +87,6 @@ Qiskit/qiskit-ibm.json
 qiskit-ibm.json
 ibm_account.json
 .mlflow.pid
+
+# Internal preprint draft — kept local, not published to GitHub
+docs/preprint.md
