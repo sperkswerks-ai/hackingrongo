@@ -1,0 +1,330 @@
+{
+ "_title": "Descriptive characterization of detected near-symmetries in rongorongo",
+ "_framing": "DESCRIPTIVE ONLY \u2014 not significance claims. These are the 8 mirror-bearing sides from the FINAL, locked chiasmus run. No new significance was computed; no nulls were re-run. Of these, 7 are BELOW the corrected significance threshold (near-misses) and 1 (Na) is the marginal survivor (p at the permutation floor, at the rank-1 BH threshold). Glyph codes are structural identifiers only; nothing here asserts content, sound, genre, or meaning.",
+ "_caveat_on_detection": "Consistent with chiastic (mirror) structure in the arrangement of signs. This is a structural property; it does not establish that the section is poetry, ritual, or any genre, and asserts nothing about content, sound, or meaning.",
+ "_cross_reference": "Parallel relation computed against the 13 robust cross-tablet parallels in parallel_variants_auto.json by tablet+global-position overlap. All 8 mirrors are INDEPENDENT of the 13 parallels.",
+ "_counts": {
+  "mirror_bearing_sides": 8,
+  "survivor_above_threshold": 1,
+  "below_threshold_near_misses": 7,
+  "by_type": {
+   "genuine_ring": 2,
+   "doubled_repeat": 5,
+   "alternation": 1
+  }
+ },
+ "entries": [
+  {
+   "section": "Na",
+   "tablet": "N",
+   "side": "a",
+   "is_survivor": true,
+   "below_corrected_threshold": false,
+   "depth_pairs": 5,
+   "parity": "pivot",
+   "pivot_glyph": "600",
+   "mirror_sequence_codes": [
+    "001",
+    "006",
+    "522",
+    "001",
+    "062",
+    "600",
+    "062",
+    "001",
+    "522",
+    "006",
+    "001"
+   ],
+   "repeated_unit": null,
+   "global_position_range": [
+    80,
+    90
+   ],
+   "structural_type": "genuine_ring",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "undated",
+   "radiocarbon": {
+    "median_CE": null,
+    "hpd_95": null,
+    "reliability": null
+   },
+   "descriptive_note": "Depth-5 ring, 4 distinct arm glyphs (001 006 522 001 062). The one section above the corrected FDR threshold \u2014 and only marginally (p at the B=1000 permutation floor, at the rank-1 BH threshold)."
+  },
+  {
+   "section": "Qr",
+   "tablet": "Q",
+   "side": "r",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "254e",
+   "mirror_sequence_codes": [
+    "003a",
+    "093",
+    "003a",
+    "254e",
+    "003a",
+    "093",
+    "003a"
+   ],
+   "repeated_unit": [
+    "003a",
+    "093",
+    "003a"
+   ],
+   "global_position_range": [
+    115,
+    121
+   ],
+   "structural_type": "doubled_repeat",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "post_contact",
+   "radiocarbon": {
+    "median_CE": 1824,
+    "hpd_95": [
+     1800,
+     1850
+    ],
+    "reliability": "medium"
+   },
+   "descriptive_note": "Doubled repeat of unit [003a 093 003a] about pivot 254e. Shares this motif with Ab (tablet A) \u2014 a recurring local pattern, NOT one of the 13 robust parallels."
+  },
+  {
+   "section": "Sb",
+   "tablet": "S",
+   "side": "b",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "010",
+   "mirror_sequence_codes": [
+    "700",
+    "010",
+    "700",
+    "010",
+    "700",
+    "010",
+    "700"
+   ],
+   "repeated_unit": null,
+   "global_position_range": [
+    518,
+    524
+   ],
+   "structural_type": "alternation",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "post_contact",
+   "radiocarbon": {
+    "median_CE": null,
+    "hpd_95": null,
+    "reliability": null
+   },
+   "descriptive_note": "Two-glyph alternation 700/010 (period-2 throughout). Admitted by the delta=0.5 gate; lowest-complexity type."
+  },
+  {
+   "section": "Ab",
+   "tablet": "A",
+   "side": "b",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "254",
+   "mirror_sequence_codes": [
+    "003a",
+    "093f",
+    "003a",
+    "254",
+    "003a",
+    "093f",
+    "003a"
+   ],
+   "repeated_unit": [
+    "003a",
+    "093f",
+    "003a"
+   ],
+   "global_position_range": [
+    1124,
+    1130
+   ],
+   "structural_type": "doubled_repeat",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "excluded",
+   "radiocarbon": {
+    "median_CE": null,
+    "hpd_95": null,
+    "reliability": "excluded"
+   },
+   "descriptive_note": "Doubled repeat of unit [003a 093f 003a] about pivot 254. Same motif family as Qr (tablet Q)."
+  },
+  {
+   "section": "Cb",
+   "tablet": "C",
+   "side": "b",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "008",
+   "mirror_sequence_codes": [
+    "001",
+    "062f",
+    "001",
+    "008",
+    "001",
+    "062f",
+    "001"
+   ],
+   "repeated_unit": [
+    "001",
+    "062f",
+    "001"
+   ],
+   "global_position_range": [
+    615,
+    621
+   ],
+   "structural_type": "doubled_repeat",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "post_contact",
+   "radiocarbon": {
+    "median_CE": 1830,
+    "hpd_95": [
+     1800,
+     1860
+    ],
+    "reliability": "medium"
+   },
+   "descriptive_note": "Doubled repeat of unit [001 062f 001] about pivot 008 (008 is the Mamari calendar element; tablet C side b)."
+  },
+  {
+   "section": "Ca",
+   "tablet": "C",
+   "side": "a",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "022f",
+   "mirror_sequence_codes": [
+    "380",
+    "001",
+    "067",
+    "022f",
+    "067",
+    "001",
+    "380"
+   ],
+   "repeated_unit": null,
+   "global_position_range": [
+    70,
+    76
+   ],
+   "structural_type": "genuine_ring",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "post_contact",
+   "radiocarbon": {
+    "median_CE": 1830,
+    "hpd_95": [
+     1800,
+     1860
+    ],
+    "reliability": "medium"
+   },
+   "descriptive_note": "Depth-3 ring, 3 distinct arm glyphs (380 001 067) about pivot 022f. Second genuine-ring type after Na; on the calendar tablet's recto."
+  },
+  {
+   "section": "Ya",
+   "tablet": "Y",
+   "side": "a",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "gap",
+   "pivot_glyph": null,
+   "mirror_sequence_codes": [
+    "001",
+    "040",
+    "040",
+    "040",
+    "040",
+    "001"
+   ],
+   "repeated_unit": [
+    "001",
+    "040",
+    "040"
+   ],
+   "global_position_range": [
+    8,
+    13
+   ],
+   "structural_type": "doubled_repeat",
+   "run_dominated": true,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "undated",
+   "radiocarbon": {
+    "median_CE": null,
+    "hpd_95": null,
+    "reliability": null
+   },
+   "descriptive_note": "Central 040-run (040 x4) framed symmetrically by 001 \u2014 low complexity, run-dominated; passed the gate at 0.67 distinctness."
+  },
+  {
+   "section": "Ia",
+   "tablet": "I",
+   "side": "a",
+   "is_survivor": false,
+   "below_corrected_threshold": true,
+   "depth_pairs": 3,
+   "parity": "pivot",
+   "pivot_glyph": "090",
+   "mirror_sequence_codes": [
+    "076",
+    "071",
+    "076",
+    "090",
+    "076",
+    "071",
+    "076"
+   ],
+   "repeated_unit": [
+    "076",
+    "071",
+    "076"
+   ],
+   "global_position_range": [
+    2206,
+    2212
+   ],
+   "structural_type": "doubled_repeat",
+   "run_dominated": false,
+   "parallel_relation": "independent",
+   "parallel_hits": [],
+   "stratum": "post_contact",
+   "radiocarbon": {
+    "median_CE": null,
+    "hpd_95": null,
+    "reliability": null
+   },
+   "descriptive_note": "Doubled repeat of unit [076 071 076] about pivot 090 on the Santiago Staff (076 is the Staff's dominant divider glyph)."
+  }
+ ]
+}
