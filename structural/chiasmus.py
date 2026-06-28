@@ -112,9 +112,12 @@ def run(conf):
 
         T, det = mirror_T(exact, k_chi, delta, match_rob, want_detail=True)
         if T == 0:
+            # A scanned section with no qualifying mirror is a TESTED hypothesis
+            # with p = P(T_null >= 0) = 1.0 exactly. It belongs in the BH family
+            # ("FDR across all evaluable sections"), NOT dropped as nan.
             row.update({"status": "evaluable", "T": 0, "center": "-", "span": "-",
-                        "z_B": "-", "p_B": "-", "T_aug": "-", "result": "null (no mirror >= k_chi)"})
-            row["_p_B"] = float("nan"); rows.append(row); continue
+                        "z_B": "-", "p_B": 1.0, "T_aug": "-", "result": "null (no mirror >= k_chi)"})
+            row["_p_B"] = 1.0; rows.append(row); continue
 
         pA, zA, _ = permutation_test(exact, k_chi, delta, match_rob, T,
                                      lambda t, r: H.uniform_shuffle(t, r), B, rng)

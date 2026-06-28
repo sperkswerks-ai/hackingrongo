@@ -1,0 +1,44 @@
+section,n_glyphs,status,T,center,span,z_A,p_A,z_B,p_B,T_aug,p_B_aug,result
+Aa,885,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ab,911,evaluable,3,241,3,10.63,0.009,5.89,0.029,3,0.0589,null
+Br,544,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Bv,725,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ca,515,evaluable,3,72,3,11.91,0.008,4.03,0.049,3,0.0729,null
+Cb,484,evaluable,3,102,3,14.11,0.006,5.09,0.034,3,0.047,null
+Da,165,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Db,118,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Er,464,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ev,422,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Fa,51,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Fb,30,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Gr,359,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Gv,356,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Hr,789,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Hv,849,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ia,2431,evaluable,3,2208,3,1.81,0.2198,2.97,0.1029,3,0.1239,null
+Ja,2,not_evaluable,-,-,-,,,-,-,-,,NOT EVALUABLE (too short)
+Kr,141,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Kv,127,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+La,49,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ma,91,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Na,158,evaluable,5,84,5,23.56,0.001,7.25,0.001,5,0.001,MIRROR STRUCTURE DETECTED
+Nb,114,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Oa,147,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Pr,832,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Pv,745,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Qr,522,evaluable,3,117,3,31.61,0.002,10.06,0.01,3,0.019,null
+Qv,435,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ra,262,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Rb,230,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Sa,419,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Sb,463,evaluable,3,101,3,22.34,0.003,10.49,0.01,3,0.018,null
+Ta,200,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ua,55,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Va,28,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Wa,16,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Xa,42,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ya,24,evaluable,3,9.5,3,31.61,0.002,3.32,0.0839,3,0.1039,null
+Yb,24,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Yc,28,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Ye,12,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
+Yf,9,evaluable,0,-,-,,,-,1.0,-,,null (no mirror >= k_chi)
