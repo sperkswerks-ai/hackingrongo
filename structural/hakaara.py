@@ -65,14 +65,16 @@ def section_tokens(sec):
     return np.array(exact, dtype=object), np.array(base, dtype=object)
 
 
-def is_glyph(tok):
-    """Content-blind validity: reject uncertainty/lacuna markers ('?', '-') and
-    the Barthel 000 family (unidentified/destroyed sign). A periodic recurrence
-    of destroyed-sign markers is damage, not enumeration."""
+def is_glyph(tok, blocked_cores=frozenset({0})):
+    """Content-blind validity: reject uncertainty/lacuna markers ('?', '-',
+    '(N-M)!' gap annotations -> no numeric core) and encoding non-signs whose
+    numeric core is in `blocked_cores` (000 = unidentified, 999 = encoding
+    placeholder absent from Barthel's plates). Real Barthel signs are 1..791.
+    A periodic recurrence of damage/placeholder markers is not enumeration."""
     m = re.match(r"0*([0-9]+)", str(tok))
     if not m:
         return False
-    return m.group(1) != "0"
+    return int(m.group(1)) not in blocked_cores
 
 
 # ----------------------------------------------------------------------------
@@ -111,12 +113,13 @@ def slot_head_entropy(tokens, pos):
     return float(-sum((v / n) * np.log2(v / n) for v in c.values()))
 
 
-def candidates(tokens, fmin_count, fmin_relfreq, exclude_nonglyph=False):
+def candidates(tokens, fmin_count, fmin_relfreq, exclude_nonglyph=False,
+               blocked_cores=frozenset({0})):
     c = Counter(tokens.tolist())
     n = len(tokens)
     return [t for t, k in c.items()
             if k >= fmin_count and (k / n) >= fmin_relfreq
-            and (not exclude_nonglyph or is_glyph(t))]
+            and (not exclude_nonglyph or is_glyph(t, blocked_cores))]
 
 
 def section_T(tokens, cand_tokens, periods, k, delta, want_detail=False):
@@ -206,7 +209,8 @@ def run(conf):
     periods = np.arange(p - eps, p + eps + 1e-9, step)
     k, delta = sig["k"], sig["delta"]
     fmin_c, fmin_r = sig["f_min_count"], sig["f_min_relfreq"]
-    xnon = sig.get("exclude_nonglyph", False)   # off in v1, on in v2; pinned by lock
+    xnon = sig.get("exclude_nonglyph", False)   # off in v1, on in v2/v3; pinned by lock
+    blocked = frozenset(sig.get("nonglyph_cores", [0]))   # v1/v2 -> {0}; v3 -> {0,999}
     b, B = nul["block_length_b"], nul["n_permutations"]
     rng = np.random.default_rng(SEED)
 
@@ -215,7 +219,7 @@ def run(conf):
         exact, base = section_tokens(sec)
         row = {"section": sec["section_id"], "n_glyphs": len(exact)}
 
-        cand_robust = candidates(exact, fmin_c, fmin_r, xnon)
+        cand_robust = candidates(exact, fmin_c, fmin_r, xnon, blocked)
         T_rob, detail = section_T(exact, cand_robust, periods, k, delta, want_detail=True)
 
         if detail is None:
@@ -240,7 +244,7 @@ def run(conf):
                                      lambda t, r: block_shuffle(t, b, r), B, rng)
 
         # augmented (allograph-normalized) -- reported, never decides PASS
-        cand_aug = candidates(base, fmin_c, fmin_r, xnon)
+        cand_aug = candidates(base, fmin_c, fmin_r, xnon, blocked)
         T_aug, _ = section_T(base, cand_aug, periods, k, delta, want_detail=True)
         pB_aug, _, _ = permutation_test(base, cand_aug, periods, k, delta, T_aug,
                                         lambda t, r: block_shuffle(t, b, r), B, rng)
