@@ -1,0 +1,28 @@
+collision check: 1/p_c = 110.2  vocab: 2052
+========================================================================================================
+(a) CLEAN PLANTED CHIASM  -> must detect
+========================================================================================================
+clean chiasm depth 3 (+small pad)          L=  23  T= 3 ctr=   11  NullA z=18.23 p=0.0040   NullB(b=3) z= 7.00 p=0.0210
+clean chiasm depth 4 (+small pad)          L=  25  T= 4 ctr=   12  NullA z=  nan p=0.0010   NullB(b=3) z= 4.16 p=0.0070
+clean chiasm depth 6 (+small pad)          L=  29  T= 6 ctr=   14  NullA z=31.62 p=0.0010   NullB(b=3) z= 5.75 p=0.0010
+
+========================================================================================================
+(b) RANDOM TEXT  -> must reject
+========================================================================================================
+random text 200 (seed 1)                   L= 200  T= 0 ctr=    -  NullA z=  nan p=1.0000   NullB(b=3) z=  nan p=1.0000
+random text 200 (seed 2)                   L= 200  T= 0 ctr=    -  NullA z=  nan p=1.0000   NullB(b=3) z=  nan p=1.0000
+random text 200 (seed 3)                   L= 200  T= 0 ctr=    -  NullA z=  nan p=1.0000   NullB(b=3) z=  nan p=1.0000
+
+========================================================================================================
+(c) CHIASM BURIED IN NOISE  -> must detect  (THE b=3 CONDITION)
+========================================================================================================
+depth-3 chiasm buried in 300 noise         L= 307  T= 3 ctr=  153  NullA z=22.34 p=0.0030   NullB(b=3) z=  nan p=0.0010
+depth-4 chiasm buried in 300 noise         L= 309  T= 4 ctr=  154  NullA z=  nan p=0.0010   NullB(b=3) z=15.91 p=0.0010
+depth-6 chiasm buried in 300 noise         L= 313  T= 6 ctr=  156  NullA z=  nan p=0.0010   NullB(b=3) z=25.82 p=0.0010
+
+========================================================================================================
+(d) DEGENERATE PATTERNS  -> must NOT be called a chiasm (gate)
+========================================================================================================
+single-glyph run 001 x31                   L=  31  T= 0 ctr=    -  NullA z=  nan p=1.0000   NullB(b=3) z=  nan p=1.0000
+2-glyph alternation 076/001 x31            L=  31  T= 4 ctr=    4  NullA z= 0.22 p=0.9540   NullB(b=3) z=  nan p=1.0000
+single-glyph run 001 x11 buried in noise   L=  51  T= 0 ctr=    -  NullA z=-0.04 p=1.0000   NullB(b=3) z=-0.03 p=1.0000
